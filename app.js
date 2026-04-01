@@ -34,26 +34,57 @@ const RESEARCH_REFERENCES = [
   },
 ];
 
+const CLASSIC_QUANT_REFERENCES = [
+  {
+    title: "Lo, Mamaysky, and Wang",
+    year: 2000,
+    why: "A classic bridge between chart structure and statistical testing, useful for thinking about trend and reversal without treating patterns as magic.",
+    url: "https://doi.org/10.1111/0022-1082.00265",
+    track: "Classic",
+  },
+  {
+    title: "Piotroski F-Score",
+    year: 2000,
+    why: "A practical way to separate cheap-and-healthy from cheap-and-broken, which is why quality overlays matter in value signals.",
+    url: "https://doi.org/10.1111/1475-679X.00009",
+    track: "Classic",
+  },
+  {
+    title: "Acharya and Pedersen Liquidity Risk",
+    year: 2003,
+    why: "Useful reminder that price alone is not enough; participation and liquidity conditions change expected return and risk.",
+    url: "https://doi.org/10.1016/j.jfineco.2004.06.001",
+    track: "Classic",
+  },
+  {
+    title: "Gatev, Goetzmann, and Rouwenhorst",
+    year: 2006,
+    why: "A classic mean-reversion reference that helps explain why spread and reversion signals can work, and when they stop working.",
+    url: "https://doi.org/10.1093/rfs/hhj020",
+    track: "Classic",
+  },
+];
+
 const ACADEMY_CONTENT = [
   {
-    title: "Forecast score",
+    title: "Classic core first",
     body:
-      "This board blends multiple signals instead of pretending one formula can solve markets. Momentum, macro regime, event load, valuation, and volatility all compete for weight.",
+      "The engine starts from classic market signals such as momentum, mean reversion, volatility, valuation, beta, and participation before any modern overlay is considered.",
   },
   {
-    title: "Urgent banner",
+    title: "Radar layer",
     body:
-      "The top banner is for catalysts that can override slow-moving models, such as market-wide shocks, earnings headlines, or major repricing in rates and commodities.",
+      "The radar is the event override layer. Wars, policy shifts, deals, sanctions, and earnings shocks can matter more than a slow-moving factor model for short periods.",
   },
   {
-    title: "Validation panel",
+    title: "Model lab",
     body:
-      "The model lab shows how the current methodology would have behaved on recent history. That keeps us honest about error, drift, and scenario sensitivity.",
+      "The lab shows what the current methodology would have done on observed history, so forecast confidence is always paired with actual error and hit-rate evidence.",
   },
   {
-    title: "Market coverage",
+    title: "Modern overlay",
     body:
-      "Symbols can be searched globally. US names work directly, and exchanges like NSE are normalized through market suffixes such as .NS before the backend fetches live data.",
+      "Modern research is used as an overlay, not a replacement. If a newer method improves uncertainty, regime adaptation, or speed, it complements the classic stack instead of hiding it.",
   },
 ];
 
@@ -105,6 +136,11 @@ const state = {
   alerts: [],
   alertCooldowns: {},
   radarFloatOpenId: "",
+  marketSessionTimer: null,
+  dashboardRequestId: 0,
+  academyRequestId: 0,
+  academyDetail: null,
+  academyCache: {},
 };
 
 if (state.watchlist.length === 0) {
@@ -226,6 +262,14 @@ function formatSignedCurrency(value, currency = "USD") {
   return `${numeric >= 0 ? "+" : ""}${formatCurrency(numeric, currency)}`;
 }
 
+function formatDuration(seconds) {
+  const total = Math.max(0, Math.floor(Number(seconds) || 0));
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const remainingSeconds = total % 60;
+  return [hours, minutes, remainingSeconds].map((value) => String(value).padStart(2, "0")).join(":");
+}
+
 function formatSourceLabel(value) {
   if (!value) return "Unknown";
   return String(value)
@@ -268,6 +312,63 @@ function buildRadarFloatItems(radar = {}) {
       region: formatRegionLabel(hotspots[index]?.region || "world"),
       bubble: shortenHeadline(item.title || "Market event", 4),
     }));
+}
+
+function emptyForecastPayload() {
+  return {
+    direction: "Refreshing",
+    confidence: 0,
+    fairValueGap: 0,
+    eventPressureLabel: "Pending",
+    mae: 0,
+    expectedReturn: 0,
+    projected: [],
+    factors: [],
+    triggers: [],
+    models: {
+      classic: { direction: "Pending", expectedReturn: 0, confidence: 0, summary: "Classic stack refreshing." },
+      modern: { direction: "Pending", expectedReturn: 0, confidence: 0, summary: "Modern overlay refreshing." },
+      agreement: { label: "Pending", score: 0, summary: "Agreement refreshing." },
+    },
+  };
+}
+
+function buildPendingActive(symbol) {
+  const watchItem = (state.dashboard?.watchlist || []).find((item) => item.symbol === symbol);
+  const previous = state.dashboard?.active || {};
+  if (!watchItem && previous.symbol === symbol) {
+    return previous;
+  }
+  const nextName = watchItem?.name || previous.name || symbol;
+  return {
+    ...previous,
+    ...watchItem,
+    symbol,
+    name: nextName,
+    regime: "Refreshing active view",
+    history: watchItem?.symbol === previous.symbol ? previous.history || [] : [],
+    relationshipCards: [],
+    driverCards: [],
+    stats: watchItem?.symbol === previous.symbol ? previous.stats || [] : [],
+    headlines: watchItem?.symbol === previous.symbol ? previous.headlines || [] : [],
+    forecast: {
+      ...emptyForecastPayload(),
+      ...(watchItem?.price !== undefined ? { expectedReturn: 0 } : {}),
+    },
+    recommendation: { buy: 0, hold: 100, sell: 0, signal: "Refreshing" },
+    classicQuant: {
+      summary: "Classic quant readings are refreshing for the new active ticker.",
+      cards: [],
+    },
+  };
+}
+
+function primeActiveTickerSelection(symbol) {
+  if (!state.dashboard) return;
+  state.dashboard.active = buildPendingActive(symbol);
+  state.labResult = null;
+  state.academyDetail = state.academyCache[symbol] || null;
+  state.eventResult = null;
 }
 
 function setStatus(message) {
@@ -810,6 +911,9 @@ function renderBoard() {
 function renderOverview() {
   const active = state.dashboard?.active;
   if (!active) return;
+  const forecast = active.forecast || emptyForecastPayload();
+  const agreement = forecast.models?.agreement || { label: "Pending", score: 0, summary: "Agreement refreshing." };
+  const recommendation = active.recommendation || { buy: 0, hold: 100, sell: 0, signal: "Refreshing" };
 
   document.getElementById("hero-ticker").textContent = `${active.symbol} · ${active.name}`;
   document.getElementById("hero-regime").textContent = active.regime;
@@ -817,14 +921,15 @@ function renderOverview() {
   const changeNode = document.getElementById("hero-change");
   changeNode.textContent = formatPercent(active.changePercent);
   changeNode.className = `hero-change ${active.changePercent >= 0 ? "positive" : "negative"}`;
-  document.getElementById("forecast-direction").textContent = active.forecast.direction;
-  document.getElementById("forecast-confidence").textContent = `Confidence ${active.forecast.confidence.toFixed(0)}%`;
-  document.getElementById("fair-value-gap").textContent = formatPercent(active.forecast.fairValueGap);
-  document.getElementById("event-pressure").textContent = active.forecast.eventPressureLabel;
-  document.getElementById("model-error").textContent = `${active.forecast.mae.toFixed(1)}%`;
-  document.getElementById("forecast-range").textContent = `10D projection ${formatPercent(active.forecast.expectedReturn)}`;
-  document.getElementById("buy-sell-signal").textContent = active.recommendation?.signal || "Balanced";
-  document.getElementById("buy-sell-breakdown").textContent = `Buy ${active.recommendation?.buy ?? 0}% · Hold ${active.recommendation?.hold ?? 100}% · Sell ${active.recommendation?.sell ?? 0}%`;
+  document.getElementById("forecast-direction").textContent = forecast.direction;
+  document.getElementById("forecast-confidence").textContent = `Confidence ${Number(forecast.confidence || 0).toFixed(0)}% · ${agreement.label}`;
+  document.getElementById("fair-value-gap").textContent = formatPercent(forecast.fairValueGap);
+  document.getElementById("event-pressure").textContent = forecast.eventPressureLabel;
+  document.getElementById("model-error").textContent = `${Number(forecast.mae || 0).toFixed(1)}%`;
+  document.getElementById("forecast-range").textContent = `10D projection ${formatPercent(forecast.expectedReturn)}`;
+  document.getElementById("buy-sell-signal").textContent = recommendation.signal || "Balanced";
+  document.getElementById("buy-sell-breakdown").textContent = `Buy ${recommendation.buy ?? 0}% · Hold ${recommendation.hold ?? 100}% · Sell ${recommendation.sell ?? 0}%`;
+  document.getElementById("model-agreement-note").textContent = `${agreement.summary} Score ${Number(agreement.score || 0).toFixed(0)}/100.`;
   document.getElementById("overview-meta").innerHTML = `
     <span>${active.exchange || active.region || "Global"}</span>
     <span>${active.currency || "USD"} pricing</span>
@@ -837,6 +942,26 @@ function renderOverview() {
   quoteSource.textContent = asOf
     ? `Quote source: ${formatSourceLabel(active.dataSource)} • Updated ${asOf}`
     : `Quote source: ${formatSourceLabel(active.dataSource)}`;
+
+  window.clearInterval(state.marketSessionTimer);
+  const marketSessionNode = document.getElementById("market-session-strip");
+  const renderSession = () => {
+    const session = active.marketSession || {};
+    const nextTransitionAt = session.nextTransitionAt ? new Date(session.nextTransitionAt) : null;
+    const remainingSeconds = nextTransitionAt ? Math.max(0, Math.floor((nextTransitionAt.getTime() - Date.now()) / 1000)) : 0;
+    const countdown = nextTransitionAt ? formatDuration(remainingSeconds) : "--:--:--";
+    const nextLabel = session.transitionLabel === "close" ? "Closes in" : "Opens in";
+    marketSessionNode.innerHTML = `
+      <span class="market-session-pill ${session.isOpen ? "open" : "closed"}">${session.status || "Closed"}</span>
+      <strong>${nextLabel} ${countdown}</strong>
+      <small>${session.hoursLabel || "Hours unavailable"} · ${session.timezone || "UTC"}</small>
+    `;
+  };
+  renderSession();
+  if (active.marketSession?.nextTransitionAt) {
+    state.marketSessionTimer = window.setInterval(renderSession, 1000);
+  }
+
   document.getElementById("hero-stats").innerHTML = (active.stats || [])
     .map(
       (stat) => `
@@ -849,7 +974,7 @@ function renderOverview() {
     .join("");
 
   drawSparkline(document.getElementById("hero-sparkline"), (active.history || []).slice(-24));
-  drawTimeline(document.getElementById("hero-projection-chart"), active.history || [], active.forecast.projected, state.chartFeatures);
+  drawTimeline(document.getElementById("hero-projection-chart"), active.history || [], forecast.projected || [], state.chartFeatures);
   document.querySelectorAll(".range-tab").forEach((button) => {
     button.classList.toggle("active", button.dataset.range === state.chartRange);
   });
@@ -857,7 +982,7 @@ function renderOverview() {
   document.getElementById("feature-sma50").checked = Boolean(state.chartFeatures.sma50);
   document.getElementById("feature-bands").checked = Boolean(state.chartFeatures.bands);
 
-  document.getElementById("factor-map").innerHTML = (active.relationshipCards || active.forecast.factors)
+  document.getElementById("factor-map").innerHTML = (active.relationshipCards || forecast.factors || [])
     .map(
       (factor) => `
         <div class="factor-card">
@@ -872,7 +997,7 @@ function renderOverview() {
     )
     .join("");
 
-  document.getElementById("catalyst-list").innerHTML = (active.driverCards || active.forecast.triggers)
+  document.getElementById("catalyst-list").innerHTML = (active.driverCards || forecast.triggers || [])
     .map(
       (item, index) => `
         <div class="catalyst-card">
@@ -889,7 +1014,7 @@ function renderOverview() {
 
 function renderLab() {
   const active = state.dashboard?.active;
-  const result = state.labResult || active?.lab;
+  const result = state.labResult?.symbol === active?.symbol ? state.labResult : active?.lab;
   const sourceNode = document.getElementById("lab-source-note");
   const tickerInput = document.getElementById("lab-ticker");
   if (tickerInput && document.activeElement !== tickerInput) {
@@ -955,15 +1080,17 @@ function renderLab() {
 
 function renderAcademy() {
   const active = state.dashboard?.active;
+  const academyDetail = state.academyDetail;
+  const agreement = active?.forecast?.models?.agreement || { label: "Pending", summary: "Agreement refreshing.", score: 0 };
   const tickerSpecific = active
     ? [
         {
-          title: "Current stock read",
-          body: `${active.name} is trading in ${active.currency} with ${active.forecast.direction.toLowerCase()} model bias and ${active.forecast.eventPressureLabel.toLowerCase()} event pressure.`,
+          title: "Current ticker read",
+          body: `${active.name} is trading in ${active.currency} with ${active.forecast.direction.toLowerCase()} bias, ${active.forecast.eventPressureLabel.toLowerCase()} event pressure, and ${active.regime.toLowerCase()}.`,
         },
         {
-          title: "Current macro linkage",
-          body: `${active.exchange} exposure, ${active.sector || "sector"} context, and volume at ${formatCompactNumber(active.volume)} are part of the current relationship map.`,
+          title: "Current model mix",
+          body: `${active.classicQuant?.summary || `${active.exchange} exposure, ${active.sector || "sector"} context, and volume at ${formatCompactNumber(active.volume)} are part of the current relationship map.`} ${agreement.summary}`,
         },
       ]
     : [];
@@ -979,28 +1106,84 @@ function renderAcademy() {
     )
     .join("");
 
-  document.getElementById("glossary-list").innerHTML = GLOSSARY
+  const classicCards = active?.classicQuant?.cards?.length
+    ? active.classicQuant.cards
+    : GLOSSARY.map((item) => ({
+        title: item.term,
+        formula: "Concept guide",
+        value: "n/a",
+        interpretation: item.body,
+        failureMode: "Use with context rather than as a standalone signal.",
+        tag: "Glossary",
+      }));
+
+  document.getElementById("glossary-list").innerHTML = classicCards
     .map(
       (item) => `
         <div class="glossary-card">
-          <strong>${item.term}</strong>
-          <p>${item.body}</p>
+          <span>${item.tag || "Classic"}</span>
+          <strong>${item.title}</strong>
+          <code>${item.formula || "Formula unavailable"}</code>
+          <p><strong>Live reading:</strong> ${item.value || "n/a"}.</p>
+          <p>${item.interpretation}</p>
+          <p><strong>Failure mode:</strong> ${item.failureMode}</p>
         </div>
       `,
     )
     .join("");
 
-  document.getElementById("research-list").innerHTML = RESEARCH_REFERENCES
+  document.getElementById("research-list").innerHTML = CLASSIC_QUANT_REFERENCES
+    .concat(
+      RESEARCH_REFERENCES.map((item) => ({
+        ...item,
+        track: "Modern",
+      })),
+    )
     .map(
       (item) => `
         <a class="research-card" href="${item.url}" target="_blank" rel="noreferrer">
-          <span>${item.year}</span>
+          <span>${item.track} · ${item.year}</span>
           <strong>${item.title}</strong>
           <p>${item.why}</p>
         </a>
       `,
     )
     .join("");
+
+  const academyBrief = document.getElementById("academy-ticker-brief");
+  const academySources = document.getElementById("academy-source-list");
+  if (!academyDetail) {
+    academyBrief.innerHTML = `<div class="academy-brief-card"><strong>Loading active explainer</strong><p>The ticker-specific academy brief is being grounded on the active company and live web context.</p></div>`;
+    academySources.innerHTML = `<div class="academy-source-note">Source notes will appear here.</div>`;
+    return;
+  }
+
+  academyBrief.innerHTML = `
+    <div class="academy-brief-card">
+      <strong>${academyDetail.symbol} Explainer</strong>
+      <p>${academyDetail.summary}</p>
+    </div>
+    ${(academyDetail.cards || [])
+      .map(
+        (item) => `
+          <div class="academy-brief-card">
+            <strong>${item.title}</strong>
+            <p>${item.body}</p>
+          </div>
+        `,
+      )
+      .join("")}
+  `;
+
+  academySources.innerHTML = (academyDetail.sources || []).length
+    ? (academyDetail.sources || [])
+        .map(
+          (item) => `
+            <a class="academy-source-pill" href="${item.url}" target="_blank" rel="noreferrer">${item.title || extractDomainLabel(item.url) || "Source"}</a>
+          `,
+        )
+        .join("")
+    : `<div class="academy-source-note">No live web sources were returned for this ticker.</div>`;
 }
 
 function renderResearch() {
@@ -1041,6 +1224,27 @@ function renderTopbar() {
   document.getElementById("status-updated").textContent = state.dashboard?.updatedAt ? "Live now" : "Loading data";
 }
 
+function renderCorePanels() {
+  renderAlerts();
+  renderSearchResults();
+  renderPresets();
+  renderSavedWatchlists();
+  renderRecentTickers();
+  renderWatchlist();
+  renderBanner();
+  renderBoard();
+  renderPulse();
+  renderOverview();
+  renderTopbar();
+}
+
+function renderDeferredPanels() {
+  renderLab();
+  renderAcademy();
+  renderResearch();
+  renderEventFeed();
+}
+
 function applyLiveQuoteUpdate(payload) {
   if (!state.dashboard || !payload) return;
   state.dashboard.updatedAt = payload.updatedAt;
@@ -1065,6 +1269,7 @@ function applyLiveQuoteUpdate(payload) {
   }
 
   renderWatchlist();
+  renderBoard();
   renderOverview();
   renderTopbar();
   flashStatus("Live now", 900);
@@ -1092,21 +1297,8 @@ function startQuoteStream() {
 }
 
 function render() {
-  renderAlerts();
-  renderSearchResults();
-  renderPresets();
-  renderSavedWatchlists();
-  renderRecentTickers();
-  renderWatchlist();
-  renderBanner();
-  renderBoard();
-  renderPulse();
-  renderOverview();
-  renderLab();
-  renderAcademy();
-  renderResearch();
-  renderEventFeed();
-  renderTopbar();
+  renderCorePanels();
+  renderDeferredPanels();
   document.getElementById("lab-ticker").value = state.activeTicker;
 }
 
@@ -1148,23 +1340,41 @@ async function loadEventFeed(keyword = "", { silent = false } = {}) {
   state.eventResult = result;
 }
 
+async function loadAcademyDetail(symbol = state.activeTicker, { silent = false } = {}) {
+  const requestId = ++state.academyRequestId;
+  if (!silent) {
+    setStatus("Loading learn");
+  }
+  const result = await api(`/api/academy?symbol=${encodeURIComponent(symbol)}&web=1&llm=1`);
+  if (requestId !== state.academyRequestId) return;
+  state.academyDetail = result;
+  state.academyCache[symbol] = result;
+}
+
 function selectActiveTicker(symbol, { refresh = true } = {}) {
   const cleaned = (symbol || "").trim().toUpperCase();
   if (!cleaned) return;
   const changed = state.activeTicker !== cleaned;
   state.activeTicker = cleaned;
+  if (changed) {
+    primeActiveTickerSelection(cleaned);
+  }
   persistWatchlist();
   renderWatchlist();
   renderBoard();
   renderRecentTickers();
+  renderOverview();
+  renderLab();
+  renderAcademy();
   if (!refresh) return;
   if (changed) {
-    setStatus("Loading data");
+    setStatus("Loading quote");
   }
   refreshDashboard();
 }
 
 async function refreshDashboard() {
+  const requestId = ++state.dashboardRequestId;
   setStatus("Refreshing");
   const payload = await api("/api/dashboard", {
     method: "POST",
@@ -1174,6 +1384,7 @@ async function refreshDashboard() {
       chartRange: state.chartRange,
     }),
   });
+  if (requestId !== state.dashboardRequestId) return;
 
   state.dashboard = payload;
   state.watchlist = payload.watchlist.map((item) => item.symbol);
@@ -1181,16 +1392,31 @@ async function refreshDashboard() {
   if (!state.labResult || state.labResult.symbol !== state.activeTicker) {
     state.labResult = payload.active.lab;
   }
+  state.academyDetail = state.academyCache[state.activeTicker] || null;
   pushRecentTicker(payload.active.symbol, payload.active.name);
   persistWatchlist();
-  render();
+  renderCorePanels();
+  window.setTimeout(() => {
+    renderLab();
+    renderAcademy();
+    renderResearch();
+  }, 0);
   startQuoteStream();
   flashStatus("Live now");
-  loadEventFeed("", { silent: true }).then(() => {
-    renderEventFeed();
-  }).catch((error) => {
-    console.error(error);
-  });
+  loadEventFeed("", { silent: true })
+    .then(() => {
+      renderEventFeed();
+    })
+    .catch((error) => {
+      console.error(error);
+    });
+  loadAcademyDetail(state.activeTicker, { silent: true })
+    .then(() => {
+      renderAcademy();
+    })
+    .catch((error) => {
+      console.error(error);
+    });
 }
 
 async function runSearch() {
@@ -1375,6 +1601,11 @@ function bindEvents() {
     persistWatchlist();
     document.querySelector('[data-tab="lab"]').click();
     renderLab();
+    primeActiveTickerSelection(payload.symbol);
+    renderOverview();
+    refreshDashboard().catch((error) => {
+      console.error(error);
+    });
     flashStatus("Lab ready", 1200);
   });
 

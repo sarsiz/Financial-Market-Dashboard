@@ -26,6 +26,7 @@ This platform is built as a lightweight full-stack app with a browser client and
 - historical price series are cached locally in SQLite so previously viewed symbols load faster on later visits
 - live quote updates are pushed to the UI through server-sent events
 - forecasting and model-lab outputs are computed on the backend so the browser stays fast and thin
+- the client now renders in stages, so the active quote and overview paint first while slower Academy and event explainers fill in afterward
 
 ## Architecture
 
@@ -34,7 +35,7 @@ flowchart LR
   A["Browser UI<br/>index.html / styles.css / app.js"] --> B["Python App Server<br/>server.py"]
   B --> C["Quote + History Adapters<br/>Yahoo / Google Finance fallback / Alpha Vantage"]
   B --> D["News + Event Retrieval<br/>RSS / search / event categorization"]
-  B --> E["Forecast + Backtest Engine<br/>factors / regime / validation"]
+  B --> E["Forecast + Backtest Engine<br/>classic factors / modern overlay / validation"]
   B --> F["Local Storage Layer<br/>SQLite watchlists + history cache"]
   B --> G["Local LLM Integration<br/>Ollama-compatible endpoint"]
   B --> H["SSE Quote Stream<br/>sub-second live updates"]
@@ -48,6 +49,19 @@ python3 server.py
 
 Then open [http://127.0.0.1:8000](http://127.0.0.1:8000).
 
+## Test
+
+```bash
+python3 -m unittest discover -s tests -v
+```
+
+The current suite covers:
+
+- backend history caching and fallback behavior
+- dashboard assembly and model-lab payload shape
+- recommendation and backtest regression checks
+- frontend HTML and JavaScript contract checks for the main dashboard panels and tabs
+
 ## What is functional now
 
 - add/search tickers globally from the UI
@@ -56,7 +70,10 @@ Then open [http://127.0.0.1:8000](http://127.0.0.1:8000).
 - cache previously fetched historical series locally so already-viewed tickers load faster on later visits
 - show urgent market banner headlines on the main screen
 - compute explainable forecast direction, confidence, fair-value gap, and factor attribution
+- compare classic quant signals with a modern overlay and surface whether both agree or diverge
 - run scenario tests with walk-forward validation, hit-rate, and error metrics
+- teach the active ticker through classic quant formulas such as momentum, z-score, volatility, volume ratio, beta, valuation, and drawdown inside Academy
+- enrich Academy with ticker-specific explainers grounded on live market state plus web search results and optional local-LLM summarization
 - save and reload watchlists through SQLite
 
 ## Coverage notes
