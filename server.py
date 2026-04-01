@@ -13,10 +13,11 @@ import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -94,6 +95,44 @@ MARKET_PRESETS = [
   },
 ]
 
+MARKET_SESSION_RULES = [
+  {
+    "matches": {"NSE", "BSE", "INDIA"},
+    "timezone": "Asia/Kolkata",
+    "open": (9, 15),
+    "close": (15, 30),
+    "hoursLabel": "09:15-15:30 IST",
+  },
+  {
+    "matches": {"NASDAQ", "NYSE", "US"},
+    "timezone": "America/New_York",
+    "open": (9, 30),
+    "close": (16, 0),
+    "hoursLabel": "09:30-16:00 ET",
+  },
+  {
+    "matches": {"LSE", "LONDON"},
+    "timezone": "Europe/London",
+    "open": (8, 0),
+    "close": (16, 30),
+    "hoursLabel": "08:00-16:30 UK",
+  },
+  {
+    "matches": {"ASX", "AUSTRALIA"},
+    "timezone": "Australia/Sydney",
+    "open": (10, 0),
+    "close": (16, 0),
+    "hoursLabel": "10:00-16:00 AEST/AEDT",
+  },
+  {
+    "matches": {"JPX", "TSE", "TOKYO"},
+    "timezone": "Asia/Tokyo",
+    "open": (9, 0),
+    "close": (15, 0),
+    "hoursLabel": "09:00-15:00 JST",
+  },
+]
+
 RESEARCH_REFERENCES = [
   {
     "title": "Chronos: Learning the Language of Time Series",
@@ -114,6 +153,29 @@ RESEARCH_REFERENCES = [
     "title": "Moirai 2.0",
     "year": 2025,
     "url": "https://arxiv.org/abs/2511.11698",
+  },
+]
+
+CLASSIC_QUANT_REFERENCES = [
+  {
+    "title": "Foundations of Technical Analysis: Computational Algorithms, Statistical Inference, and Empirical Implementation",
+    "year": 2000,
+    "url": "https://doi.org/10.1111/0022-1082.00265",
+  },
+  {
+    "title": "Value Investing: The Use of Historical Financial Statement Information to Separate Winners from Losers",
+    "year": 2000,
+    "url": "https://doi.org/10.1111/1475-679X.00009",
+  },
+  {
+    "title": "Asset Pricing with Liquidity Risk",
+    "year": 2003,
+    "url": "https://doi.org/10.1016/j.jfineco.2004.06.001",
+  },
+  {
+    "title": "Pairs Trading: Performance of a Relative-Value Arbitrage Rule",
+    "year": 2006,
+    "url": "https://doi.org/10.1093/rfs/hhj020",
   },
 ]
 
@@ -322,6 +384,75 @@ def build_cached_meta(meta: dict, source: str, updated_at: str, stale: bool = Fa
   payload["historyCachedAt"] = updated_at
   payload["historyCacheState"] = "stale" if stale else "fresh"
   return payload
+
+
+def resolve_market_session_rule(exchange: str, region: str = "") -> dict | None:
+  haystack = f"{exchange} {region}".upper()
+  for rule in MARKET_SESSION_RULES:
+    if any(token in haystack for token in rule["matches"]):
+      return rule
+  return None
+
+
+def next_weekday_open(current_time: datetime, open_hour: int, open_minute: int) -> datetime:
+  candidate = current_time
+  while True:
+    candidate = candidate.replace(hour=open_hour, minute=open_minute, second=0, microsecond=0)
+    if candidate.weekday() < 5 and candidate > current_time:
+      return candidate
+    candidate = (candidate + timedelta(days=1)).replace(hour=open_hour, minute=open_minute, second=0, microsecond=0)
+
+
+def build_market_session(exchange: str, region: str, market_state: str, as_of: str | None = None) -> dict:
+  rule = resolve_market_session_rule(exchange or "", region or "")
+  market_state_upper = (market_state or "").upper()
+  if not rule:
+    return {
+      "status": "Open" if market_state_upper == "REGULAR" else "Closed",
+      "isOpen": market_state_upper == "REGULAR",
+      "hoursLabel": "Market hours unavailable",
+      "timezone": "UTC",
+      "nextTransitionAt": None,
+      "transitionLabel": "update",
+    }
+
+  market_tz = ZoneInfo(rule["timezone"])
+  now = datetime.now(timezone.utc).astimezone(market_tz)
+  open_hour, open_minute = rule["open"]
+  close_hour, close_minute = rule["close"]
+  today_open = now.replace(hour=open_hour, minute=open_minute, second=0, microsecond=0)
+  today_close = now.replace(hour=close_hour, minute=close_minute, second=0, microsecond=0)
+  within_hours = now.weekday() < 5 and today_open <= now < today_close
+
+  if market_state_upper in {"REGULAR", "OPEN"}:
+    is_open = within_hours
+  elif market_state_upper in {"CLOSED", "PRE", "POST", "PREPRE", "POSTPOST"}:
+    is_open = False
+  else:
+    is_open = within_hours
+
+  if is_open and now.weekday() < 5 and now < today_close:
+    next_transition = today_close
+    transition_label = "close"
+  else:
+    if now.weekday() < 5 and now < today_open:
+      next_transition = today_open
+    else:
+      next_transition = next_weekday_open(now + timedelta(seconds=1), open_hour, open_minute)
+    transition_label = "open"
+
+  return {
+    "status": "Open" if is_open else "Closed",
+    "isOpen": is_open,
+    "hoursLabel": rule["hoursLabel"],
+    "timezone": rule["timezone"],
+    "nextTransitionAt": next_transition.astimezone(timezone.utc).isoformat(),
+    "transitionLabel": transition_label,
+    "sessionOpenAt": today_open.astimezone(timezone.utc).isoformat(),
+    "sessionCloseAt": today_close.astimezone(timezone.utc).isoformat(),
+    "providerState": market_state_upper or "UNKNOWN",
+    "asOf": as_of,
+  }
 
 
 def json_get(url: str) -> dict | list | None:
@@ -905,6 +1036,7 @@ def build_research_context(symbol: str | None) -> dict:
     "forecast": snapshot["forecast"]["direction"],
     "confidence": round(snapshot["forecast"]["confidence"], 1),
     "fairValueGap": round(snapshot["forecast"]["fairValueGap"], 2),
+    "modelAgreement": snapshot["forecast"].get("models", {}).get("agreement", {}),
     "volume": snapshot["volume"],
     "stats": snapshot["stats"],
     "triggers": snapshot["forecast"]["triggers"],
@@ -1011,6 +1143,79 @@ def build_event_feed(category: str, symbol: str | None = None, keyword: str | No
     "brief": brief,
     "items": results[:8],
   }
+
+
+def summarize_web_focus(symbol: str, snapshot: dict, web_results: list[dict]) -> str:
+  if web_results:
+    titles = [item.get("title", "") for item in web_results[:3] if item.get("title")]
+    titles_text = " | ".join(titles)
+    return f"Current web coverage for {snapshot['name']} is clustering around: {titles_text}."
+  return f"External coverage is light right now, so the explainers lean more heavily on live market structure for {symbol}."
+
+
+def build_academy_payload(symbol: str | None, use_web: bool = True, use_llm: bool = True) -> dict:
+  payload = {
+    "research": RESEARCH_REFERENCES,
+    "classicResearch": CLASSIC_QUANT_REFERENCES,
+  }
+  if not symbol:
+    return payload
+
+  snapshot = build_ticker_snapshot(symbol)
+  web_results: list[dict] = []
+  if use_web:
+    company_query = f"{snapshot['name']} {snapshot['exchange']} latest news outlook risk"
+    web_results = duckduckgo_search(company_query)
+
+  config = load_config()
+  titles = [item.get("title", "") for item in web_results[:5] if item.get("title")]
+  prompt = "\n".join(
+    [
+      "You are an academy explainer inside a professional market dashboard.",
+      "Write one concise paragraph that explains the active ticker using classic signals first, then mention whether modern overlays agree or disagree, then note the main live catalyst focus.",
+      f"Ticker snapshot: {json.dumps({'symbol': snapshot['symbol'], 'name': snapshot['name'], 'direction': snapshot['forecast']['direction'], 'agreement': snapshot['forecast'].get('models', {}).get('agreement', {}), 'classicSummary': snapshot.get('classicQuant', {}).get('summary', ''), 'headlines': snapshot.get('headlines', [])[:4]}, ensure_ascii=True)}",
+      f"Web result titles: {json.dumps(titles, ensure_ascii=True)}",
+    ]
+  )
+  summary = generate_local_llm_answer(prompt, config) if use_llm else None
+  if not summary:
+    summary = (
+      f"{snapshot['name']} is currently in a {snapshot['forecast']['direction'].lower()} setup. "
+      f"{snapshot.get('classicQuant', {}).get('summary', '')} "
+      f"{snapshot['forecast'].get('models', {}).get('agreement', {}).get('summary', '')} "
+      f"{summarize_web_focus(symbol, snapshot, web_results)}"
+    ).strip()
+
+  agreement = snapshot["forecast"].get("models", {}).get("agreement", {})
+  cards = [
+    {
+      "title": "Classic stack read",
+      "body": snapshot.get("classicQuant", {}).get("summary", "Classic signals are still loading."),
+    },
+    {
+      "title": "Modern overlay read",
+      "body": snapshot["forecast"].get("models", {}).get("modern", {}).get("summary", "Modern overlay data is unavailable."),
+    },
+    {
+      "title": "Agreement check",
+      "body": f"{agreement.get('summary', 'Agreement data unavailable.')} Confidence score: {agreement.get('score', 0):.0f}/100.",
+    },
+    {
+      "title": "Live catalyst focus",
+      "body": summarize_web_focus(symbol, snapshot, web_results),
+    },
+  ]
+
+  payload.update(
+    {
+      "symbol": snapshot["symbol"],
+      "summary": summary,
+      "cards": cards,
+      "sources": web_results[:5],
+      "updatedAt": datetime.now(timezone.utc).isoformat(),
+    }
+  )
+  return payload
 
 
 def infer_radar_hotspots(items: list[dict]) -> list[dict]:
@@ -1352,6 +1557,106 @@ def build_factor_cards(inputs: dict) -> list[dict]:
   ]
 
 
+def build_classic_quant_cards(history: list[float], enriched: dict, volume_ratio: float, realized_vol: float, macro_score: float) -> list[dict]:
+  latest_price = float(enriched["latestPrice"])
+  lookback = min(len(history), 20)
+  base_price = history[-lookback] if lookback else latest_price
+  momentum_20 = pct_change(latest_price, base_price) if base_price else 0.0
+
+  mean_window = history[-20:] if len(history) >= 20 else history
+  center = average(mean_window) if mean_window else latest_price
+  dispersion = std_dev(mean_window) if len(mean_window) >= 2 else 0.0
+  z_score = ((latest_price - center) / dispersion) if dispersion else 0.0
+
+  annualized_vol = realized_vol * math.sqrt(252) * 100
+  peak_window = max(history[-20:] or [latest_price])
+  drawdown = pct_change(latest_price, peak_window)
+  beta = float(enriched["beta"])
+  pe_ratio = float(enriched["pe"])
+
+  def label_from_threshold(value: float, positive: float, negative: float, high: str, low: str, neutral: str) -> str:
+    if value >= positive:
+      return high
+    if value <= negative:
+      return low
+    return neutral
+
+  return [
+    {
+      "title": "20-session momentum",
+      "formula": "MOM(20) = P_t / P_{t-20} - 1",
+      "value": f"{momentum_20:+.2f}%",
+      "interpretation": label_from_threshold(momentum_20, 3.0, -3.0, "Trend support is positive.", "Price momentum is deteriorating.", "Momentum is mixed."),
+      "failureMode": "Momentum often fails during violent reversals, crowded positioning unwinds, or event-driven gap moves.",
+      "tag": "Momentum",
+    },
+    {
+      "title": "Price z-score",
+      "formula": "Z_t = (P_t - MA_20) / SD_20",
+      "value": f"{z_score:+.2f}",
+      "interpretation": label_from_threshold(z_score, 1.2, -1.2, "Price is stretched above its local center.", "Price is stretched below its local center.", "Price is near its rolling center."),
+      "failureMode": "Mean-reversion signals usually struggle in persistent trend regimes and during structural repricing.",
+      "tag": "Mean reversion",
+    },
+    {
+      "title": "Annualized volatility",
+      "formula": "sigma = std(r_t) * sqrt(252)",
+      "value": f"{annualized_vol:.2f}%",
+      "interpretation": label_from_threshold(annualized_vol, 34.0, 18.0, "Volatility is elevated, so expected error rises.", "Volatility is compressed.", "Volatility is in a normal operating band."),
+      "failureMode": "Volatility is backward-looking and can understate upcoming event risk right before a shock.",
+      "tag": "Risk",
+    },
+    {
+      "title": "Participation ratio",
+      "formula": "VR = Volume_t / AvgVolume_n",
+      "value": f"{volume_ratio:.2f}x",
+      "interpretation": label_from_threshold(volume_ratio, 1.15, 0.85, "The move has above-normal participation.", "Participation is light.", "Participation is near average."),
+      "failureMode": "Volume spikes can be noisy around earnings, index rebalances, and one-off news bursts.",
+      "tag": "Liquidity",
+    },
+    {
+      "title": "Beta exposure",
+      "formula": "beta ≈ cov(r_i, r_m) / var(r_m)",
+      "value": f"{beta:.2f}",
+      "interpretation": label_from_threshold(beta, 1.1, 0.9, "The stock amplifies index moves.", "The stock is relatively defensive.", "The stock is close to market-like beta."),
+      "failureMode": "Beta can shift quickly when regimes, sector leadership, or company-specific catalysts change.",
+      "tag": "Market sensitivity",
+    },
+    {
+      "title": "Trailing P/E anchor",
+      "formula": "P/E = Price / Earnings per share",
+      "value": f"{pe_ratio:.2f}x",
+      "interpretation": label_from_threshold(pe_ratio, 30.0, 18.0, "The multiple is rich and needs growth support.", "The multiple is comparatively modest.", "The multiple is in a middle band."),
+      "failureMode": "P/E is weak for cyclical earnings, turnarounds, loss-making firms, and fast-changing rate regimes.",
+      "tag": "Valuation",
+    },
+    {
+      "title": "Rolling drawdown",
+      "formula": "DD = P_t / max(P_{1:t}) - 1",
+      "value": f"{drawdown:.2f}%",
+      "interpretation": label_from_threshold(drawdown, -2.0, -8.0, "The stock is near its recent peak.", "The stock is in a deeper drawdown state.", "The stock is below its recent peak but not washed out."),
+      "failureMode": "Drawdown alone does not tell you whether weakness is temporary or fundamentally justified.",
+      "tag": "Path risk",
+    },
+    {
+      "title": "Macro carry",
+      "formula": "Macro carry = f(beta, rates, region, valuation)",
+      "value": f"{macro_score:+.2f}",
+      "interpretation": label_from_threshold(macro_score, 0.08, -0.08, "Top-down conditions are supportive.", "Macro conditions are acting as a drag.", "Macro conditions are balanced."),
+      "failureMode": "Macro composites compress many variables and can miss sudden policy or geopolitical step-changes.",
+      "tag": "Macro",
+    },
+  ]
+
+
+def summarize_classic_quant(cards: list[dict], forecast: dict) -> str:
+  if not cards:
+    return "Classic quant signals are unavailable for this ticker."
+  strongest = cards[:3]
+  summary_bits = ", ".join(f"{item['title']} ({item['value']})" for item in strongest)
+  return f"Classic quant stack is anchored on {summary_bits}. Current model direction is {forecast['direction'].lower()} with {forecast['confidence']:.0f}% confidence."
+
+
 def build_relationship_cards(snapshot_inputs: dict, signal_map: dict) -> list[dict]:
   volume_ratio = snapshot_inputs["volumeRatio"]
   return [
@@ -1391,6 +1696,7 @@ def build_relationship_cards(snapshot_inputs: dict, signal_map: dict) -> list[di
 def build_driver_cards(signal_map: dict, summary: dict, forecast: dict) -> list[dict]:
   sector = signal_map["sector"]
   industry = signal_map["industry"]
+  agreement = forecast.get("models", {}).get("agreement", {})
   cards = [
     {
       "title": "Sentiment pulse",
@@ -1416,6 +1722,11 @@ def build_driver_cards(signal_map: dict, summary: dict, forecast: dict) -> list[
       "title": "Forecast relationship",
       "body": f"The current forecast is {forecast['direction'].lower()} with {forecast['confidence']:.0f}% confidence and {forecast['eventPressureLabel'].lower()} event pressure.",
       "tag": "Model",
+    },
+    {
+      "title": "Classic vs modern",
+      "body": agreement.get("summary", "Model agreement is loading."),
+      "tag": agreement.get("label", "Agreement"),
     },
   ]
   return cards
@@ -1462,13 +1773,47 @@ def build_triggers(inputs: dict, stress: str) -> list[dict]:
   ]
 
 
+def model_direction(expected_return: float, bullish: float = 2.0, bearish: float = -2.0) -> str:
+  if expected_return > bullish:
+    return "Bullish"
+  if expected_return < bearish:
+    return "Bearish"
+  return "Neutral"
+
+
+def build_model_agreement(classic_expected_return: float, modern_expected_return: float) -> dict:
+  classic_direction = model_direction(classic_expected_return)
+  modern_direction = model_direction(modern_expected_return)
+  spread = abs(classic_expected_return - modern_expected_return)
+  alignment = 1 - clamp(spread / 12, 0, 1)
+
+  if classic_direction == modern_direction and classic_direction != "Neutral":
+    label = "Aligned"
+    summary = f"Classic and modern overlays both lean {classic_direction.lower()}."
+  elif classic_direction == modern_direction == "Neutral":
+    label = "Balanced"
+    summary = "Both stacks are cautious and see limited directional edge."
+  else:
+    label = "Diverging"
+    summary = f"Classic leans {classic_direction.lower()} while the modern overlay leans {modern_direction.lower()}."
+
+  return {
+    "label": label,
+    "score": round(alignment * 100, 1),
+    "classicDirection": classic_direction,
+    "modernDirection": modern_direction,
+    "summary": summary,
+  }
+
+
 def build_forecast(symbol: str, quote: dict, summary: dict, history: list[float], stress: str = "base", horizon: int = 10, news_count: int = 0) -> dict:
   if len(history) < 2:
     latest_price = float(quote.get("regularMarketPrice") or fallback_meta(symbol)["basePrice"])
     previous_close = float(quote.get("regularMarketPreviousClose") or latest_price)
     expected_return = pct_change(latest_price, previous_close) * 0.35
     projected = [round(latest_price, 2) for _ in range(horizon)]
-    direction = "Bullish" if expected_return > 1 else "Bearish" if expected_return < -1 else "Neutral"
+    direction = model_direction(expected_return, bullish=1.0, bearish=-1.0)
+    agreement = build_model_agreement(expected_return, expected_return)
     return {
       "direction": direction,
       "confidence": 22.0,
@@ -1482,6 +1827,12 @@ def build_forecast(symbol: str, quote: dict, summary: dict, history: list[float]
       "projected": projected,
       "realizedVol": 0.0,
       "factors": [],
+      "factorsRaw": {},
+      "models": {
+        "classic": {"direction": direction, "expectedReturn": round(expected_return, 2), "confidence": 22.0, "summary": "History is unavailable, so the classic stack is using live-quote drift only."},
+        "modern": {"direction": direction, "expectedReturn": round(expected_return, 2), "confidence": 22.0, "summary": "The modern overlay is disabled until a fuller price path is available."},
+        "agreement": agreement,
+      },
       "triggers": [
         {
           "title": "History missing",
@@ -1508,7 +1859,7 @@ def build_forecast(symbol: str, quote: dict, summary: dict, history: list[float]
   macro_score = build_macro_score(region, enriched["beta"], enriched["pe"], stress)
   quality_lift = (enriched["qualityScore"] - 0.5) * 0.4
 
-  factor_score = (
+  classic_score = (
     fast_momentum * 1.4
     + slow_momentum * 1.2
     + mean_reversion * 0.9
@@ -1518,11 +1869,40 @@ def build_forecast(symbol: str, quote: dict, summary: dict, history: list[float]
     - event_pressure * 0.04
   )
 
+  trend_patch = ((average(history[-5:]) / average(history[-20:])) - 1) if len(history) >= 20 and average(history[-20:]) else 0.0
+  upper_window = max(history[-20:-1] or history[:-1] or [enriched["latestPrice"]])
+  lower_window = min(history[-20:-1] or history[:-1] or [enriched["latestPrice"]])
+  breakout_pressure = (
+    (enriched["latestPrice"] - upper_window) / upper_window
+    if upper_window and enriched["latestPrice"] >= upper_window
+    else (enriched["latestPrice"] - lower_window) / lower_window
+    if lower_window and enriched["latestPrice"] <= lower_window
+    else 0.0
+  )
+  long_vol = std_dev(returns[-60:] or recent_returns)
+  volatility_regime = realized_vol - long_vol
+  regime_alignment = slow_momentum * 1.15 + macro_score * 0.95 - realized_vol * 1.1
+  modern_score = (
+    trend_patch * 1.6
+    + breakout_pressure * 1.2
+    + regime_alignment
+    - volatility_regime * 0.7
+    - event_pressure * 0.03
+  )
+
+  agreement = build_model_agreement(classic_score * math.sqrt(horizon) * 100, modern_score * math.sqrt(horizon) * 100)
+  agreement_boost = 0.05 if agreement["label"] == "Aligned" else -0.03 if agreement["label"] == "Diverging" else 0.0
+  factor_score = (classic_score * 0.62) + (modern_score * 0.38) + agreement_boost
+
   expected_return = factor_score * math.sqrt(horizon) * 100
-  confidence = clamp(100 - realized_vol * 1600 - enriched["eventScore"] * 24, 18, 91)
+  classic_expected_return = classic_score * math.sqrt(horizon) * 100
+  modern_expected_return = modern_score * math.sqrt(horizon) * 100
+  classic_confidence = clamp(100 - realized_vol * 1750 - enriched["eventScore"] * 28, 18, 89)
+  modern_confidence = clamp(100 - realized_vol * 1500 - abs(volatility_regime) * 1200 - enriched["eventScore"] * 22, 18, 92)
+  confidence = clamp(((classic_confidence * 0.58) + (modern_confidence * 0.42)) + (agreement["score"] - 50) * 0.08, 18, 93)
   fair_value = enriched["latestPrice"] * (1 + factor_score * 1.65)
   mae = clamp(realized_vol * 100 * (1.7 + enriched["beta"] * 0.25), 1.6, 12.5)
-  direction = "Bullish" if expected_return > 2 else "Bearish" if expected_return < -2 else "Neutral"
+  direction = model_direction(expected_return)
   regime = infer_regime(macro_score, realized_vol, enriched["eventScore"])
 
   projected = []
@@ -1539,6 +1919,10 @@ def build_forecast(symbol: str, quote: dict, summary: dict, history: list[float]
     "macroScore": macro_score,
     "realizedVol": realized_vol,
     "qualityLift": quality_lift,
+    "trendPatch": trend_patch,
+    "breakoutPressure": breakout_pressure,
+    "volatilityRegime": volatility_regime,
+    "regimeAlignment": regime_alignment,
   }
 
   return {
@@ -1554,6 +1938,22 @@ def build_forecast(symbol: str, quote: dict, summary: dict, history: list[float]
     "projected": projected,
     "realizedVol": realized_vol,
     "factors": build_factor_cards(factors),
+    "factorsRaw": factors,
+    "models": {
+      "classic": {
+        "direction": model_direction(classic_expected_return),
+        "expectedReturn": round(classic_expected_return, 2),
+        "confidence": round(classic_confidence, 1),
+        "summary": "Classic stack blends momentum, mean reversion, macro carry, valuation discipline, and volatility control.",
+      },
+      "modern": {
+        "direction": model_direction(modern_expected_return),
+        "expectedReturn": round(modern_expected_return, 2),
+        "confidence": round(modern_confidence, 1),
+        "summary": "Modern overlay tracks patch trend persistence, breakout pressure, and regime stability before blending into the final path.",
+      },
+      "agreement": agreement,
+    },
     "triggers": build_triggers(factors, stress),
   }
 
@@ -1664,6 +2064,18 @@ def build_ticker_snapshot(symbol: str, quote: dict | None = None, stress: str = 
   data_source = quote.get("quoteSource") or ("Live source" if quote else "Fallback data")
   market_time = quote.get("regularMarketTime") or chart_meta.get("regularMarketTime")
   as_of = datetime.fromtimestamp(market_time, tz=timezone.utc).isoformat() if market_time else None
+  exchange_name = quote.get("fullExchangeName") or quote.get("exchange") or chart_meta.get("exchangeName") or fallback["exchange"]
+  region_name = quote.get("exchange") or fallback["exchange"]
+  market_session = build_market_session(exchange_name, region_name, quote.get("marketState") or "REGULAR", as_of)
+  classic_inputs = build_forecast_inputs(symbol, quote, summary, model_history, news_count) if model_history else {
+    "latestPrice": latest_price,
+    "previousPrice": previous_close,
+    "beta": float(fallback["beta"]),
+    "pe": float(fallback["pe"]),
+    "qualityScore": 0.5,
+    "eventScore": 0.25,
+    "marketCap": market_cap or 0,
+  }
 
   relationship_inputs = {
     "pe": float(trailing_pe or fallback["pe"]),
@@ -1671,14 +2083,26 @@ def build_ticker_snapshot(symbol: str, quote: dict | None = None, stress: str = 
   }
   relationship_cards = build_relationship_cards(relationship_inputs, signal_map)
   driver_cards = build_driver_cards(signal_map, summary, forecast)
+  classic_quant_cards = build_classic_quant_cards(
+    model_history or history or [latest_price, previous_close],
+    classic_inputs,
+    volume_ratio,
+    forecast["realizedVol"],
+    forecast.get("factorsRaw", {}).get("macroScore", 0.0),
+  )
+  classic_quant = {
+    "summary": summarize_classic_quant(classic_quant_cards, forecast),
+    "cards": classic_quant_cards,
+  }
 
   return {
     "symbol": symbol,
     "name": quote.get("shortName") or quote.get("longName") or fallback["name"],
-    "exchange": quote.get("fullExchangeName") or quote.get("exchange") or chart_meta.get("exchangeName") or fallback["exchange"],
-    "region": quote.get("exchange") or fallback["exchange"],
+    "exchange": exchange_name,
+    "region": region_name,
     "currency": quote.get("currency") or chart_meta.get("currency") or fallback["currency"],
     "marketState": quote.get("marketState") or "REGULAR",
+    "marketSession": market_session,
     "dataSource": data_source,
     "historySource": chart_meta.get("historySource") or "Unavailable",
     "historyCachedAt": chart_meta.get("historyCachedAt"),
@@ -1697,6 +2121,7 @@ def build_ticker_snapshot(symbol: str, quote: dict | None = None, stress: str = 
     "chartRange": chart_range,
     "relationshipCards": relationship_cards,
     "driverCards": driver_cards,
+    "classicQuant": classic_quant,
     "sentiment": signal_map["sentiment"],
     "stats": [
       {"label": "Market cap", "value": format_large_number(market_cap)},
@@ -1726,6 +2151,7 @@ def build_ticker_snapshot(symbol: str, quote: dict | None = None, stress: str = 
       "historySource": chart_meta.get("historySource") or "Unavailable",
       "historyCachedAt": chart_meta.get("historyCachedAt"),
       "historyCacheState": chart_meta.get("historyCacheState"),
+      "classicQuant": classic_quant,
     },
   }
 
@@ -1888,11 +2314,15 @@ class FinancialBoardHandler(BaseHTTPRequestHandler):
     if parsed.path == "/api/config":
       return self.send_json(load_config())
     if parsed.path == "/api/presets":
-      return self.send_json({"presets": MARKET_PRESETS, "research": RESEARCH_REFERENCES})
+      return self.send_json({"presets": MARKET_PRESETS, "research": RESEARCH_REFERENCES, "classicResearch": CLASSIC_QUANT_REFERENCES})
     if parsed.path == "/api/watchlists":
       return self.send_json({"watchlists": list_watchlists()})
     if parsed.path == "/api/academy":
-      return self.send_json({"research": RESEARCH_REFERENCES})
+      params = urllib.parse.parse_qs(parsed.query)
+      symbol = ((params.get("symbol") or [""])[0] or "").strip().upper() or None
+      use_web = (params.get("web") or ["1"])[0] != "0"
+      use_llm = (params.get("llm") or ["1"])[0] != "0"
+      return self.send_json(build_academy_payload(symbol, use_web=use_web, use_llm=use_llm))
     if parsed.path == "/api/events":
       params = urllib.parse.parse_qs(parsed.query)
       category = (params.get("category") or ["business"])[0]

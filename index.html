@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Sora:wght@500;600;700;800&family=Azeret+Mono:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
     <link rel="stylesheet" href="./styles.css" />
@@ -141,6 +141,7 @@
               </div>
               <div class="overview-meta" id="overview-meta"></div>
               <div id="quote-source-note" class="micro-note">Quote source loading.</div>
+              <div id="market-session-strip" class="market-session-strip">Session status loading.</div>
               <div class="hero-stats" id="hero-stats"></div>
               <div class="hero-price-row">
                 <div>
@@ -174,6 +175,7 @@
                     <strong id="buy-sell-breakdown">Buy 0% · Hold 100% · Sell 0%</strong>
                   </div>
                 </div>
+                <div id="model-agreement-note" class="micro-note">Model agreement loading.</div>
                 <svg id="hero-projection-chart" viewBox="0 0 640 220" preserveAspectRatio="none"></svg>
               </div>
               <div class="signal-grid">
@@ -310,12 +312,14 @@
                 <span>On-screen guide</span>
               </div>
               <div id="academy-cards" class="academy-cards"></div>
+              <div id="academy-ticker-brief" class="academy-brief-list"></div>
+              <div id="academy-source-list" class="academy-source-list"></div>
             </article>
 
             <article class="glass-panel academy-panel">
               <div class="section-heading">
-                <h3>Quant Concepts</h3>
-                <span>Ratios, terms, and why they matter</span>
+                <h3>Classic Quant</h3>
+                <span>Formulas, live readings, and failure modes</span>
               </div>
               <div id="glossary-list" class="glossary-list"></div>
             </article>
@@ -323,7 +327,7 @@
             <article class="glass-panel academy-panel">
               <div class="section-heading">
                 <h3>Research Backbone</h3>
-                <span>Methods the engine is inspired by</span>
+                <span>Classic foundations and modern overlays</span>
               </div>
               <div id="research-list" class="research-list"></div>
             </article>

@@ -15,6 +15,9 @@
   --border: rgba(255, 176, 0, 0.14);
   --border-strong: rgba(255, 176, 0, 0.3);
   --shadow: 0 12px 30px rgba(0, 0, 0, 0.45);
+  --font-ui: "Manrope", sans-serif;
+  --font-display: "Sora", sans-serif;
+  --font-mono: "Azeret Mono", monospace;
 }
 
 * {
@@ -28,12 +31,13 @@ html {
 body {
   margin: 0;
   min-height: 100vh;
-  font-family: "IBM Plex Sans", sans-serif;
+  font-family: var(--font-ui);
   background:
     radial-gradient(circle at top left, rgba(255, 176, 0, 0.08), transparent 18%),
     linear-gradient(180deg, #020202 0%, #070707 40%, #050505 100%);
   color: var(--text);
   overflow: hidden;
+  font-feature-settings: "tnum" 1, "liga" 1;
 }
 
 body::before {
@@ -184,8 +188,19 @@ p {
 h1,
 h2,
 h3,
+.hero-price,
+.banner-label,
+.section-heading h3,
+.topbar-copy h2 {
+  font-family: var(--font-display);
+  letter-spacing: -0.02em;
+}
+
+h1,
+h2,
+h3,
 .hero-price {
-  font-family: "IBM Plex Sans", sans-serif;
+  font-family: var(--font-ui);
   letter-spacing: -0.02em;
 }
 
@@ -413,7 +428,7 @@ button[type="submit"],
 }
 
 .watch-symbol {
-  font-family: "IBM Plex Mono", monospace;
+  font-family: var(--font-mono);
   font-weight: 700;
   letter-spacing: 0.02em;
   overflow: hidden;
@@ -439,7 +454,7 @@ button[type="submit"],
 .watch-price {
   font-size: 0.83rem;
   color: var(--text);
-  font-family: "IBM Plex Mono", monospace;
+  font-family: var(--font-mono);
   white-space: nowrap;
   justify-self: end;
 }
@@ -464,7 +479,7 @@ button[type="submit"],
 }
 
 .drag-handle {
-  font-family: "IBM Plex Mono", monospace;
+  font-family: var(--font-mono);
   color: var(--muted);
   font-size: 0.82rem;
   cursor: grab;
@@ -510,7 +525,7 @@ button[type="submit"],
 }
 
 .recent-pill strong {
-  font-family: "IBM Plex Mono", monospace;
+  font-family: var(--font-mono);
   font-size: 0.76rem;
 }
 
@@ -905,21 +920,21 @@ button[type="submit"],
 }
 
 .board-symbol {
-  font-family: "IBM Plex Mono", monospace;
+  font-family: var(--font-mono);
   font-size: 0.72rem;
   color: var(--muted);
   letter-spacing: 0.04em;
 }
 
 .board-price {
-  font-family: "IBM Plex Mono", monospace;
+  font-family: var(--font-mono);
   font-size: 0.88rem;
   color: var(--text);
 }
 
 .board-change {
   font-size: 0.74rem;
-  font-family: "IBM Plex Mono", monospace;
+  font-family: var(--font-mono);
 }
 
 .banner-label {
@@ -1027,6 +1042,55 @@ button[type="submit"],
   font-size: 0.77rem;
 }
 
+.market-session-strip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.018);
+  border: 1px solid rgba(255, 176, 0, 0.1);
+}
+
+.market-session-strip strong {
+  color: #fff1c9;
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+}
+
+.market-session-strip small {
+  color: var(--muted);
+  font-size: 0.74rem;
+}
+
+.market-session-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 176, 0, 0.14);
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #ffe3a0;
+  background: rgba(255, 176, 0, 0.08);
+}
+
+.market-session-pill.open {
+  color: #d9ffea;
+  background: rgba(63, 224, 142, 0.14);
+  border-color: rgba(63, 224, 142, 0.24);
+}
+
+.market-session-pill.closed {
+  color: #ffd9d9;
+  background: rgba(255, 107, 107, 0.12);
+  border-color: rgba(255, 107, 107, 0.2);
+}
+
 .hero-stats {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1051,7 +1115,7 @@ button[type="submit"],
 
 .hero-stat-card strong {
   display: block;
-  font-family: "IBM Plex Mono", monospace;
+  font-family: var(--font-mono);
   font-size: 0.95rem;
   overflow-wrap: anywhere;
 }
@@ -1059,14 +1123,14 @@ button[type="submit"],
 .hero-price {
   font-size: clamp(2.2rem, 4.2vw, 3.4rem);
   line-height: 0.95;
-  font-family: "IBM Plex Mono", monospace;
+  font-family: var(--font-mono);
   color: #fff4d3;
 }
 
 .hero-change {
   margin-top: 6px;
   font-size: 0.95rem;
-  font-family: "IBM Plex Mono", monospace;
+  font-family: var(--font-mono);
 }
 
 .forecast-range {
@@ -1142,9 +1206,14 @@ button[type="submit"],
 }
 
 .buy-sell-card strong {
-  font-family: "IBM Plex Mono", monospace;
+  font-family: var(--font-mono);
   font-size: 0.82rem;
   color: #fff2cf;
+}
+
+#model-agreement-note {
+  display: block;
+  margin-bottom: 10px;
 }
 
 .section-heading.compact {
@@ -1155,6 +1224,7 @@ button[type="submit"],
 .pulse-grid,
 .validation-metrics,
 .academy-cards,
+.academy-brief-list,
 .glossary-list,
 .research-list,
 .research-sources {
@@ -1172,6 +1242,7 @@ button[type="submit"],
 .pulse-card,
 .metric-card,
 .academy-card,
+.academy-brief-card,
 .glossary-card,
 .research-card,
 .source-card,
@@ -1188,7 +1259,8 @@ button[type="submit"],
 .signal-card span,
 .pulse-card span,
 .metric-card span,
-.research-card span {
+.research-card span,
+.glossary-card span {
   display: block;
   color: var(--muted);
   margin-bottom: 6px;
@@ -1198,7 +1270,7 @@ button[type="submit"],
 .signal-card strong,
 .pulse-card strong,
 .metric-card strong {
-  font-family: "IBM Plex Mono", monospace;
+  font-family: var(--font-mono);
   font-size: 1rem;
 }
 
@@ -1400,6 +1472,7 @@ button[type="submit"],
 
 .reason-card p,
 .academy-card p,
+.academy-brief-card p,
 .glossary-card p,
 .research-card p,
 .source-card p,
@@ -1408,6 +1481,50 @@ button[type="submit"],
   color: var(--muted);
   line-height: 1.45;
   font-size: 0.88rem;
+}
+
+.academy-brief-list {
+  margin-top: 12px;
+}
+
+.academy-source-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.academy-source-pill,
+.academy-source-note {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 176, 0, 0.12);
+  background: rgba(255, 255, 255, 0.018);
+  color: var(--muted);
+  font-size: 0.72rem;
+  text-decoration: none;
+}
+
+.academy-source-pill:hover {
+  color: #fff0c8;
+  border-color: rgba(255, 176, 0, 0.28);
+}
+
+.glossary-card code {
+  display: block;
+  margin-bottom: 8px;
+  padding: 8px 9px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 176, 0, 0.08);
+  color: #ffe8b1;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .research-form {
@@ -1454,7 +1571,7 @@ button[type="submit"],
 
 .research-summary h4 {
   margin: 0 0 10px;
-  font-family: "IBM Plex Sans", sans-serif;
+  font-family: var(--font-ui);
 }
 
 .research-summary p {
