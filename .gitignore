@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+.DS_Store
+
+financial_board.db
+config.json
+
+.env
+.env.*
+
+.pytest_cache/
+.mypy_cache/
