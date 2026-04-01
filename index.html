@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Financial Board</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div id="alert-stack" class="alert-stack" aria-live="polite" aria-atomic="false"></div>
+    <div class="app-shell">
+      <aside class="sidebar glass-panel">
+        <div>
+          <p class="eyebrow">Markets</p>
+          <h1>Financial Board</h1>
+          <p class="sidebar-copy">
+            Full-stack market dashboard with cross-market coverage, explainable forecasts,
+            latest catalyst tracking, and a built-in learning layer.
+          </p>
+        </div>
+
+        <div class="watchlist-panel">
+          <div class="section-heading">
+            <h2>Watchlist</h2>
+            <span id="watchlist-count">0</span>
+          </div>
+          <form id="ticker-form" class="ticker-form">
+            <input
+              id="ticker-input"
+              type="text"
+              maxlength="24"
+              placeholder="Search ticker or company, e.g. Bharti Airtel, ICICI Bank, AAPL"
+              aria-label="Ticker symbol"
+            />
+            <button id="search-button" type="button">Search</button>
+          </form>
+          <div id="search-results" class="search-results"></div>
+          <div id="watchlist" class="watchlist"></div>
+        </div>
+
+        <div class="source-panel">
+          <div class="section-heading">
+            <h2>Market Presets</h2>
+            <span>Presets</span>
+          </div>
+          <div id="preset-grid" class="preset-grid"></div>
+        </div>
+
+        <div class="source-panel">
+          <div class="section-heading">
+            <h2>Saved Lists</h2>
+            <span>Saved</span>
+          </div>
+          <div class="watchlist-save-grid">
+            <input id="watchlist-name" type="text" placeholder="List name" />
+            <button id="save-watchlist" type="button">Save</button>
+          </div>
+          <div class="watchlist-save-grid">
+            <select id="saved-watchlists" aria-label="Saved watchlists"></select>
+            <button id="load-watchlist" type="button">Load</button>
+          </div>
+        </div>
+
+        <div class="source-panel">
+          <div class="section-heading">
+            <h2>Backend</h2>
+            <span id="provider-badge">yahoo</span>
+          </div>
+          <p class="muted">
+            The browser talks only to this app server. That keeps provider details and API keys off the client.
+          </p>
+          <button id="open-settings" class="ghost-button">Provider Settings</button>
+        </div>
+      </aside>
+
+      <main class="dashboard">
+        <header class="topbar">
+          <div class="topbar-copy">
+            <p class="eyebrow">Live Markets</p>
+            <h2>NASDAQ, S&amp;P 500, NSE, and global market coverage</h2>
+          </div>
+          <div class="live-cluster">
+            <div class="live-dot"></div>
+            <span id="status-updated" class="status-pill">Loading data</span>
+          </div>
+        </header>
+
+        <section class="ticker-banner glass-panel">
+          <div class="banner-label">Market radar</div>
+          <div id="radar-floats" class="radar-floats" aria-live="polite"></div>
+          <div id="radar-float-detail" class="radar-float-detail" hidden></div>
+          <div class="radar-layout">
+            <div class="radar-copy">
+              <div id="radar-summary" class="radar-summary">Loading radar.</div>
+              <div class="ticker-track-wrap">
+                <div id="headline-track" class="ticker-track"></div>
+              </div>
+            </div>
+            <div id="radar-hotspots" class="radar-hotspots"></div>
+          </div>
+          <div id="radar-source-note" class="micro-note">Sources loading.</div>
+        </section>
+
+        <div class="utility-grid">
+          <section class="glass-panel board-strip-panel">
+            <div class="section-heading compact">
+              <h3>Market Board</h3>
+              <span>Watch overview</span>
+            </div>
+            <div id="overview-board" class="overview-board"></div>
+          </section>
+
+          <section class="glass-panel recent-strip-panel">
+            <div class="section-heading compact">
+              <h3>Recent</h3>
+              <span>Recently viewed</span>
+            </div>
+            <div id="recent-tickers" class="recent-tickers compact"></div>
+          </section>
+        </div>
+
+        <nav class="tabbar">
+          <button class="tab active" data-tab="overview">Overview</button>
+          <button class="tab" data-tab="lab">Model Lab</button>
+          <button class="tab" data-tab="academy">Academy</button>
+          <button class="tab" data-tab="research">Research</button>
+        </nav>
+
+        <section id="overview" class="tab-panel active">
+          <div class="hero-grid">
+            <article class="glass-panel spotlight">
+              <div class="section-heading">
+                <h3 id="hero-ticker">AAPL</h3>
+                <span id="hero-regime" class="regime-pill">Balanced regime</span>
+              </div>
+              <div class="overview-meta" id="overview-meta"></div>
+              <div id="quote-source-note" class="micro-note">Quote source loading.</div>
+              <div class="hero-stats" id="hero-stats"></div>
+              <div class="hero-price-row">
+                <div>
+                  <div id="hero-price" class="hero-price">0.00</div>
+                  <div id="hero-change" class="hero-change">0.00%</div>
+                  <div id="forecast-range" class="forecast-range">10D projection pending</div>
+                </div>
+                <div class="sparkline-card">
+                  <svg id="hero-sparkline" viewBox="0 0 320 100" preserveAspectRatio="none"></svg>
+                </div>
+              </div>
+              <div class="hero-chart-card">
+                <div class="section-heading compact">
+                  <h3>Price</h3>
+                  <div class="chart-range-tabs" id="chart-range-tabs">
+                    <button class="range-tab active" type="button" data-range="1D">1D</button>
+                    <button class="range-tab" type="button" data-range="3D">3D</button>
+                    <button class="range-tab" type="button" data-range="5D">5D</button>
+                    <button class="range-tab" type="button" data-range="1M">1M</button>
+                    <button class="range-tab" type="button" data-range="1Y">1Y</button>
+                  </div>
+                </div>
+                <div class="chart-toolbar">
+                  <div class="chart-features">
+                    <label class="check-row compact"><input id="feature-sma20" type="checkbox" checked /> SMA 20</label>
+                    <label class="check-row compact"><input id="feature-sma50" type="checkbox" checked /> SMA 50</label>
+                    <label class="check-row compact"><input id="feature-bands" type="checkbox" /> Bands</label>
+                  </div>
+                  <div class="buy-sell-card">
+                    <span id="buy-sell-signal">Balanced</span>
+                    <strong id="buy-sell-breakdown">Buy 0% · Hold 100% · Sell 0%</strong>
+                  </div>
+                </div>
+                <svg id="hero-projection-chart" viewBox="0 0 640 220" preserveAspectRatio="none"></svg>
+              </div>
+              <div class="signal-grid">
+                <div class="signal-card">
+                  <span>Forecast</span>
+                  <strong id="forecast-direction">Neutral</strong>
+                  <small id="forecast-confidence">Confidence 0%</small>
+                </div>
+                <div class="signal-card">
+                  <span>Fair value gap</span>
+                  <strong id="fair-value-gap">0.0%</strong>
+                  <small>Quant blend vs. spot</small>
+                </div>
+                <div class="signal-card">
+                  <span>Event pressure</span>
+                  <strong id="event-pressure">Low</strong>
+                  <small>News + volatility load</small>
+                </div>
+                <div class="signal-card">
+                  <span>Model error</span>
+                  <strong id="model-error">0.0%</strong>
+                  <small>Walk-forward MAE</small>
+                </div>
+              </div>
+            </article>
+
+            <article class="glass-panel metrics-panel">
+              <div class="section-heading">
+                <h3>Market Pulse</h3>
+                <span>Cross-asset read</span>
+              </div>
+              <div id="pulse-grid" class="pulse-grid"></div>
+            </article>
+          </div>
+
+          <div class="content-grid">
+            <article class="glass-panel large-panel">
+              <div class="section-heading">
+                <h3>Factor Relationships</h3>
+                <span>Macro x micro x event linkage</span>
+              </div>
+              <div id="factor-map" class="factor-map"></div>
+            </article>
+
+            <article class="glass-panel large-panel">
+              <div class="section-heading">
+                <h3>Signal Drivers</h3>
+                <span>Policy, deals, sentiment, industry</span>
+              </div>
+              <div id="catalyst-list" class="catalyst-list"></div>
+            </article>
+          </div>
+
+          <div class="event-grid">
+            <article class="glass-panel large-panel">
+              <div class="section-heading">
+                <h3>Event Flow</h3>
+                <span id="event-summary-label">Business</span>
+              </div>
+              <div class="event-toolbar">
+                <div class="event-categories" id="event-categories">
+                  <button class="event-chip active" type="button" data-category="business">Business</button>
+                  <button class="event-chip" type="button" data-category="world">World</button>
+                  <button class="event-chip" type="button" data-category="war">War</button>
+                  <button class="event-chip" type="button" data-category="layoffs">Layoffs</button>
+                  <button class="event-chip" type="button" data-category="partnerships">Partnerships</button>
+                  <button class="event-chip" type="button" data-category="deals">Deals</button>
+                  <button class="event-chip" type="button" data-category="brands">Brands</button>
+                </div>
+                <form id="event-search-form" class="event-search-form">
+                  <input id="event-search-input" type="text" placeholder="Search events or sector themes" />
+                  <button type="submit">Find</button>
+                </form>
+              </div>
+              <div id="event-brief" class="research-summary"></div>
+              <div id="event-list" class="event-list"></div>
+            </article>
+          </div>
+        </section>
+
+        <section id="lab" class="tab-panel">
+          <div class="lab-grid">
+            <article class="glass-panel lab-panel">
+              <div class="section-heading">
+                <h3>Scenario Tester</h3>
+                <span>Walk-forward replay and stress testing</span>
+              </div>
+              <form id="lab-form" class="lab-form">
+                <label>
+                  <span>Ticker</span>
+                  <input id="lab-ticker" type="text" maxlength="24" />
+                </label>
+                <label>
+                  <span>Forecast horizon</span>
+                  <select id="lab-horizon">
+                    <option value="5">5 sessions</option>
+                    <option value="10">10 sessions</option>
+                    <option value="20">20 sessions</option>
+                  </select>
+                </label>
+                <label>
+                  <span>Regime stress</span>
+                  <select id="lab-stress">
+                    <option value="base">Base case</option>
+                    <option value="riskoff">Risk-off shock</option>
+                    <option value="growth">Growth acceleration</option>
+                    <option value="inflation">Inflation surprise</option>
+                  </select>
+                </label>
+                <button type="submit">Run Analysis</button>
+              </form>
+              <div id="lab-source-note" class="micro-note">History source loading.</div>
+              <div class="lab-chart-card">
+                <svg id="lab-chart" viewBox="0 0 640 240" preserveAspectRatio="none"></svg>
+              </div>
+            </article>
+
+            <article class="glass-panel lab-panel">
+              <div class="section-heading">
+                <h3>Validation Panel</h3>
+                <span>Deviation, error rate, and trigger attribution</span>
+              </div>
+              <div id="validation-metrics" class="validation-metrics"></div>
+              <div id="trigger-reasons" class="trigger-reasons"></div>
+            </article>
+          </div>
+        </section>
+
+        <section id="academy" class="tab-panel">
+          <div class="academy-grid">
+            <article class="glass-panel academy-panel">
+              <div class="section-heading">
+                <h3>What You Are Seeing</h3>
+                <span>On-screen guide</span>
+              </div>
+              <div id="academy-cards" class="academy-cards"></div>
+            </article>
+
+            <article class="glass-panel academy-panel">
+              <div class="section-heading">
+                <h3>Quant Concepts</h3>
+                <span>Ratios, terms, and why they matter</span>
+              </div>
+              <div id="glossary-list" class="glossary-list"></div>
+            </article>
+
+            <article class="glass-panel academy-panel">
+              <div class="section-heading">
+                <h3>Research Backbone</h3>
+                <span>Methods the engine is inspired by</span>
+              </div>
+              <div id="research-list" class="research-list"></div>
+            </article>
+          </div>
+        </section>
+
+        <section id="research" class="tab-panel">
+          <div class="research-workspace">
+            <article class="glass-panel research-panel">
+              <div class="section-heading">
+                <h3>Ask Board</h3>
+                <span>Local LLM + web</span>
+              </div>
+              <form id="research-form" class="research-form">
+                <textarea
+                  id="research-query"
+                  rows="4"
+                  placeholder="Ask about a company, ratio, catalyst, trade idea, macro event, or what you are seeing on screen"
+                ></textarea>
+                <div class="research-controls">
+                  <label class="check-row">
+                    <input id="research-use-web" type="checkbox" checked />
+                    <span>Use web search</span>
+                  </label>
+                  <label class="check-row">
+                    <input id="research-use-llm" type="checkbox" checked />
+                    <span>Use local LLM</span>
+                  </label>
+                  <button type="submit">Ask</button>
+                </div>
+              </form>
+              <div id="research-summary" class="research-summary">
+                <p class="muted">Ask anything about the active ticker, the dashboard signals, or the broader market.</p>
+              </div>
+            </article>
+
+            <article class="glass-panel research-panel">
+              <div class="section-heading">
+                <h3>Search Results</h3>
+                <span>Grounding</span>
+              </div>
+              <div id="research-sources" class="research-sources"></div>
+            </article>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <dialog id="settings-dialog" class="settings-dialog">
+      <form method="dialog" class="settings-card">
+        <div class="section-heading">
+          <h3>Provider Settings</h3>
+          <button type="submit" class="close-button">Close</button>
+        </div>
+        <label>
+          <span>Backend provider</span>
+          <select id="provider-select">
+            <option value="yahoo">Yahoo fallback-first</option>
+            <option value="alpha_vantage">Alpha Vantage plus fallback</option>
+          </select>
+        </label>
+        <label>
+          <span>Alpha Vantage API key</span>
+          <input id="alpha-key" type="password" placeholder="Optional" />
+        </label>
+        <label>
+          <span>Local LLM base URL</span>
+          <input id="llm-base-url" type="url" placeholder="http://127.0.0.1:11434" />
+        </label>
+        <label>
+          <span>Local LLM model</span>
+          <input id="llm-model" type="text" placeholder="llama3.1:8b" />
+        </label>
+        <p class="muted">
+          Yahoo-style endpoints are used as the no-key default for broad market coverage.
+          Alpha Vantage can be layered in when you want official API-based enrichment.
+          The research workspace can connect to your local Ollama-compatible LLM.
+        </p>
+        <button id="save-settings" value="default">Save</button>
+      </form>
+    </dialog>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
