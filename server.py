@@ -14,6 +14,7 @@ import urllib.request
 import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
+from email.utils import parsedate_to_datetime
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -220,10 +221,16 @@ USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36
 DB_LOCK = threading.Lock()
 
 
+def resolve_local_llm_model(config: dict | None = None) -> str:
+  return DEFAULT_CONFIG["localLlmModel"]
+
+
 def load_config() -> dict:
   if CONFIG_PATH.exists():
     try:
-      return {**DEFAULT_CONFIG, **json.loads(CONFIG_PATH.read_text())}
+      payload = {**DEFAULT_CONFIG, **json.loads(CONFIG_PATH.read_text())}
+      payload["localLlmModel"] = resolve_local_llm_model(payload)
+      return payload
     except json.JSONDecodeError:
       return DEFAULT_CONFIG.copy()
   return DEFAULT_CONFIG.copy()
@@ -234,7 +241,7 @@ def save_config(config: dict) -> dict:
     "provider": config.get("provider", "yahoo"),
     "alphaVantageApiKey": config.get("alphaVantageApiKey", "").strip(),
     "localLlmBaseUrl": config.get("localLlmBaseUrl", DEFAULT_CONFIG["localLlmBaseUrl"]).strip() or DEFAULT_CONFIG["localLlmBaseUrl"],
-    "localLlmModel": config.get("localLlmModel", DEFAULT_CONFIG["localLlmModel"]).strip() or DEFAULT_CONFIG["localLlmModel"],
+    "localLlmModel": resolve_local_llm_model(config),
   }
   CONFIG_PATH.write_text(json.dumps(payload, indent=2))
   return payload
@@ -700,12 +707,13 @@ def extract_google_finance_series(html_text: str) -> list[list]:
   return series
 
 
-def normalize_google_finance_history(series: list, chart_range: str) -> list[float]:
+def normalize_google_finance_history(series: list, chart_range: str) -> tuple[list[float], list[str]]:
   normalized_range = chart_range.upper()
   intraday = []
   multi_day = []
   for candidate in series:
     closes = []
+    timestamps = []
     dates = set()
     for item in candidate:
       if not isinstance(item, list) or len(item) < 2:
@@ -720,23 +728,40 @@ def normalize_google_finance_history(series: list, chart_range: str) -> list[flo
       if not isinstance(price, (int, float)):
         continue
       closes.append(float(price))
+      timestamps.append(timestamp_from_google_block(timestamp_block))
       dates.add(tuple(timestamp_block[:3]))
     if len(closes) < 2:
       continue
     if len(dates) <= 2:
-      intraday.append(closes)
+      intraday.append((closes, timestamps))
     else:
-      multi_day.append(closes)
+      multi_day.append((closes, timestamps))
+
+  def select_best(candidates: list[tuple[list[float], list[str]]]) -> tuple[list[float], list[str]]:
+    if not candidates:
+      return [], []
+    return max(candidates, key=lambda item: len(item[0]))
 
   if normalized_range == "1D":
-    return max(intraday, key=len, default=(max(multi_day, key=len, default=[])))
+    intraday_closes, intraday_timestamps = select_best(intraday)
+    if intraday_closes:
+      return intraday_closes, intraday_timestamps
+    return select_best(multi_day)
   if normalized_range in {"3D", "5D"}:
-    base = max(multi_day, key=len, default=[])
+    base_closes, base_timestamps = select_best(multi_day)
     keep = 3 if normalized_range == "3D" else 5
-    return base[-keep:] if len(base) >= 2 else max(intraday, key=len, default=[])
+    if len(base_closes) >= 2:
+      return base_closes[-keep:], base_timestamps[-keep:]
+    return select_best(intraday)
   if normalized_range in {"1M", "1Y"}:
-    return max(multi_day, key=len, default=(max(intraday, key=len, default=[])))
-  return max(multi_day, key=len, default=(max(intraday, key=len, default=[])))
+    base_closes, base_timestamps = select_best(multi_day)
+    if base_closes:
+      return base_closes, base_timestamps
+    return select_best(intraday)
+  base_closes, base_timestamps = select_best(multi_day)
+  if base_closes:
+    return base_closes, base_timestamps
+  return select_best(intraday)
 
 
 def fetch_google_finance_history(symbol: str, exchange_hint: str = "", chart_range: str = "1M") -> tuple[list[float], dict]:
@@ -745,12 +770,15 @@ def fetch_google_finance_history(symbol: str, exchange_hint: str = "", chart_ran
     if not html_text:
       continue
     series = extract_google_finance_series(html_text)
-    closes = normalize_google_finance_history(series, chart_range)
+    closes, timestamps = normalize_google_finance_history(series, chart_range)
     if len(closes) >= 2:
-      return closes, {
+      payload = {
         "historySource": "Google Finance Page",
         "googleSymbol": google_symbol,
       }
+      if timestamps and len(timestamps) == len(closes):
+        payload["timestamps"] = timestamps
+      return closes, payload
   return [], {}
 
 
@@ -1007,9 +1035,102 @@ def duckduckgo_search(query: str) -> list[dict]:
   return results
 
 
+def parse_publish_time(raw_value: str | None) -> str | None:
+  if not raw_value:
+    return None
+  try:
+    parsed = parsedate_to_datetime(raw_value)
+  except (TypeError, ValueError, IndexError):
+    return None
+  if parsed.tzinfo is None:
+    parsed = parsed.replace(tzinfo=timezone.utc)
+  return parsed.astimezone(timezone.utc).isoformat()
+
+
+def fetch_google_news_rss(query: str) -> list[dict]:
+  quoted = urllib.parse.quote(query)
+  xml_text = text_get(f"https://news.google.com/rss/search?q={quoted}&hl=en-US&gl=US&ceid=US:en")
+  if not xml_text:
+    return []
+  try:
+    root = ET.fromstring(xml_text)
+  except ET.ParseError:
+    return []
+
+  items = []
+  for item in root.findall(".//item"):
+    title = (item.findtext("title") or "").strip()
+    link = (item.findtext("link") or "").strip()
+    published = parse_publish_time((item.findtext("pubDate") or "").strip())
+    source = ""
+    source_node = item.find("{http://search.yahoo.com/mrss/}source")
+    if source_node is not None and source_node.text:
+      source = source_node.text.strip()
+    if not source:
+      source = urllib.parse.urlparse(link).netloc.replace("www.", "") if link else ""
+    if title and link:
+      items.append(
+        {
+          "title": title,
+          "url": link,
+          "source": source,
+          "publishedAt": published,
+        }
+      )
+    if len(items) >= 12:
+      break
+  return items
+
+
+def event_significance_score(item: dict, category: str, symbol: str | None = None) -> int:
+  text = f"{item.get('title', '')} {item.get('source', '')}".lower()
+  score = 0
+  for keyword in {"attack", "war", "ceasefire", "bomb", "tariff", "sanction", "deal", "partnership", "merger", "acquisition", "layoff", "earnings", "profit", "guidance", "regulator", "approval", "probe"}:
+    if keyword in text:
+      score += 2
+  if category in {"war", "world"}:
+    score += sum(keyword in text for keyword in {"iran", "israel", "russia", "ukraine", "china", "taiwan", "fed", "rbi"})
+  if category in {"deals", "partnerships"}:
+    score += sum(keyword in text for keyword in {"deal", "agreement", "alliance", "order", "stake"})
+  if category == "layoffs":
+    score += sum(keyword in text for keyword in {"layoff", "cut", "restructuring", "headcount"})
+  if category == "business":
+    score += sum(keyword in text for keyword in {"earnings", "guidance", "margin", "revenue", "profit"})
+  if symbol:
+    meta = fallback_meta(symbol)
+    if meta["name"].lower().split()[0] in text or symbol.replace(".NS", "").replace(".BO", "").lower() in text:
+      score += 3
+  published_at = item.get("publishedAt")
+  if published_at:
+    try:
+      age_hours = max(0, (datetime.now(timezone.utc) - datetime.fromisoformat(published_at)).total_seconds() / 3600)
+      if age_hours <= 12:
+        score += 4
+      elif age_hours <= 48:
+        score += 2
+    except ValueError:
+      pass
+  return score
+
+
+def merge_event_items(*groups: list[dict]) -> list[dict]:
+  seen_urls = set()
+  merged = []
+  for group in groups:
+    for item in group:
+      url = item.get("url", "")
+      title = item.get("title", "")
+      key = url or title.lower()
+      if not key or key in seen_urls:
+        continue
+      seen_urls.add(key)
+      merged.append(item)
+  return merged
+
+
 def generate_local_llm_answer(prompt: str, config: dict) -> str | None:
   base = (config.get("localLlmBaseUrl") or DEFAULT_CONFIG["localLlmBaseUrl"]).rstrip("/")
-  model = config.get("localLlmModel") or DEFAULT_CONFIG["localLlmModel"]
+  model = resolve_local_llm_model(config)
   payload = {
     "model": model,
     "stream": False,
@@ -1106,15 +1227,27 @@ def build_event_feed(category: str, symbol: str | None = None, keyword: str | No
     symbol_meta = fallback_meta(symbol)
     symbol_query = f" {symbol_meta['name']} {symbol_meta['exchange']}"
   query = (keyword or "").strip() or f"{EVENT_CATEGORY_QUERIES[normalized]}{symbol_query}"
-  results = duckduckgo_search(query)
+  rss_results = fetch_google_news_rss(query)
+  search_results = duckduckgo_search(query)
+  results = merge_event_items(rss_results, search_results)
 
   titles = [item.get("title", "") for item in results if item.get("title")]
   if symbol and normalized in {"partnerships", "deals", "brands", "layoffs"}:
     company_meta = fallback_meta(symbol)
-    company_results = duckduckgo_search(f"{company_meta['name']} {normalized} latest news")
-    extra = [item for item in company_results if item.get("url") not in {result.get("url") for result in results}]
-    results = (results + extra)[:8]
+    company_query = f"{company_meta['name']} {normalized} latest news"
+    company_results = merge_event_items(fetch_google_news_rss(company_query), duckduckgo_search(company_query))
+    results = merge_event_items(results, company_results)
     titles = [item.get("title", "") for item in results if item.get("title")]
+
+  results = sorted(
+    results,
+    key=lambda item: (
+      event_significance_score(item, normalized, symbol),
+      item.get("publishedAt") or "",
+    ),
+    reverse=True,
+  )[:10]
+  titles = [item.get("title", "") for item in results if item.get("title")]
 
   config = load_config()
   brief = ""
@@ -1137,11 +1270,26 @@ def build_event_feed(category: str, symbol: str | None = None, keyword: str | No
       else f"{normalized.title()} headlines are active, with the latest results skewing toward market-relevant updates."
     )
 
+  structured_items = []
+  for item in results[:8]:
+    url = item.get("url", "")
+    structured_items.append(
+      {
+        "title": item.get("title", "Update"),
+        "url": url,
+        "source": item.get("source") or (urllib.parse.urlparse(url).netloc.replace("www.", "") if url else ""),
+        "category": normalized,
+        "publishedAt": item.get("publishedAt"),
+        "significance": event_significance_score(item, normalized, symbol),
+      }
+    )
+
   return {
     "category": normalized,
     "query": query,
     "brief": brief,
-    "items": results[:8],
+    "asOf": datetime.now(timezone.utc).isoformat(),
+    "items": structured_items,
   }
 
 
@@ -1405,6 +1553,56 @@ def extract_signal_map(headlines: list[str], symbol: str, sector: str, industry:
   }
 
 
+def infer_event_focus(headlines: list[str], signal_map: dict) -> dict:
+  text = " ".join(headlines).lower()
+  categories = {
+    "war": {
+      "score": sum(keyword in text for keyword in {"war", "missile", "bomb", "ceasefire", "attack", "conflict", "iran", "israel", "russia", "ukraine", "tariff", "sanction"}),
+      "reason": "Geopolitical escalation or policy shocks are dominating the ticker risk map.",
+      "label": "Geopolitics",
+    },
+    "layoffs": {
+      "score": sum(keyword in text for keyword in {"layoff", "job cut", "workforce", "restructure", "restructuring", "cost cut", "headcount"}),
+      "reason": "Workforce actions and restructuring headlines are the clearest stock-moving catalysts.",
+      "label": "Restructuring",
+    },
+    "partnerships": {
+      "score": 2 if signal_map["signals"][1]["headline"] != "No strong current signal detected." and any(keyword in signal_map["signals"][1]["headline"].lower() for keyword in {"partnership", "collaboration", "alliance", "joint venture"}) else 0,
+      "reason": "Partnership and alliance headlines appear to be the strongest current stock driver.",
+      "label": "Partnerships",
+    },
+    "deals": {
+      "score": 2 if signal_map["signals"][1]["headline"] != "No strong current signal detected." else 0,
+      "reason": "Deal flow and transaction headlines are shaping the current move.",
+      "label": "Deal flow",
+    },
+    "brands": {
+      "score": sum(keyword in text for keyword in {"brand", "launch", "product", "campaign", "consumer", "retail"}),
+      "reason": "Brand and product headlines are carrying the clearest demand signal.",
+      "label": "Brands",
+    },
+    "business": {
+      "score": 2 if signal_map["signals"][3]["headline"] != "No strong current signal detected." else 1,
+      "reason": "Business and earnings updates are the main drivers behind the current move.",
+      "label": "Business",
+    },
+    "world": {
+      "score": 2 if signal_map["signals"][0]["headline"] != "No strong current signal detected." else 0,
+      "reason": "Macro and policy headlines are outweighing company-only narratives right now.",
+      "label": "Macro policy",
+    },
+  }
+  best_category, best_payload = max(categories.items(), key=lambda item: item[1]["score"])
+  if best_payload["score"] <= 0:
+    best_category = "business"
+    best_payload = categories["business"]
+  return {
+    "category": best_category,
+    "label": best_payload["label"],
+    "reason": best_payload["reason"],
+  }
+
+
 CHART_RANGE_CONFIG = {
   "1D": ("1d", "5m"),
   "3D": ("5d", "15m"),
@@ -1412,6 +1610,55 @@ CHART_RANGE_CONFIG = {
   "1M": ("1mo", "1d"),
   "1Y": ("1y", "1wk"),
 }
+
+
+def history_points_from_meta(closes: list[float], meta: dict) -> list[dict]:
+  timestamps = meta.get("timestamps") or []
+  if not isinstance(timestamps, list) or len(timestamps) != len(closes):
+    return [{"value": round(float(value), 4)} for value in closes]
+  return [
+    {
+      "value": round(float(value), 4),
+      "timestamp": timestamp,
+    }
+    for value, timestamp in zip(closes, timestamps)
+  ]
+
+
+def extract_yahoo_history_payload(chart: dict) -> tuple[list[float], dict]:
+  quote_indicator = (((chart.get("indicators") or {}).get("quote") or [{}])[0] or {})
+  raw_closes = quote_indicator.get("close") or []
+  raw_timestamps = chart.get("timestamp") or []
+  closes = []
+  timestamps = []
+  for index, raw_close in enumerate(raw_closes):
+    if not isinstance(raw_close, (int, float)):
+      continue
+    closes.append(float(raw_close))
+    if index < len(raw_timestamps) and isinstance(raw_timestamps[index], (int, float)):
+      timestamps.append(datetime.fromtimestamp(raw_timestamps[index], tz=timezone.utc).isoformat())
+  meta = dict(chart.get("meta") or {})
+  if timestamps:
+    meta["timestamps"] = timestamps
+  return closes, meta
+
+
+def timestamp_from_google_block(block: list) -> str | None:
+  if not isinstance(block, list) or len(block) < 3:
+    return None
+  try:
+    year = int(block[0])
+    month = int(block[1])
+    day = int(block[2])
+    if month == 0:
+      month = 1
+    if month < 1 or month > 12:
+      month = max(1, min(12, month + 1))
+    hour = int(block[3]) if len(block) > 3 else 0
+    minute = int(block[4]) if len(block) > 4 else 0
+    return datetime(year, month, day, hour, minute, tzinfo=timezone.utc).isoformat()
+  except (TypeError, ValueError):
+    return None
 
 
 def build_history(symbol: str, chart_range: str = "1M") -> tuple[list[float], dict]:
@@ -1432,9 +1679,7 @@ def build_history(symbol: str, chart_range: str = "1M") -> tuple[list[float], di
   range_value, interval = CHART_RANGE_CONFIG.get(normalized_range, CHART_RANGE_CONFIG["1M"])
   chart = fetch_yahoo_chart(symbol, range_value=range_value, interval=interval)
   if chart:
-    quote_indicator = (((chart.get("indicators") or {}).get("quote") or [{}])[0] or {})
-    closes = [value for value in (quote_indicator.get("close") or []) if isinstance(value, (int, float))]
-    meta = chart.get("meta") or {}
+    closes, meta = extract_yahoo_history_payload(chart)
     if len(closes) >= 2:
       save_history_cache(symbol, normalized_range, closes, meta, "Yahoo Chart")
       return closes, build_cached_meta(meta, "Yahoo Chart", datetime.now(timezone.utc).isoformat())
@@ -2021,7 +2266,7 @@ def build_recommendation(forecast: dict) -> dict:
 def build_ticker_snapshot(symbol: str, quote: dict | None = None, stress: str = "base", horizon: int = 10, chart_range: str = "1M") -> dict:
   quotes = fetch_live_quotes([symbol]) if quote is None else {symbol: quote}
   quote = quotes.get(symbol) or {}
-  with ThreadPoolExecutor(max_workers=3) as executor:
+  with ThreadPoolExecutor(max_workers=4) as executor:
     history_future = executor.submit(build_history, symbol, chart_range)
     summary_future = executor.submit(fetch_yahoo_quote_summary, symbol)
     rss_future = executor.submit(fetch_yahoo_rss, symbol)
@@ -2060,6 +2305,7 @@ def build_ticker_snapshot(symbol: str, quote: dict | None = None, stress: str = 
   sector = ((summary.get("assetProfile") or {}).get("sector")) or fallback["exchange"]
   industry = ((summary.get("assetProfile") or {}).get("industry")) or fallback["name"]
   signal_map = extract_signal_map(headlines, symbol, sector, industry)
+  event_focus = infer_event_focus(headlines, signal_map)
   volume_ratio = float(volume or 0) / float(avg_volume or volume or 1)
   data_source = quote.get("quoteSource") or ("Live source" if quote else "Fallback data")
   market_time = quote.get("regularMarketTime") or chart_meta.get("regularMarketTime")
@@ -2113,6 +2359,7 @@ def build_ticker_snapshot(symbol: str, quote: dict | None = None, stress: str = 
     "changePercent": change_percent,
     "volume": int(volume or 0),
     "history": history,
+    "historySeries": history_points_from_meta(history, chart_meta),
     "sector": sector,
     "industry": industry,
     "regime": forecast["regime"],
@@ -2121,6 +2368,7 @@ def build_ticker_snapshot(symbol: str, quote: dict | None = None, stress: str = 
     "chartRange": chart_range,
     "relationshipCards": relationship_cards,
     "driverCards": driver_cards,
+    "eventFocus": event_focus,
     "classicQuant": classic_quant,
     "sentiment": signal_map["sentiment"],
     "stats": [
@@ -2142,6 +2390,7 @@ def build_ticker_snapshot(symbol: str, quote: dict | None = None, stress: str = 
     "lab": {
       "symbol": symbol,
       "history": history[-40:],
+      "historySeries": history_points_from_meta(history[-40:], {"timestamps": (chart_meta.get("timestamps") or [])[-40:]}),
       "projected": forecast["projected"],
       "expectedReturn": forecast["expectedReturn"],
       "direction": forecast["direction"],
@@ -2230,7 +2479,7 @@ def build_dashboard(symbols: list[str], active: str | None, chart_range: str = "
   active_symbol = (active or cleaned[0]).upper()
   if active_symbol not in cleaned:
     active_symbol = cleaned[0]
-  with ThreadPoolExecutor(max_workers=2) as executor:
+  with ThreadPoolExecutor(max_workers=3) as executor:
     active_future = executor.submit(build_ticker_snapshot, active_symbol, quote_map.get(active_symbol), "base", 10, chart_range)
     macro_future = executor.submit(build_macro_pulse)
     radar_future = executor.submit(build_market_radar, active_symbol)
@@ -2383,6 +2632,7 @@ class FinancialBoardHandler(BaseHTTPRequestHandler):
         {
           "symbol": symbol,
           "history": snapshot["history"][-40:],
+          "historySeries": snapshot.get("historySeries", [])[-40:],
           "projected": snapshot["forecast"]["projected"],
           "expectedReturn": snapshot["forecast"]["expectedReturn"],
           "direction": snapshot["forecast"]["direction"],

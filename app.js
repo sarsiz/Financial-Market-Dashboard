@@ -141,6 +141,7 @@ const state = {
   academyRequestId: 0,
   academyDetail: null,
   academyCache: {},
+  bootReady: false,
 };
 
 if (state.watchlist.length === 0) {
@@ -291,6 +292,18 @@ function formatRegionLabel(value) {
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
+function formatEventDateTime(value) {
+  if (!value) return "Time unavailable";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Time unavailable";
+  return date.toLocaleString([], {
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 function shortenHeadline(text, words = 5) {
   const clean = String(text || "").replace(/\s+/g, " ").trim();
   if (!clean) return "Live event";
@@ -302,16 +315,43 @@ function shortenHeadline(text, words = 5) {
 function buildRadarFloatItems(radar = {}) {
   const items = radar.items || [];
   const hotspots = radar.hotspots || [];
-  return items
+  const fromItems = items
     .slice(0, 3)
     .map((item, index) => ({
-      id: item.url || `radar-float-${index}`,
+      id: item.url || `radar-float-item-${index}`,
       title: item.title || "Market event",
       url: item.url || "",
       source: extractDomainLabel(item.url) || "Live scan",
       region: formatRegionLabel(hotspots[index]?.region || "world"),
       bubble: shortenHeadline(item.title || "Market event", 4),
     }));
+  if (fromItems.length) {
+    return fromItems;
+  }
+
+  const fallbackHeadlines = (radar.headlines || [])
+    .filter(Boolean)
+    .slice(0, 3)
+    .map((headline, index) => ({
+      id: `radar-float-headline-${index}`,
+      title: headline,
+      url: "",
+      source: "Radar brief",
+      region: formatRegionLabel(hotspots[index]?.region || "world"),
+      bubble: shortenHeadline(headline, 4),
+    }));
+  if (fallbackHeadlines.length) {
+    return fallbackHeadlines;
+  }
+
+  return hotspots.slice(0, 3).map((item, index) => ({
+    id: `radar-float-hotspot-${index}`,
+    title: item.headline || `${formatRegionLabel(item.region)} market signal`,
+    url: "",
+    source: "Radar zone",
+    region: formatRegionLabel(item.region || "world"),
+    bubble: shortenHeadline(item.headline || `${formatRegionLabel(item.region)} signal`, 4),
+  }));
 }
 
 function emptyForecastPayload() {
@@ -347,6 +387,7 @@ function buildPendingActive(symbol) {
     name: nextName,
     regime: "Refreshing active view",
     history: watchItem?.symbol === previous.symbol ? previous.history || [] : [],
+    historySeries: watchItem?.symbol === previous.symbol ? previous.historySeries || [] : [],
     relationshipCards: [],
     driverCards: [],
     stats: watchItem?.symbol === previous.symbol ? previous.stats || [] : [],
@@ -375,6 +416,18 @@ function setStatus(message) {
   const node = document.getElementById("status-updated");
   if (!node) return;
   node.textContent = message;
+}
+
+function nextFrame(callback) {
+  window.requestAnimationFrame(() => window.requestAnimationFrame(callback));
+}
+
+function deferWork(callback, timeout = 120) {
+  if ("requestIdleCallback" in window) {
+    window.requestIdleCallback(callback, { timeout });
+    return;
+  }
+  window.setTimeout(callback, 0);
 }
 
 function flashStatus(message, timeout = 1600) {
@@ -474,31 +527,106 @@ function drawSparkline(svg, values, strokeA = "#54d2ff", strokeB = "#5af2c5") {
   `;
 }
 
-function drawProjection(svg, history, projected, features = {}) {
+function buildFallbackHistorySeries(history, range = "1M") {
+  const values = (history || []).map((value) => Number(value)).filter((value) => Number.isFinite(value));
+  if (!values.length) return [];
+  const now = new Date();
+  const stepMap = {
+    "1D": 5 * 60 * 1000,
+    "3D": 24 * 60 * 60 * 1000,
+    "5D": 24 * 60 * 60 * 1000,
+    "1M": 24 * 60 * 60 * 1000,
+    "1Y": 7 * 24 * 60 * 60 * 1000,
+  };
+  const step = stepMap[range] || stepMap["1M"];
+  const start = now.getTime() - ((values.length - 1) * step);
+  return values.map((value, index) => ({
+    value,
+    timestamp: new Date(start + (index * step)).toISOString(),
+  }));
+}
+
+function normalizeHistorySeries(history, range = "1M") {
+  if (!Array.isArray(history) || !history.length) return [];
+  if (typeof history[0] === "object" && history[0] !== null) {
+    return history
+      .map((item) => ({
+        value: Number(item.value),
+        timestamp: item.timestamp || null,
+      }))
+      .filter((item) => Number.isFinite(item.value));
+  }
+  return buildFallbackHistorySeries(history, range);
+}
+
+function buildProjectedSeries(historySeries, projected, range = "1M") {
+  const values = (projected || []).map((value) => Number(value)).filter((value) => Number.isFinite(value));
+  if (!values.length) return [];
+  const lastTimestamp = historySeries[historySeries.length - 1]?.timestamp ? new Date(historySeries[historySeries.length - 1].timestamp) : new Date();
+  const stepMap = {
+    "1D": 5 * 60 * 1000,
+    "3D": 24 * 60 * 60 * 1000,
+    "5D": 24 * 60 * 60 * 1000,
+    "1M": 24 * 60 * 60 * 1000,
+    "1Y": 7 * 24 * 60 * 60 * 1000,
+  };
+  const step = stepMap[range] || stepMap["1M"];
+  return values.map((value, index) => ({
+    value,
+    timestamp: new Date(lastTimestamp.getTime() + ((index + 1) * step)).toISOString(),
+  }));
+}
+
+function formatAxisDate(timestamp, range = "1M") {
+  if (!timestamp) return "";
+  const date = new Date(timestamp);
+  const options = range === "1D"
+    ? { hour: "2-digit", minute: "2-digit" }
+    : range === "1Y"
+      ? { month: "short", year: "2-digit" }
+      : { day: "2-digit", month: "short" };
+  return date.toLocaleString([], options);
+}
+
+function formatTooltipDate(timestamp, range = "1M") {
+  if (!timestamp) return "Time unavailable";
+  const date = new Date(timestamp);
+  const options = range === "1D"
+    ? { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }
+    : { day: "2-digit", month: "short", year: "numeric" };
+  return date.toLocaleString([], options);
+}
+
+function drawProjection(svg, historyInput, projectedInput, features = {}, options = {}) {
   if (!svg) return;
-  if (!history?.length) {
+  const historySeries = normalizeHistorySeries(historyInput, options.range || "1M");
+  if (!historySeries?.length) {
     svg.innerHTML = `<text x="50%" y="52%" text-anchor="middle" fill="rgba(255,255,255,0.45)" font-size="14">No chart data</text>`;
     return;
   }
-  if (!projected?.length) {
-    projected = [history[history.length - 1]];
+  let projectedSeries = buildProjectedSeries(historySeries, projectedInput, options.range || "1M");
+  if (!projectedSeries?.length) {
+    projectedSeries = [{ value: historySeries[historySeries.length - 1].value, timestamp: historySeries[historySeries.length - 1].timestamp }];
   }
   const width = 640;
   const height = 240;
-  const values = [...history, ...projected];
+  const margin = { top: 12, right: 12, bottom: 34, left: 56 };
+  const values = [...historySeries.map((item) => item.value), ...projectedSeries.map((item) => item.value)];
   const min = Math.min(...values);
   const max = Math.max(...values);
   const range = max - min || 1;
 
   const toPoint = (value, index, total) => {
-    const x = (index / (total - 1 || 1)) * width;
-    const y = height - ((value - min) / range) * (height - 24) - 12;
+    const x = margin.left + ((index / (total - 1 || 1)) * (width - margin.left - margin.right));
+    const y = height - margin.bottom - (((value - min) / range) * (height - margin.top - margin.bottom));
     return `${x},${y}`;
   };
 
-  const historicalPoints = history.map((value, index) => toPoint(value, index, values.length)).join(" ");
-  const projectedPoints = projected
-    .map((value, index) => toPoint(value, history.length + index, values.length))
+  const historyValues = historySeries.map((item) => item.value);
+  const projectedValues = projectedSeries.map((item) => item.value);
+  const historicalPoints = historyValues.map((value, index) => toPoint(value, index, values.length)).join(" ");
+  const projectedPoints = projectedValues
+    .map((value, index) => toPoint(value, historyValues.length + index, values.length))
     .join(" ");
 
   const overlays = [];
@@ -514,28 +642,92 @@ function drawProjection(svg, history, projected, features = {}) {
   };
 
   if (features.sma20) {
-    drawSeries(movingAverage(history, 20), "rgba(93,214,255,0.8)", "6 5", 2);
+    drawSeries(movingAverage(historyValues, 20), "rgba(93,214,255,0.8)", "6 5", 2);
   }
   if (features.sma50) {
-    drawSeries(movingAverage(history, 50), "rgba(255,176,0,0.75)", "10 6", 2);
+    drawSeries(movingAverage(historyValues, 50), "rgba(255,176,0,0.75)", "10 6", 2);
   }
   if (features.bands) {
-    const avg = movingAverage(history, 20);
-    const std = rollingStd(history, 20);
+    const avg = movingAverage(historyValues, 20);
+    const std = rollingStd(historyValues, 20);
     drawSeries(avg.map((value, index) => (value !== null && std[index] !== null ? value + (std[index] * 2) : null)), "rgba(255,255,255,0.35)", "4 4", 1.5, 0.7);
     drawSeries(avg.map((value, index) => (value !== null && std[index] !== null ? value - (std[index] * 2) : null)), "rgba(255,255,255,0.35)", "4 4", 1.5, 0.7);
   }
 
+  const yTicks = Array.from({ length: 4 }, (_, index) => {
+    const ratio = index / 3;
+    const value = max - (range * ratio);
+    const y = margin.top + ((height - margin.top - margin.bottom) * ratio);
+    return { y, value };
+  });
+  const xTickIndices = Array.from(new Set([0, Math.floor((historySeries.length - 1) / 2), historySeries.length - 1])).filter((index) => index >= 0);
+  const xTicks = xTickIndices.map((index) => ({
+    x: margin.left + ((index / (values.length - 1 || 1)) * (width - margin.left - margin.right)),
+    label: formatAxisDate(historySeries[index]?.timestamp, options.range || "1M"),
+  }));
+
+  const hoverPoints = historySeries.map((item, index) => {
+    const [x, y] = toPoint(item.value, index, values.length).split(",");
+    return {
+      x: Number(x),
+      y: Number(y),
+      value: item.value,
+      timestamp: item.timestamp,
+    };
+  });
+  const hoverOverlayId = options.overlayId || "";
+
   svg.innerHTML = `
-    <line x1="0" y1="${height - 24}" x2="${width}" y2="${height - 24}" stroke="rgba(255,255,255,0.10)"></line>
+    ${yTicks.map((tick) => `<line x1="${margin.left}" y1="${tick.y}" x2="${width - margin.right}" y2="${tick.y}" stroke="rgba(255,255,255,0.08)"></line>`).join("")}
+    ${yTicks.map((tick) => `<text x="${margin.left - 8}" y="${tick.y + 4}" text-anchor="end" fill="rgba(255,255,255,0.55)" font-size="11">${formatCurrency(tick.value, options.currency || "USD")}</text>`).join("")}
+    <line x1="${margin.left}" y1="${height - margin.bottom}" x2="${width - margin.right}" y2="${height - margin.bottom}" stroke="rgba(255,255,255,0.12)"></line>
+    <line x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${height - margin.bottom}" stroke="rgba(255,255,255,0.12)"></line>
+    ${xTicks.map((tick) => `<text x="${tick.x}" y="${height - 10}" text-anchor="middle" fill="rgba(255,255,255,0.55)" font-size="11">${tick.label}</text>`).join("")}
     <polyline fill="none" stroke="#54d2ff" stroke-width="3.5" points="${historicalPoints}" stroke-linecap="round"></polyline>
     ${overlays.join("")}
     <polyline fill="none" stroke="#f3b85f" stroke-width="3.5" stroke-dasharray="8 8" points="${projectedPoints}" stroke-linecap="round"></polyline>
+    <g id="chart-hover-layer">
+      <line id="chart-hover-line" x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${height - margin.bottom}" stroke="rgba(243,184,95,0.7)" stroke-width="1.5" stroke-dasharray="5 5" opacity="0"></line>
+      <circle id="chart-hover-point" cx="${margin.left}" cy="${margin.top}" r="4.5" fill="#f3b85f" stroke="#131313" stroke-width="2" opacity="0"></circle>
+    </g>
   `;
+
+  const hoverLine = svg.querySelector("#chart-hover-line");
+  const hoverPoint = svg.querySelector("#chart-hover-point");
+  const hoverCard = hoverOverlayId ? document.getElementById(hoverOverlayId) : null;
+  svg.onmousemove = (event) => {
+    if (!hoverPoints.length || !hoverLine || !hoverPoint || !hoverCard) return;
+    const rect = svg.getBoundingClientRect();
+    const relativeX = ((event.clientX - rect.left) / rect.width) * width;
+    const nearest = hoverPoints.reduce((best, point) => (
+      Math.abs(point.x - relativeX) < Math.abs(best.x - relativeX) ? point : best
+    ));
+    hoverLine.setAttribute("x1", String(nearest.x));
+    hoverLine.setAttribute("x2", String(nearest.x));
+    hoverLine.setAttribute("opacity", "1");
+    hoverPoint.setAttribute("cx", String(nearest.x));
+    hoverPoint.setAttribute("cy", String(nearest.y));
+    hoverPoint.setAttribute("opacity", "1");
+    hoverCard.hidden = false;
+    hoverCard.innerHTML = `
+      <strong>${formatCurrency(nearest.value, options.currency || "USD")}</strong>
+      <span>${formatTooltipDate(nearest.timestamp, options.range || "1M")}</span>
+    `;
+    const leftPercent = Math.max(8, Math.min(78, (nearest.x / width) * 100));
+    hoverCard.style.left = `${leftPercent}%`;
+    hoverCard.style.top = `${Math.max(10, ((nearest.y / height) * 100) - 12)}%`;
+  };
+  svg.onmouseleave = () => {
+    if (hoverLine) hoverLine.setAttribute("opacity", "0");
+    if (hoverPoint) hoverPoint.setAttribute("opacity", "0");
+    if (hoverCard) {
+      hoverCard.hidden = true;
+    }
+  };
 }
 
-function drawTimeline(svg, history, projected, features = {}) {
-  drawProjection(svg, history, projected, features);
+function drawTimeline(svg, history, projected, features = {}, options = {}) {
+  drawProjection(svg, history, projected, features, options);
 }
 
 function renderSearchResults(results = []) {
@@ -731,8 +923,17 @@ function renderBanner() {
     : state.dashboard?.headlines?.length
       ? state.dashboard.headlines
       : ["Live radar updates are loading."];
-  const repeated = [...headlines, ...headlines].map((headline) => `<span>${headline}</span>`).join("");
-  track.innerHTML = repeated;
+  const signature = headlines.join(" | ");
+  if (track.dataset.signature !== signature) {
+    const lane = headlines.map((headline) => `<span class="ticker-headline">${headline}</span>`).join("");
+    const duration = Math.max(28, Math.round(signature.length / 6));
+    track.dataset.signature = signature;
+    track.style.setProperty("--ticker-duration", `${duration}s`);
+    track.innerHTML = `
+      <div class="ticker-lane ticker-lane-a">${lane}</div>
+      <div class="ticker-lane ticker-lane-b" aria-hidden="true">${lane}</div>
+    `;
+  }
   summary.textContent = radar.summary || "Global event radar is loading.";
 
   const hotspots = radar.hotspots || [];
@@ -842,6 +1043,7 @@ function renderEventFeed() {
   const brief = document.getElementById("event-brief");
   const list = document.getElementById("event-list");
   const label = document.getElementById("event-summary-label");
+  const active = state.dashboard?.active;
   label.textContent = state.eventCategory.charAt(0).toUpperCase() + state.eventCategory.slice(1);
   document.querySelectorAll(".event-chip").forEach((button) => {
     button.classList.toggle("active", button.dataset.category === state.eventCategory);
@@ -849,25 +1051,39 @@ function renderEventFeed() {
 
   if (!state.eventResult) {
     brief.innerHTML = `<p class="muted">Event feed is loading.</p>`;
-    list.innerHTML = `<div class="event-card"><strong>Waiting for updates</strong><p>Latest category events will appear here.</p></div>`;
+    list.innerHTML = `<div class="event-card"><div class="event-card-header"><strong>Waiting for updates</strong><span class="event-tag">Loading</span></div><p>Latest category events will appear here.</p></div>`;
     return;
   }
 
-  brief.innerHTML = `<p>${state.eventResult.brief || "No major updates in this category."}</p>`;
-  const items = state.eventResult.items || [];
+  const focusReason = active?.eventFocus?.category === state.eventCategory
+    ? `<div class="event-brief-note"><span class="event-brief-tag">Focus</span><strong>${active.eventFocus.label}</strong><p>${active.eventFocus.reason}</p></div>`
+    : "";
+  brief.innerHTML = `
+    <p>${state.eventResult.brief || "No major updates in this category."}</p>
+    <div class="event-brief-meta">Updated ${formatEventDateTime(state.eventResult.asOf)}</div>
+    ${focusReason}
+  `;
+  const items = (state.eventResult.items || []).slice(0, 4);
   list.innerHTML = items.length
     ? items
         .map(
           (item) => `
             <article class="event-card">
-              <a href="${item.url}" target="_blank" rel="noreferrer"><strong>${item.title || "Update"}</strong></a>
-              <span>${state.eventResult.category.toUpperCase()}</span>
-              <p><a href="${item.url}" target="_blank" rel="noreferrer">${item.url}</a></p>
+              <div class="event-card-header">
+                <span class="event-tag">${(item.category || state.eventResult.category).toUpperCase()}</span>
+                <span class="event-source">${item.source || extractDomainLabel(item.url) || "Live source"}</span>
+              </div>
+              <a class="event-title" href="${item.url}" target="_blank" rel="noreferrer"><strong>${item.title || "Update"}</strong></a>
+              <div class="event-card-meta">
+                <span>${formatEventDateTime(item.publishedAt)}</span>
+                <span>Impact ${Number(item.significance || 0)}</span>
+              </div>
+              <p>${item.source ? `Source: ${item.source}` : "Source note unavailable."}</p>
             </article>
           `,
         )
         .join("")
-    : `<div class="event-card"><strong>No live matches</strong><p>Try another category or search phrase.</p></div>`;
+    : `<div class="event-card"><div class="event-card-header"><strong>No live matches</strong><span class="event-tag">Empty</span></div><p>Try another category or search phrase.</p></div>`;
 }
 
 function renderPulse() {
@@ -974,7 +1190,13 @@ function renderOverview() {
     .join("");
 
   drawSparkline(document.getElementById("hero-sparkline"), (active.history || []).slice(-24));
-  drawTimeline(document.getElementById("hero-projection-chart"), active.history || [], forecast.projected || [], state.chartFeatures);
+  drawTimeline(
+    document.getElementById("hero-projection-chart"),
+    active.historySeries?.length ? active.historySeries : (active.history || []),
+    forecast.projected || [],
+    state.chartFeatures,
+    { currency: active.currency, range: state.chartRange, overlayId: "hero-chart-hover" },
+  );
   document.querySelectorAll(".range-tab").forEach((button) => {
     button.classList.toggle("active", button.dataset.range === state.chartRange);
   });
@@ -1038,7 +1260,7 @@ function renderLab() {
       : `History: ${sourceText}`;
   }
 
-  drawProjection(document.getElementById("lab-chart"), result.history, result.projected, state.chartFeatures);
+  drawProjection(document.getElementById("lab-chart"), result.historySeries?.length ? result.historySeries : result.history, result.projected, state.chartFeatures, { currency: active.currency, range: state.chartRange });
   document.getElementById("validation-metrics").innerHTML = `
     <div class="metric-card">
       <span>Direction</span>
@@ -1222,6 +1444,8 @@ function renderResearch() {
 function renderTopbar() {
   document.getElementById("provider-badge").textContent = state.dashboard?.provider || state.config?.provider || "yahoo";
   document.getElementById("status-updated").textContent = state.dashboard?.updatedAt ? "Live now" : "Loading data";
+  document.body.classList.toggle("app-ready", state.bootReady);
+  document.body.classList.toggle("app-booting", !state.bootReady);
 }
 
 function renderCorePanels() {
@@ -1309,18 +1533,19 @@ async function loadConfig() {
   document.getElementById("alpha-key").value = state.config.alphaVantageApiKey || "";
   document.getElementById("llm-base-url").value = state.config.localLlmBaseUrl || "http://127.0.0.1:11434";
   document.getElementById("llm-model").value = state.config.localLlmModel || "Bonsai-8B-1bit";
+  renderTopbar();
 }
 
 async function loadPresets() {
-  setStatus("Loading presets");
   const payload = await api("/api/presets");
   state.presets = payload.presets || [];
+  renderPresets();
 }
 
 async function loadSavedWatchlists() {
-  setStatus("Loading lists");
   const payload = await api("/api/watchlists");
   state.savedWatchlists = payload.watchlists || [];
+  renderSavedWatchlists();
 }
 
 async function loadEventFeed(keyword = "", { silent = false } = {}) {
@@ -1389,30 +1614,43 @@ async function refreshDashboard() {
   state.dashboard = payload;
   state.watchlist = payload.watchlist.map((item) => item.symbol);
   state.activeTicker = payload.active.symbol;
+  state.eventCategory = payload.active?.eventFocus?.category || state.eventCategory;
   if (!state.labResult || state.labResult.symbol !== state.activeTicker) {
     state.labResult = payload.active.lab;
   }
   state.academyDetail = state.academyCache[state.activeTicker] || null;
   pushRecentTicker(payload.active.symbol, payload.active.name);
   persistWatchlist();
-  renderCorePanels();
-  window.setTimeout(() => {
+  nextFrame(() => {
+    renderCorePanels();
+  });
+  deferWork(() => {
+    if (requestId !== state.dashboardRequestId) return;
     renderLab();
     renderAcademy();
     renderResearch();
-  }, 0);
+  });
   startQuoteStream();
+  state.bootReady = true;
+  document.body.classList.add("app-ready");
+  document.body.classList.remove("app-booting");
   flashStatus("Live now");
   loadEventFeed("", { silent: true })
     .then(() => {
-      renderEventFeed();
+      deferWork(() => {
+        if (requestId !== state.dashboardRequestId) return;
+        renderEventFeed();
+      });
     })
     .catch((error) => {
       console.error(error);
     });
   loadAcademyDetail(state.activeTicker, { silent: true })
     .then(() => {
-      renderAcademy();
+      deferWork(() => {
+        if (requestId !== state.dashboardRequestId) return;
+        renderAcademy();
+      });
     })
     .catch((error) => {
       console.error(error);
@@ -1631,10 +1869,16 @@ function bindEvents() {
 }
 
 async function init() {
+  document.body.classList.add("app-booting");
   setStatus("Loading data");
   bindEvents();
-  await Promise.all([loadConfig(), loadPresets(), loadSavedWatchlists()]);
-  await refreshDashboard();
+  render();
+  const dashboardPromise = refreshDashboard();
+  const backgroundLoads = Promise.allSettled([loadConfig(), loadPresets(), loadSavedWatchlists()]);
+  await dashboardPromise;
+  backgroundLoads.then(() => {
+    flashStatus("Workspace ready", 1200);
+  });
   window.setInterval(refreshDashboard, 180000);
 }
 
