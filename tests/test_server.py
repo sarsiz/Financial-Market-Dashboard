@@ -27,6 +27,20 @@ class TempDatabaseTestCase(unittest.TestCase):
 
 
 class HistoryCacheTests(TempDatabaseTestCase):
+  def test_save_config_pins_local_llm_model_to_bonsai_1bit(self):
+    saved = server.save_config(
+      {
+        "provider": "yahoo",
+        "alphaVantageApiKey": "",
+        "localLlmBaseUrl": "http://127.0.0.1:11434",
+        "localLlmModel": "some-other-model",
+      }
+    )
+
+    self.assertEqual(saved["localLlmModel"], "Bonsai-8B-1bit")
+    loaded = server.load_config()
+    self.assertEqual(loaded["localLlmModel"], "Bonsai-8B-1bit")
+
   def test_save_and_load_history_cache_round_trip(self):
     server.save_history_cache(
       "icicibank.ns",
@@ -193,6 +207,19 @@ class ForecastAndLabTests(unittest.TestCase):
     self.assertGreaterEqual(len(payload["cards"]), 3)
     self.assertEqual(payload["sources"][0]["url"], "https://example.com/icici")
 
+  def test_build_event_feed_includes_timestamps_and_significance(self):
+    with mock.patch.object(
+      server,
+      "fetch_google_news_rss",
+      return_value=[{"title": "Major partnership signed", "url": "https://example.com/story", "source": "example.com", "publishedAt": "2026-04-01T01:00:00+00:00"}],
+    ), mock.patch.object(server, "duckduckgo_search", return_value=[]), mock.patch.object(server, "generate_local_llm_answer", return_value=None):
+      payload = server.build_event_feed("partnerships", "ICICIBANK.NS")
+
+    self.assertEqual(payload["category"], "partnerships")
+    self.assertTrue(payload["asOf"])
+    self.assertEqual(payload["items"][0]["publishedAt"], "2026-04-01T01:00:00+00:00")
+    self.assertGreater(payload["items"][0]["significance"], 0)
+
 
 class DashboardAssemblyTests(unittest.TestCase):
   def test_build_dashboard_returns_expected_shape(self):
@@ -236,6 +263,7 @@ class DashboardAssemblyTests(unittest.TestCase):
       "industry": "Banks",
       "regime": "Balanced regime",
       "recommendation": {"buy": 52, "hold": 33, "sell": 15, "signal": "Buy bias"},
+      "eventFocus": {"category": "business", "label": "Business", "reason": "Business and earnings updates are the main drivers behind the current move."},
       "chartRange": "1M",
       "sentiment": {"label": "Neutral", "score": 0.0},
     }
@@ -282,6 +310,7 @@ class DashboardAssemblyTests(unittest.TestCase):
     self.assertEqual(payload["watchlist"][1]["symbol"], "BHARTIARTL.NS")
     self.assertEqual(payload["macroPulse"][0]["label"], "NIFTY 50")
     self.assertEqual(payload["radar"]["summary"], "Radar summary")
+    self.assertEqual(payload["active"]["eventFocus"]["category"], "business")
 
 
 if __name__ == "__main__":

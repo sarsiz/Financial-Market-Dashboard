@@ -67,6 +67,31 @@ class HttpRouteTests(unittest.TestCase):
     self.assertEqual(academy["symbol"], "ICICIBANK.NS")
     self.assertEqual(academy["sources"][0]["url"], "https://example.com/1")
 
+  def test_events_route_returns_timestamped_items(self):
+    event_payload = {
+      "category": "world",
+      "query": "latest world news",
+      "brief": "World headlines remain market-relevant.",
+      "asOf": "2026-04-02T00:00:00+00:00",
+      "items": [
+        {
+          "title": "Major macro event",
+          "url": "https://example.com/world",
+          "source": "example.com",
+          "category": "world",
+          "publishedAt": "2026-04-02T01:00:00+00:00",
+          "significance": 7,
+        }
+      ],
+    }
+
+    with mock.patch.object(server, "build_event_feed", return_value=event_payload):
+      events = self.json_get("/api/events?category=world&symbol=ICICIBANK.NS")
+
+    self.assertEqual(events["category"], "world")
+    self.assertTrue(events["asOf"])
+    self.assertEqual(events["items"][0]["publishedAt"], "2026-04-02T01:00:00+00:00")
+
 
 if __name__ == "__main__":
   unittest.main()

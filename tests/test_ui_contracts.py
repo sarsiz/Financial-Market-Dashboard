@@ -40,12 +40,16 @@ class HtmlContractTests(unittest.TestCase):
 
   def test_frontend_contains_key_renderers_and_handlers(self):
     expected_snippets = [
+      "function nextFrame(",
+      "function deferWork(",
       "function renderBanner()",
       "function renderOverview()",
       "function renderLab()",
       "function renderCorePanels()",
       "function renderDeferredPanels()",
       "function loadAcademyDetail(",
+      "event-brief-note",
+      "event-card-header",
       "dashboardRequestId",
       "academyRequestId",
       "function buildRadarFloatItems",

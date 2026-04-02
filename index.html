@@ -177,6 +177,7 @@
                 </div>
                 <div id="model-agreement-note" class="micro-note">Model agreement loading.</div>
                 <svg id="hero-projection-chart" viewBox="0 0 640 220" preserveAspectRatio="none"></svg>
+                <div id="hero-chart-hover" class="chart-hover-card" hidden></div>
               </div>
               <div class="signal-grid">
                 <div class="signal-card">
@@ -202,13 +203,39 @@
               </div>
             </article>
 
-            <article class="glass-panel metrics-panel">
-              <div class="section-heading">
-                <h3>Market Pulse</h3>
-                <span>Cross-asset read</span>
-              </div>
-              <div id="pulse-grid" class="pulse-grid"></div>
-            </article>
+            <div class="overview-side-stack">
+              <article class="glass-panel metrics-panel">
+                <div class="section-heading">
+                  <h3>Market Pulse</h3>
+                  <span>Cross-asset read</span>
+                </div>
+                <div id="pulse-grid" class="pulse-grid"></div>
+              </article>
+
+              <article class="glass-panel event-panel compact-panel">
+                <div class="section-heading">
+                  <h3>Event Flow</h3>
+                  <span id="event-summary-label">Business</span>
+                </div>
+                <div class="event-toolbar">
+                  <div class="event-categories" id="event-categories">
+                    <button class="event-chip active" type="button" data-category="business">Business</button>
+                    <button class="event-chip" type="button" data-category="world">World</button>
+                    <button class="event-chip" type="button" data-category="war">War</button>
+                    <button class="event-chip" type="button" data-category="layoffs">Layoffs</button>
+                    <button class="event-chip" type="button" data-category="partnerships">Partnerships</button>
+                    <button class="event-chip" type="button" data-category="deals">Deals</button>
+                    <button class="event-chip" type="button" data-category="brands">Brands</button>
+                  </div>
+                  <form id="event-search-form" class="event-search-form">
+                    <input id="event-search-input" type="text" placeholder="Search events or sector themes" />
+                    <button type="submit">Find</button>
+                  </form>
+                </div>
+                <div id="event-brief" class="research-summary compact-brief"></div>
+                <div id="event-list" class="event-list compact-event-list"></div>
+              </article>
+            </div>
           </div>
 
           <div class="content-grid">
@@ -226,32 +253,6 @@
                 <span>Policy, deals, sentiment, industry</span>
               </div>
               <div id="catalyst-list" class="catalyst-list"></div>
-            </article>
-          </div>
-
-          <div class="event-grid">
-            <article class="glass-panel large-panel">
-              <div class="section-heading">
-                <h3>Event Flow</h3>
-                <span id="event-summary-label">Business</span>
-              </div>
-              <div class="event-toolbar">
-                <div class="event-categories" id="event-categories">
-                  <button class="event-chip active" type="button" data-category="business">Business</button>
-                  <button class="event-chip" type="button" data-category="world">World</button>
-                  <button class="event-chip" type="button" data-category="war">War</button>
-                  <button class="event-chip" type="button" data-category="layoffs">Layoffs</button>
-                  <button class="event-chip" type="button" data-category="partnerships">Partnerships</button>
-                  <button class="event-chip" type="button" data-category="deals">Deals</button>
-                  <button class="event-chip" type="button" data-category="brands">Brands</button>
-                </div>
-                <form id="event-search-form" class="event-search-form">
-                  <input id="event-search-input" type="text" placeholder="Search events or sector themes" />
-                  <button type="submit">Find</button>
-                </form>
-              </div>
-              <div id="event-brief" class="research-summary"></div>
-              <div id="event-list" class="event-list"></div>
             </article>
           </div>
         </section>
