@@ -30,6 +30,7 @@ This platform is built as a lightweight full-stack app with a browser client and
 - the client now renders in stages, so the active quote and overview paint first while slower Academy and event explainers fill in afterward
 - first load is optimized so the dashboard request starts immediately, while presets, settings, saved lists, and deeper explainers stream in after the first useful paint
 - the browser now hits a lightweight overview endpoint first, so watchlist quotes and the active overview can paint before the heavier full dashboard finishes
+- Academy and Research now degrade gracefully: they show market-structure-first content immediately, use shorter local-LLM time budgets, and fall back to web-grounded or rules-based answers when the LLM is slow
 - event flow is now timestamp-aware and significance-ranked, so important recent and prior events remain visible with source and publish time
 - market radar has its own refresh path and now auto-refreshes every 15 minutes without waiting for the full dashboard refresh
 - market radar surfaces floating event clouds only from live news items, with in-place expansion on click, a hide/show glass toggle, and fresh-item re-formation when more important stories arrive

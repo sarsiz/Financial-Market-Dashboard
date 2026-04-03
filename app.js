@@ -131,8 +131,13 @@ const state = {
   labResult: null,
   statusTimer: null,
   researchResult: null,
+  researchLoading: false,
+  researchError: "",
   quoteStream: null,
   eventRequestId: 0,
+  eventTimer: null,
+  eventCache: {},
+  eventLastQuery: "",
   liveQuoteMemory: {},
   alerts: [],
   alertCooldowns: {},
@@ -157,6 +162,7 @@ const state = {
   recentLastAdded: "",
   recentAddTimer: null,
   radarFreshFloatIds: [],
+  visualValueMemory: {},
 };
 
 if (state.watchlist.length === 0) {
@@ -231,10 +237,19 @@ function rollingStd(values, period) {
 }
 
 async function api(path, options = {}) {
-  const response = await fetch(path, {
-    headers: { "Content-Type": "application/json", ...(options.headers || {}) },
-    ...options,
-  });
+  const controller = new AbortController();
+  const timeoutMs = options.timeoutMs || 15000;
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+  let response;
+  try {
+    response = await fetch(path, {
+      headers: { "Content-Type": "application/json", ...(options.headers || {}) },
+      signal: controller.signal,
+      ...options,
+    });
+  } finally {
+    window.clearTimeout(timer);
+  }
 
   if (!response.ok) {
     const message = await response.text();
@@ -279,6 +294,41 @@ function formatCompactNumber(value) {
 function formatSignedCurrency(value, currency = "USD") {
   const numeric = Number(value || 0);
   return `${numeric >= 0 ? "+" : ""}${formatCurrency(numeric, currency)}`;
+}
+
+function liveValueClass(key, value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return "";
+  const previous = Number(state.visualValueMemory[key]);
+  state.visualValueMemory[key] = numeric;
+  if (!Number.isFinite(previous) || previous === numeric) return "";
+  return numeric > previous ? "flash-up" : "flash-down";
+}
+
+function buildPriceFlipMarkup(value, currency = "USD") {
+  return formatCurrency(value, currency)
+    .split("")
+    .map((char) => {
+      const cls = /\d/.test(char) ? "digit" : char === "." ? "sep decimal" : char.trim() ? "sep symbol" : "sep space";
+      const safe = char === " " ? "&nbsp;" : char;
+      return `<span class="price-flip ${cls}">${safe}</span>`;
+    })
+    .join("");
+}
+
+function animateSvgRefresh(svg) {
+  if (!svg?.animate) return;
+  svg.animate(
+    [
+      { opacity: 0.36, transform: "translateY(8px) scaleY(0.94)" },
+      { opacity: 1, transform: "translateY(0) scaleY(1)" },
+    ],
+    {
+      duration: 420,
+      easing: "cubic-bezier(0.22, 1, 0.36, 1)",
+      fill: "both",
+    },
+  );
 }
 
 function formatDuration(seconds) {
@@ -426,9 +476,7 @@ function buildRadarFloatItems(radar = {}) {
       region: formatRegionLabel(hotspots[index]?.region || "world"),
       when: formatEventDateTime(item.publishedAt),
       bubble: shortenHeadline(item.title || "Market event", 4),
-      summary: item.publishedAt || item.source || item.url
-        ? `${formatEventTime(item.publishedAt)}${item.source || extractDomainLabel(item.url) ? ` • ${item.source || extractDomainLabel(item.url)}` : ""}`.trim()
-        : "",
+      summary: item.source || extractDomainLabel(item.url) || "",
       cta: item.url ? "View full" : "View detail",
     }));
   if (fromItems.length) {
@@ -927,6 +975,7 @@ function drawSparkline(svg, values, strokeA = "#54d2ff", strokeB = "#5af2c5") {
     </defs>
     <polyline fill="none" stroke="url(#spark-gradient)" stroke-width="4" points="${points}" stroke-linecap="round" stroke-linejoin="round"></polyline>
   `;
+  animateSvgRefresh(svg);
 }
 
 function buildFallbackHistorySeries(history, range = "1M") {
@@ -1093,6 +1142,7 @@ function drawProjection(svg, historyInput, projectedInput, features = {}, option
       <circle id="chart-hover-point" cx="${margin.left}" cy="${margin.top}" r="4.5" fill="#f3b85f" stroke="#131313" stroke-width="2" opacity="0"></circle>
     </g>
   `;
+  animateSvgRefresh(svg);
 
   const hoverLine = svg.querySelector("#chart-hover-line");
   const hoverPoint = svg.querySelector("#chart-hover-point");
@@ -1222,12 +1272,13 @@ function renderRecentTickers() {
         const quote = quoteMap.get(item.symbol);
         const priceLabel = quote ? formatCurrency(quote.price, quote.currency) : "Price pending";
         const moveClass = quote ? (Number(quote.changePercent || 0) >= 0 ? "up" : "down") : "";
+        const liveClass = quote ? liveValueClass(`recent:${item.symbol}:price`, quote.price) : "";
         const freshClass = item.symbol === state.recentLastAdded ? "is-new" : "";
         return `
-        <button class="recent-pill ${moveClass} ${freshClass} ${item.symbol === state.activeTicker ? "active" : ""}" type="button" data-symbol="${item.symbol}" title="${item.name || item.symbol}">
+        <button class="recent-pill ${moveClass} ${freshClass} ${liveClass} ${item.symbol === state.activeTicker ? "active" : ""}" type="button" data-symbol="${item.symbol}" title="${item.name || item.symbol}">
           <strong>${item.symbol}</strong>
           <span>${item.name || "Recent ticker"}</span>
-          <em>${priceLabel}</em>
+          <em class="live-number">${priceLabel}</em>
         </button>
       `;
       },
@@ -1256,26 +1307,30 @@ function renderWatchlist() {
 
   node.innerHTML = entries
     .map(
-      (item) => `
-        <button class="watch-item ${item.symbol === state.activeTicker ? "active" : ""}" type="button" data-symbol="${item.symbol}" draggable="true">
+      (item) => {
+        const priceClass = liveValueClass(`watch:${item.symbol}:price`, item.price);
+        const changeClass = liveValueClass(`watch:${item.symbol}:change`, item.changePercent);
+        return `
+        <button class="watch-item ${priceClass} ${item.symbol === state.activeTicker ? "active" : ""}" type="button" data-symbol="${item.symbol}" draggable="true">
           <div class="watch-row">
             <span class="watch-symbol">${item.symbol}</span>
             <div class="watch-actions">
               <span class="drag-handle" data-drag-handle="${item.symbol}">::</span>
-              <span class="watch-change ${item.changePercent >= 0 ? "positive" : "negative"}">${formatPercent(item.changePercent)}</span>
+              <span class="watch-change live-number ${item.changePercent >= 0 ? "positive" : "negative"} ${changeClass}">${formatPercent(item.changePercent)}</span>
               <span class="delete-chip" data-delete="${item.symbol}">Delete</span>
             </div>
           </div>
           <div class="watch-row">
             <span class="watch-name">${item.name}</span>
-            <span class="watch-price">${formatCurrency(item.price, item.currency)}</span>
+            <span class="watch-price live-number ${priceClass}">${formatCurrency(item.price, item.currency)}</span>
           </div>
           <div class="watch-row watch-meta-row">
             <span>${item.exchange} · ${item.currency}</span>
             <span>Vol ${formatCompactNumber(item.volume)}</span>
           </div>
         </button>
-      `,
+      `;
+      },
     )
     .join("");
 
@@ -1369,6 +1424,9 @@ function renderBanner() {
     floatNode.dataset.radarIds = nextIds.join("|");
   }
   const floatItemsAll = allLiveFloatItems.filter((item) => !state.radarDismissedFloatIds.includes(item.id));
+  if (radarPanel) {
+    radarPanel.classList.toggle("floats-collapsed", state.radarFloatsCollapsed || floatItemsAll.length === 0);
+  }
   const floatSlots = floatNode ? buildRadarFloatSlots(floatNode, floatItemsAll.length) : [];
   const floatItems = state.radarFloatsCollapsed ? [] : floatItemsAll.slice(0, floatSlots.length);
   if (radarPanel) {
@@ -1482,10 +1540,8 @@ function renderBanner() {
 }
 
 function renderEventFeed() {
-  const brief = document.getElementById("event-brief");
   const list = document.getElementById("event-list");
   const label = document.getElementById("event-summary-label");
-  const active = state.dashboard?.active;
   label.textContent = state.eventCategory === "all" ? "All" : state.eventCategory.charAt(0).toUpperCase() + state.eventCategory.slice(1);
   document.querySelectorAll(".event-chip").forEach((button) => {
     button.classList.toggle("active", button.dataset.category === state.eventCategory);
@@ -1502,7 +1558,6 @@ function renderEventFeed() {
         publishedAt: item.publishedAt,
         significance: 0,
       }));
-    brief.innerHTML = `<p class="muted">${fallbackItems.length ? "Showing the latest radar-linked headlines while the full event feed refreshes." : "Event feed is loading."}</p>`;
     list.innerHTML = fallbackItems.length
       ? fallbackItems
           .map(
@@ -1525,15 +1580,6 @@ function renderEventFeed() {
       : `<div class="event-card"><div class="event-card-header"><strong>Waiting for updates</strong><span class="event-tag">Loading</span></div><p>Latest category events will appear here.</p></div>`;
     return;
   }
-
-  const focusReason = state.eventCategory !== "all" && active?.eventFocus?.category === state.eventCategory
-    ? `<div class="event-brief-note"><span class="event-brief-tag">Focus</span><strong>${active.eventFocus.label}</strong><p>${active.eventFocus.reason}</p></div>`
-    : "";
-  brief.innerHTML = `
-    <p>${state.eventResult.brief || "No major updates in this category."}</p>
-    <div class="event-brief-meta">Updated ${formatEventDateTime(state.eventResult.asOf)}</div>
-    ${focusReason}
-  `;
   const items = [...(state.eventResult.items || [])]
     .sort((a, b) => String(b.publishedAt || "").localeCompare(String(a.publishedAt || "")))
     .slice(0, 5);
@@ -1591,13 +1637,16 @@ function renderPulse() {
   }
   grid.innerHTML = items
     .map(
-      (item) => `
-        <div class="pulse-card">
+      (item, index) => {
+        const pulseClass = liveValueClass(`pulse:${item.label || index}`, parseFloat(String(item.value).replace(/[^\d.+-]/g, "")));
+        return `
+        <div class="pulse-card ${pulseClass}">
           <span>${item.label}</span>
-          <strong>${item.value}</strong>
+          <strong class="live-number">${item.value}</strong>
           <div class="metric-trend ${typeof item.positive === "boolean" ? (item.positive ? "positive" : "negative") : "neutral"}">${item.trend}</div>
         </div>
-      `,
+      `;
+      },
     )
     .join("");
 }
@@ -1624,13 +1673,17 @@ function renderBoard() {
   }
   board.innerHTML = entries
     .map(
-      (item) => `
-        <button class="board-tile ${item.changePercent >= 0 ? "up" : "down"} ${item.symbol === state.activeTicker ? "active" : ""}" type="button" data-symbol="${item.symbol}">
+      (item) => {
+        const priceClass = liveValueClass(`board:${item.symbol}:price`, item.price);
+        const changeClass = liveValueClass(`board:${item.symbol}:change`, item.changePercent);
+        return `
+        <button class="board-tile ${item.changePercent >= 0 ? "up" : "down"} ${priceClass} ${item.symbol === state.activeTicker ? "active" : ""}" type="button" data-symbol="${item.symbol}">
           <span class="board-symbol">${item.symbol}</span>
-          <strong class="board-price">${formatCurrency(item.price, item.currency)}</strong>
-          <span class="board-change ${item.changePercent >= 0 ? "positive" : "negative"}">${formatPercent(item.changePercent)}</span>
+          <strong class="board-price live-number ${priceClass}">${formatCurrency(item.price, item.currency)}</strong>
+          <span class="board-change live-number ${item.changePercent >= 0 ? "positive" : "negative"} ${changeClass}">${formatPercent(item.changePercent)}</span>
         </button>
-      `,
+      `;
+      },
     )
     .join("");
 
@@ -1650,23 +1703,23 @@ function renderOverview() {
 
   document.getElementById("hero-ticker").textContent = `${active.symbol} · ${active.name}`;
   document.getElementById("hero-regime").textContent = active.regime;
-  document.getElementById("hero-price").innerHTML = formatCurrency(active.price, active.currency)
-    .split("")
-    .map((char) => {
-      const cls = /\d/.test(char) ? "digit" : char === "." ? "sep decimal" : char.trim() ? "sep symbol" : "sep space";
-      const safe = char === " " ? "&nbsp;" : char;
-      return `<span class="price-flip ${cls}">${safe}</span>`;
-    })
-    .join("");
+  const heroPriceNode = document.getElementById("hero-price");
+  const heroPriceText = formatCurrency(active.price, active.currency);
+  const priceSizeClass = heroPriceText.length >= 14 ? "is-compact" : heroPriceText.length >= 11 ? "is-tight" : "";
+  heroPriceNode.className = `hero-price ${priceSizeClass} ${liveValueClass(`hero:${active.symbol}:price`, active.price)}`.trim();
+  heroPriceNode.innerHTML = buildPriceFlipMarkup(active.price, active.currency);
   const changeNode = document.getElementById("hero-change");
   changeNode.textContent = formatPercent(active.changePercent);
-  changeNode.className = `hero-change ${active.changePercent >= 0 ? "positive" : "negative"}`;
+  changeNode.className = `hero-change live-number ${active.changePercent >= 0 ? "positive" : "negative"} ${liveValueClass(`hero:${active.symbol}:change`, active.changePercent)}`;
   document.getElementById("forecast-direction").textContent = forecast.direction;
   document.getElementById("forecast-confidence").textContent = `Confidence ${Number(forecast.confidence || 0).toFixed(0)}% · ${agreement.label}`;
   document.getElementById("fair-value-gap").textContent = formatPercent(forecast.fairValueGap);
+  document.getElementById("fair-value-gap").className = liveValueClass(`hero:${active.symbol}:fair`, forecast.fairValueGap);
   document.getElementById("event-pressure").textContent = forecast.eventPressureLabel;
   document.getElementById("model-error").textContent = `${Number(forecast.mae || 0).toFixed(1)}%`;
+  document.getElementById("model-error").className = liveValueClass(`hero:${active.symbol}:mae`, forecast.mae);
   document.getElementById("forecast-range").textContent = `10D projection ${formatPercent(forecast.expectedReturn)}`;
+  document.getElementById("forecast-range").className = `forecast-range live-number ${liveValueClass(`hero:${active.symbol}:projection`, forecast.expectedReturn)}`;
   document.getElementById("buy-sell-signal").textContent = recommendation.signal || "Balanced";
   document.getElementById("buy-sell-breakdown").textContent = `Buy ${recommendation.buy ?? 0}% · Hold ${recommendation.hold ?? 100}% · Sell ${recommendation.sell ?? 0}%`;
   document.getElementById("model-agreement-note").textContent = `${agreement.summary} Score ${Number(agreement.score || 0).toFixed(0)}/100.`;
@@ -1734,10 +1787,10 @@ function renderOverview() {
 
   document.getElementById("hero-stats").innerHTML = (active.stats || [])
     .map(
-      (stat) => `
+      (stat, index) => `
         <div class="hero-stat-card">
           <span>${stat.label}</span>
-          <strong>${stat.value}</strong>
+          <strong class="live-number ${liveValueClass(`hero:${active.symbol}:stat:${index}`, parseFloat(String(stat.value).replace(/[^\d.+-]/g, "")))}">${stat.value}</strong>
         </div>
       `,
     )
@@ -1772,20 +1825,89 @@ function renderOverview() {
       `,
     )
     .join("");
+  const macroMicroContext = []
+    .concat((state.dashboard?.radar?.macroFactors || []).slice(0, 3))
+    .concat((state.dashboard?.radar?.microFactors || []).slice(0, 3))
+    .slice(0, 4);
+  const relationshipCards = active.relationshipCards || forecast.factors || [];
+  document.getElementById("factor-map").innerHTML = `
+    ${macroMicroContext.length ? `
+      <div class="analysis-context-grid">
+        ${macroMicroContext
+          .map(
+            (item) => `
+              <div class="factor-context-card">
+                <span>${item.label}</span>
+                <strong>${item.value || "Live"}</strong>
+                <p>${item.trend || "Current live context."}</p>
+              </div>
+            `,
+          )
+          .join("")}
+      </div>
+    ` : ""}
+    <div class="analysis-flow-grid">
+      ${relationshipCards
+        .map(
+          (factor) => `
+            <div class="factor-card">
+              <div class="factor-card-header">
+                <strong>${factor.title}</strong>
+                <span>${factor.score.toFixed(0)}</span>
+              </div>
+              <div class="impact-bar"><div class="impact-fill" style="width:${Math.abs(factor.score)}%"></div></div>
+              <p>${factor.description}</p>
+            </div>
+          `,
+        )
+        .join("")}
+    </div>
+  `;
 
-  document.getElementById("catalyst-list").innerHTML = (active.driverCards || forecast.triggers || [])
-    .map(
-      (item, index) => `
-        <div class="catalyst-card">
-          <div class="catalyst-header">
-            <strong>${index + 1}. ${item.title}</strong>
-            <span>${item.tag || (index === 0 ? "Primary" : "Active")}</span>
-          </div>
-          <p>${item.body || item.description}</p>
-        </div>
-      `,
-    )
-    .join("");
+  const latestDriverEvents = [...(state.eventResult?.items || state.dashboard?.radar?.items || [])]
+    .slice(0, 2)
+    .map((item) => ({
+      title: item.title || "Live catalyst",
+      tag: item.category || "Live",
+      meta: `${formatEventDateTime(item.publishedAt)}${item.source ? ` • ${item.source}` : ""}`,
+      body: item.description || item.summary || item.title || "Latest event context is being refreshed.",
+    }));
+  const signalDrivers = (active.driverCards || forecast.triggers || []).slice(0, 5);
+  document.getElementById("catalyst-list").innerHTML = `
+    ${latestDriverEvents.length ? `
+      <div class="driver-event-strip">
+        ${latestDriverEvents
+          .map(
+            (item) => `
+              <div class="catalyst-card event-led">
+                <div class="catalyst-header">
+                  <strong>${item.title}</strong>
+                  <span>${String(item.tag).toUpperCase()}</span>
+                </div>
+                <small>${item.meta}</small>
+                <p>${item.body}</p>
+              </div>
+            `,
+          )
+          .join("")}
+      </div>
+    ` : ""}
+    <div class="driver-card-stack">
+      ${signalDrivers
+        .map(
+          (item, index) => `
+            <div class="catalyst-card">
+              <div class="catalyst-header">
+                <strong>${index + 1}. ${item.title}</strong>
+                <span>${item.tag || (index === 0 ? "Primary" : "Active")}</span>
+              </div>
+              <p>${item.body || item.description}</p>
+            </div>
+          `,
+        )
+        .join("")}
+    </div>
+  `;
 }
 
 function renderLab() {
@@ -1929,8 +2051,13 @@ function renderAcademy() {
   const academyBrief = document.getElementById("academy-ticker-brief");
   const academySources = document.getElementById("academy-source-list");
   if (!academyDetail) {
-    academyBrief.innerHTML = `<div class="academy-brief-card"><strong>Loading active explainer</strong><p>The ticker-specific academy brief is being grounded on the active company and live web context.</p></div>`;
-    academySources.innerHTML = `<div class="academy-source-note">Source notes will appear here.</div>`;
+    academyBrief.innerHTML = `
+      <div class="academy-brief-card academy-loading-card">
+        <strong>${active?.symbol || "Ticker"} explainer</strong>
+        <p>Using live market structure while deeper company context loads.</p>
+      </div>
+    `;
+    academySources.innerHTML = `<div class="academy-source-note">Web grounding will appear here when ready.</div>`;
     return;
   }
 
@@ -1965,6 +2092,23 @@ function renderAcademy() {
 function renderResearch() {
   const summary = document.getElementById("research-summary");
   const sources = document.getElementById("research-sources");
+  if (state.researchLoading) {
+    summary.innerHTML = `
+      <div class="research-state-card">
+        <strong>Building answer</strong>
+        <p>Pulling dashboard context${document.getElementById("research-use-web")?.checked ? ", web grounding," : ""} and ${document.getElementById("research-use-llm")?.checked ? "Bonsai-8B-1bit" : "rule-based synthesis"}.</p>
+      </div>
+    `;
+    sources.innerHTML = `<div class="source-card"><strong>Collecting sources</strong><p>Relevant links will appear here as soon as they are ready.</p></div>`;
+    return;
+  }
+
+  if (state.researchError) {
+    summary.innerHTML = `<div class="research-state-card"><strong>Research unavailable</strong><p>${state.researchError}</p></div>`;
+    sources.innerHTML = `<div class="source-card"><strong>Retry ready</strong><p>Adjust the query or rerun with web search enabled.</p></div>`;
+    return;
+  }
+
   if (!state.researchResult) {
     summary.innerHTML = `<p class="muted">Ask about the active ticker, dashboard signals, a macro event, or a company. The assistant can use your local LLM and optional web search.</p>`;
     sources.innerHTML = `<div class="source-card"><strong>Waiting for query</strong><p>Web grounding and dashboard context will appear here.</p></div>`;
@@ -1973,9 +2117,16 @@ function renderResearch() {
 
   const { answer, takeaways = [], context = {}, webResults = [] } = state.researchResult;
   summary.innerHTML = `
-    <h4>${context.symbol ? `${context.symbol} Research Brief` : "Research Brief"}</h4>
+    <div class="research-summary-head">
+      <h4>${context.symbol ? `${context.symbol} Research Brief` : "Research Brief"}</h4>
+      <div class="research-context-pills">
+        ${context.symbol ? `<span>${context.symbol}</span>` : ""}
+        ${context.regime ? `<span>${context.regime}</span>` : ""}
+        <span>${state.researchResult.llmUsed ? "Bonsai assisted" : "Rules + context"}</span>
+      </div>
+    </div>
     <p>${answer}</p>
-    <ul>${takeaways.map((item) => `<li>${item}</li>`).join("")}</ul>
+    ${takeaways.length ? `<ul>${takeaways.map((item) => `<li>${item}</li>`).join("")}</ul>` : ""}
   `;
 
   if (!webResults.length) {
@@ -1988,7 +2139,7 @@ function renderResearch() {
       (item) => `
         <div class="source-card">
           <strong>${item.title || "Result"}</strong>
-          <p><a href="${item.url}" target="_blank" rel="noreferrer">${item.url}</a></p>
+          <p><a href="${item.url}" target="_blank" rel="noreferrer">${extractDomainLabel(item.url) || item.url}</a></p>
         </div>
       `,
     )
@@ -2053,6 +2204,21 @@ function applyLiveQuoteUpdate(payload) {
     }
   }
 
+  if (state.dashboard.active?.price && Array.isArray(state.dashboard.active.historySeries) && state.dashboard.active.historySeries.length) {
+    const nextSeries = [...state.dashboard.active.historySeries];
+    nextSeries[nextSeries.length - 1] = {
+      ...nextSeries[nextSeries.length - 1],
+      value: Number(state.dashboard.active.price),
+      timestamp: payload.updatedAt || nextSeries[nextSeries.length - 1].timestamp,
+    };
+    state.dashboard.active.historySeries = nextSeries;
+  }
+  if (state.dashboard.active?.price && Array.isArray(state.dashboard.active.history) && state.dashboard.active.history.length) {
+    const nextHistory = [...state.dashboard.active.history];
+    nextHistory[nextHistory.length - 1] = Number(state.dashboard.active.price);
+    state.dashboard.active.history = nextHistory;
+  }
+
   renderWatchlist();
   renderBoard();
   renderOverview();
@@ -2110,6 +2276,10 @@ function toggleRadarClouds() {
   if (state.radarFloatsCollapsed) {
     state.radarDismissedFloatIds = state.radarDismissedFloatIds.filter((id) => !liveIds.includes(id));
     state.radarFloatsCollapsed = false;
+    const radarPanel = document.getElementById("market-radar");
+    if (radarPanel) {
+      radarPanel.classList.remove("floats-collapsed");
+    }
     renderBanner();
     return;
   }
@@ -2147,8 +2317,29 @@ async function loadSavedWatchlists() {
   renderSavedWatchlists();
 }
 
-async function loadEventFeed(keyword = "", { silent = false } = {}) {
+function getEventCacheKey(keyword = "") {
+  return [state.eventCategory || "business", state.activeTicker || "", keyword.trim().toLowerCase()].join("::");
+}
+
+function startEventRefresh() {
+  window.clearInterval(state.eventTimer);
+  state.eventTimer = window.setInterval(() => {
+    loadEventFeed(state.eventLastQuery || "", { silent: true, force: true }).catch((error) => {
+      console.error(error);
+    });
+  }, 1800000);
+}
+
+async function loadEventFeed(keyword = "", { silent = false, force = false } = {}) {
   const requestId = ++state.eventRequestId;
+  const normalizedKeyword = keyword.trim();
+  const cacheKey = getEventCacheKey(normalizedKeyword);
+  const cached = state.eventCache[cacheKey];
+  state.eventLastQuery = normalizedKeyword;
+  if (!force && cached && Date.now() - cached.cachedAt < 1800000) {
+    state.eventResult = cached.payload;
+    return cached.payload;
+  }
   if (!silent) {
     setStatus("Loading feed");
   }
@@ -2156,12 +2347,14 @@ async function loadEventFeed(keyword = "", { silent = false } = {}) {
     category: state.eventCategory,
     symbol: state.activeTicker || "",
   });
-  if (keyword.trim()) {
-    params.set("q", keyword.trim());
+  if (normalizedKeyword) {
+    params.set("q", normalizedKeyword);
   }
   const result = await api(`/api/events?${params.toString()}`);
   if (requestId !== state.eventRequestId) return;
   state.eventResult = result;
+  state.eventCache[cacheKey] = { payload: result, cachedAt: Date.now() };
+  return result;
 }
 
 async function loadAcademyDetail(symbol = state.activeTicker, { silent = false } = {}) {
@@ -2169,10 +2362,17 @@ async function loadAcademyDetail(symbol = state.activeTicker, { silent = false }
   if (!silent) {
     setStatus("Loading learn");
   }
-  const result = await api(`/api/academy?symbol=${encodeURIComponent(symbol)}&web=1&llm=1`);
-  if (requestId !== state.academyRequestId) return;
-  state.academyDetail = result;
-  state.academyCache[symbol] = result;
+  try {
+    const result = await api(`/api/academy?symbol=${encodeURIComponent(symbol)}&web=1&llm=1`, { timeoutMs: 10000 });
+    if (requestId !== state.academyRequestId) return;
+    state.academyDetail = result;
+    state.academyCache[symbol] = result;
+  } catch (error) {
+    const fallback = await api(`/api/academy?symbol=${encodeURIComponent(symbol)}&web=1&llm=0`, { timeoutMs: 8000 }).catch(() => null);
+    if (requestId !== state.academyRequestId || !fallback) return;
+    state.academyDetail = fallback;
+    state.academyCache[symbol] = fallback;
+  }
 }
 
 function selectActiveTicker(symbol, { refresh = true } = {}) {
@@ -2365,6 +2565,7 @@ function bindEvents() {
     button.addEventListener("click", async () => {
       state.eventCategoryPinned = true;
       state.eventCategory = button.dataset.category;
+      state.eventLastQuery = "";
       persistWatchlist();
       await loadEventFeed();
       renderEventFeed();
@@ -2475,19 +2676,29 @@ function bindEvents() {
     const query = document.getElementById("research-query").value.trim();
     if (!query) return;
     setStatus("Thinking");
-    const payload = await api("/api/research", {
-      method: "POST",
-      body: JSON.stringify({
-        query,
-        symbol: state.activeTicker,
-        useWeb: document.getElementById("research-use-web").checked,
-        useLlm: document.getElementById("research-use-llm").checked,
-      }),
-    });
-    state.researchResult = payload;
+    state.researchLoading = true;
+    state.researchError = "";
     document.querySelector('[data-tab="research"]').click();
     renderResearch();
-    flashStatus("Answer ready", 1600);
+    try {
+      const payload = await api("/api/research", {
+        method: "POST",
+        timeoutMs: 12000,
+        body: JSON.stringify({
+          query,
+          symbol: state.activeTicker,
+          useWeb: document.getElementById("research-use-web").checked,
+          useLlm: document.getElementById("research-use-llm").checked,
+        }),
+      });
+      state.researchResult = payload;
+      flashStatus("Answer ready", 1600);
+    } catch (error) {
+      state.researchError = "The research workspace took too long. Try again, or disable local LLM for a faster web-grounded answer.";
+    } finally {
+      state.researchLoading = false;
+      renderResearch();
+    }
   });
 }
 
@@ -2507,6 +2718,7 @@ async function init() {
     flashStatus("Workspace ready", 1200);
   });
   window.setInterval(refreshDashboard, 180000);
+  startEventRefresh();
 }
 
 init().catch((error) => {
