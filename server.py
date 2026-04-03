@@ -1710,6 +1710,65 @@ def build_market_radar(symbol: str | None = None) -> dict:
   }
 
 
+def enrich_market_radar(radar: dict, macro_pulse: list[dict] | None = None, active_snapshot: dict | None = None) -> dict:
+  enriched = dict(radar or {})
+  macro_pulse = macro_pulse or []
+  active_snapshot = active_snapshot or {}
+  radar_headlines = [item.get("title", "") for item in enriched.get("items", []) if item.get("title")] or list(enriched.get("headlines") or [])
+  sentiment = headline_sentiment(radar_headlines) if radar_headlines else {"score": 0.0, "label": "Mixed", "positiveHits": 0, "negativeHits": 0}
+  macro_items = []
+  for item in macro_pulse[:3]:
+    macro_items.append(
+      {
+        "label": item.get("label", "Macro"),
+        "value": item.get("value", ""),
+        "trend": item.get("trend", ""),
+      }
+    )
+
+  micro_items = []
+  focus = active_snapshot.get("eventFocus") or {}
+  if focus.get("label"):
+    micro_items.append(
+      {
+        "label": "Catalyst focus",
+        "value": focus.get("label", ""),
+        "trend": focus.get("reason", ""),
+      }
+    )
+  forecast = active_snapshot.get("forecast") or {}
+  if forecast.get("direction"):
+    micro_items.append(
+      {
+        "label": "Model bias",
+        "value": f"{forecast.get('direction', 'Neutral')} {forecast.get('confidence', 0):.0f}%",
+        "trend": f"{forecast.get('eventPressureLabel', 'Low')} event pressure",
+      }
+    )
+  if active_snapshot.get("volume") is not None:
+    volume_value = float(active_snapshot.get("volume", 0) or 0)
+    if volume_value >= 1_000_000_000:
+      volume_text = f"{volume_value / 1_000_000_000:.1f}B"
+    elif volume_value >= 1_000_000:
+      volume_text = f"{volume_value / 1_000_000:.1f}M"
+    elif volume_value >= 1_000:
+      volume_text = f"{volume_value / 1_000:.0f}K"
+    else:
+      volume_text = f"{volume_value:.0f}"
+    micro_items.append(
+      {
+        "label": "Liquidity",
+        "value": volume_text,
+        "trend": f"{active_snapshot.get('exchange', 'Market')} traded volume",
+      }
+    )
+
+  enriched["macroFactors"] = macro_items
+  enriched["microFactors"] = micro_items
+  enriched["sentiment"] = sentiment
+  return enriched
+
+
 def fetch_yahoo_rss(symbol: str) -> list[str]:
   quoted = urllib.parse.quote(symbol)
   xml_text = text_get(f"https://feeds.finance.yahoo.com/rss/2.0/headline?s={quoted}&region=US&lang=en-US")
@@ -2764,7 +2823,7 @@ def build_dashboard(symbols: list[str], active: str | None, chart_range: str = "
     radar_future = executor.submit(build_market_radar, active_symbol)
     active_snapshot = active_future.result()
     macro_pulse = macro_future.result()
-    radar = radar_future.result()
+    radar = enrich_market_radar(radar_future.result(), macro_pulse, active_snapshot)
 
   banner = radar["headlines"] or active_snapshot["headlines"][:4]
 
@@ -2780,7 +2839,14 @@ def build_dashboard(symbols: list[str], active: str | None, chart_range: str = "
 
 
 def build_radar_payload(symbol: str | None = None) -> dict:
-  radar = build_market_radar(symbol)
+  with ThreadPoolExecutor(max_workers=3) as executor:
+    radar_future = executor.submit(build_market_radar, symbol)
+    macro_future = executor.submit(build_macro_pulse)
+    snapshot_future = executor.submit(build_ticker_snapshot, symbol) if symbol else None
+    radar = radar_future.result()
+    macro_pulse = macro_future.result()
+    active_snapshot = snapshot_future.result() if snapshot_future else None
+  radar = enrich_market_radar(radar, macro_pulse, active_snapshot)
   return {
     "updatedAt": datetime.now(timezone.utc).isoformat(),
     "symbol": symbol or "",

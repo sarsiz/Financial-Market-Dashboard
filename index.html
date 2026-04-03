@@ -103,23 +103,29 @@
         <section id="market-radar" class="ticker-banner glass-panel">
           <div class="banner-topbar">
             <div class="banner-label">Market radar</div>
-            <button id="pop-radar-clouds" class="radar-glass-button" type="button" aria-label="Pop all clouds">
-              <span class="radar-glass-dot" aria-hidden="true"></span>
-              <span>Pop clouds</span>
-            </button>
+            <div id="radar-sentiment-box" class="radar-sentiment-box">
+              <span>Sentiment</span>
+              <strong>Scanning live</strong>
+              <small>Headlines and catalysts</small>
+            </div>
           </div>
           <div id="radar-floats" class="radar-floats" aria-live="polite"></div>
           <div id="radar-float-detail" class="radar-float-detail" hidden></div>
           <div class="radar-layout">
             <div class="radar-copy">
-              <div id="radar-summary" class="radar-summary">Loading radar.</div>
               <div class="ticker-track-wrap">
                 <div id="headline-track" class="ticker-track"></div>
               </div>
             </div>
             <div id="radar-hotspots" class="radar-hotspots"></div>
           </div>
-          <div id="radar-source-note" class="micro-note">Sources loading.</div>
+          <div class="radar-footer">
+            <div id="radar-source-note" class="micro-note">Sources loading.</div>
+            <button id="pop-radar-clouds" class="radar-glass-button" type="button" aria-label="Hide clouds">
+              <span class="radar-glass-dot" aria-hidden="true"></span>
+              <span id="radar-cloud-toggle-label">Hide clouds</span>
+            </button>
+          </div>
         </section>
 
         <div class="utility-grid">
@@ -144,7 +150,7 @@
 
         <section id="overview" class="tab-panel active">
           <div class="hero-grid">
-            <article class="glass-panel spotlight">
+            <article id="overview-spotlight" class="glass-panel spotlight">
               <div class="section-heading">
                 <h3 id="hero-ticker">AAPL</h3>
                 <span id="hero-regime" class="regime-pill">Balanced regime</span>
@@ -217,7 +223,6 @@
               <article class="glass-panel recent-strip-panel side-recent-panel">
                 <div class="section-heading compact">
                   <h3>Recent</h3>
-                  <span>Recently viewed</span>
                 </div>
                 <div id="recent-tickers" class="recent-tickers compact"></div>
               </article>

@@ -154,6 +154,9 @@ const state = {
   boardHidden: localStorage.getItem(STORAGE_KEYS.boardHidden) === "1",
   radarFloatsCollapsed: false,
   eventCategoryPinned: false,
+  recentLastAdded: "",
+  recentAddTimer: null,
+  radarFreshFloatIds: [],
 };
 
 if (state.watchlist.length === 0) {
@@ -201,9 +204,11 @@ function persistWatchlist() {
 
 function pushRecentTicker(symbol, name = "") {
   if (!symbol) return;
+  const isNewFront = state.recentTickers[0]?.symbol !== symbol;
   state.recentTickers = [{ symbol, name }]
     .concat(state.recentTickers.filter((item) => item.symbol !== symbol))
     .slice(0, 10);
+  state.recentLastAdded = isNewFront ? symbol : "";
   persistWatchlist();
 }
 
@@ -413,15 +418,17 @@ function buildRadarFloatItems(radar = {}) {
   const items = radar.items || [];
   const hotspots = radar.hotspots || [];
   const fromItems = items
-    .slice(0, 6)
     .map((item, index) => ({
       id: item.url || `radar-float-item-${index}`,
       title: item.title || "Market event",
       url: item.url || "",
       source: extractDomainLabel(item.url) || "Live scan",
       region: formatRegionLabel(hotspots[index]?.region || "world"),
+      when: formatEventDateTime(item.publishedAt),
       bubble: shortenHeadline(item.title || "Market event", 4),
-      summary: `${formatEventTime(item.publishedAt)} • ${(item.source || extractDomainLabel(item.url) || "Live scan")}`.trim(),
+      summary: item.publishedAt || item.source || item.url
+        ? `${formatEventTime(item.publishedAt)}${item.source || extractDomainLabel(item.url) ? ` • ${item.source || extractDomainLabel(item.url)}` : ""}`.trim()
+        : "",
       cta: item.url ? "View full" : "View detail",
     }));
   if (fromItems.length) {
@@ -430,75 +437,34 @@ function buildRadarFloatItems(radar = {}) {
 
   const fallbackHeadlines = (radar.headlines || [])
     .filter(Boolean)
-    .slice(0, 6)
     .map((headline, index) => ({
       id: `radar-float-headline-${index}`,
       title: headline,
       url: "",
       source: "Radar brief",
       region: formatRegionLabel(hotspots[index]?.region || "world"),
+      when: "Latest",
       bubble: shortenHeadline(headline, 4),
-      summary: "Live radar headline",
+      summary: "",
       cta: "View detail",
     }));
   if (fallbackHeadlines.length) {
     return fallbackHeadlines;
   }
 
-  const hotspotItems = hotspots.slice(0, 6).map((item, index) => ({
+  const hotspotItems = hotspots.map((item, index) => ({
     id: `radar-float-hotspot-${index}`,
     title: item.headline || `${formatRegionLabel(item.region)} market signal`,
     url: "",
     source: "Radar zone",
     region: formatRegionLabel(item.region || "world"),
+    when: "Live",
     bubble: shortenHeadline(item.headline || `${formatRegionLabel(item.region)} signal`, 4),
-    summary: "Regional market pressure is elevated here.",
+    summary: "",
     cta: "View detail",
   }));
   if (hotspotItems.length) return hotspotItems;
-
-  return [
-    {
-      id: "radar-dummy-1",
-      title: "Oil corridor tensions are shaping market risk.",
-      url: "",
-      source: "Radar warmup",
-      region: "Middle East",
-      bubble: "Oil route tension",
-      summary: "Energy routes and geopolitical heat are shaping cross-asset risk.",
-      cta: "View detail",
-    },
-    {
-      id: "radar-dummy-2",
-      title: "Central-bank tone is shifting rate-sensitive sectors.",
-      url: "",
-      source: "Radar warmup",
-      region: "North America",
-      bubble: "Rate shift watch",
-      summary: "Rate-sensitive sectors are reacting to policy tone and inflation expectations.",
-      cta: "View detail",
-    },
-    {
-      id: "radar-dummy-3",
-      title: "Factory and export demand are moving Asia-linked names.",
-      url: "",
-      source: "Radar warmup",
-      region: "East Asia",
-      bubble: "Asia demand pulse",
-      summary: "Trade, exports, and factory signals are rippling into global cyclicals.",
-      cta: "View detail",
-    },
-    {
-      id: "radar-dummy-4",
-      title: "Credit and policy headlines are steering financial risk appetite.",
-      url: "",
-      source: "Radar warmup",
-      region: "Europe",
-      bubble: "Credit risk watch",
-      summary: "Rates, sovereign stress, and bank funding signals are shaping financials.",
-      cta: "View detail",
-    },
-  ];
+  return [];
 }
 
 function clamp(value, min, max) {
@@ -506,18 +472,38 @@ function clamp(value, min, max) {
 }
 
 function getDefaultRadarFloatSlots() {
-  return [
-    { x: 12, y: 8 },
-    { x: 176, y: 2 },
-    { x: 342, y: 12 },
-    { x: 508, y: 0 },
-    { x: 676, y: 10 },
-    { x: 844, y: 4 },
-  ];
+  return [{ x: 12, y: 14 }];
+}
+
+function buildRadarFloatSlots(floatNode, count) {
+  if (!floatNode || count <= 0) return [];
+  const width = Math.max(260, floatNode.clientWidth || 0);
+  const height = Math.max(92, floatNode.clientHeight || 0);
+  const leftPad = 10;
+  const rightPad = 14;
+  const topPad = 14;
+  const bottomPad = 8;
+  const rowHeight = 52;
+  const rows = Math.max(1, Math.floor((height - topPad - bottomPad) / rowHeight));
+  const usableWidth = Math.max(148, width - leftPad - rightPad);
+  const colStep = 142;
+  const cols = Math.max(1, Math.floor(usableWidth / colStep));
+  const capacity = Math.max(1, rows * cols);
+  const slots = [];
+  for (let index = 0; index < Math.min(count, capacity); index += 1) {
+    const row = index % rows;
+    const col = Math.floor(index / rows);
+    slots.push({
+      x: leftPad + Math.min(col, cols - 1) * Math.max(128, usableWidth / cols),
+      y: topPad + row * rowHeight + (col % 2 ? 4 : 0),
+    });
+  }
+  return slots;
 }
 
 function hydrateRadarFloatPositions(floatItems) {
-  const slots = getDefaultRadarFloatSlots();
+  const floatNode = document.getElementById("radar-floats");
+  const slots = buildRadarFloatSlots(floatNode, floatItems.length);
   const next = {};
   floatItems.forEach((item, index) => {
     const saved = state.radarFloatPositions[item.id];
@@ -1236,8 +1222,9 @@ function renderRecentTickers() {
         const quote = quoteMap.get(item.symbol);
         const priceLabel = quote ? formatCurrency(quote.price, quote.currency) : "Price pending";
         const moveClass = quote ? (Number(quote.changePercent || 0) >= 0 ? "up" : "down") : "";
+        const freshClass = item.symbol === state.recentLastAdded ? "is-new" : "";
         return `
-        <button class="recent-pill ${moveClass} ${item.symbol === state.activeTicker ? "active" : ""}" type="button" data-symbol="${item.symbol}" title="${item.name || item.symbol}">
+        <button class="recent-pill ${moveClass} ${freshClass} ${item.symbol === state.activeTicker ? "active" : ""}" type="button" data-symbol="${item.symbol}" title="${item.name || item.symbol}">
           <strong>${item.symbol}</strong>
           <span>${item.name || "Recent ticker"}</span>
           <em>${priceLabel}</em>
@@ -1252,6 +1239,13 @@ function renderRecentTickers() {
       selectActiveTicker(button.dataset.symbol);
     });
   });
+  if (state.recentLastAdded) {
+    window.clearTimeout(state.recentAddTimer);
+    state.recentAddTimer = window.setTimeout(() => {
+      state.recentLastAdded = "";
+      renderRecentTickers();
+    }, 900);
+  }
 }
 
 function renderWatchlist() {
@@ -1335,17 +1329,17 @@ function renderWatchlist() {
 
 function renderBanner() {
   const track = document.getElementById("headline-track");
-  const summary = document.getElementById("radar-summary");
   const hotspotNode = document.getElementById("radar-hotspots");
   const sourceNote = document.getElementById("radar-source-note");
+  const sentimentBox = document.getElementById("radar-sentiment-box");
   const floatNode = document.getElementById("radar-floats");
   const floatDetailNode = document.getElementById("radar-float-detail");
   const radarPanel = document.getElementById("market-radar");
   const popButton = document.getElementById("pop-radar-clouds");
+  const popLabel = document.getElementById("radar-cloud-toggle-label");
+  const footerNode = document.querySelector(".radar-footer");
   const radar = state.dashboard?.radar || {};
-  const floatItemsAll = buildRadarFloatItems(radar).filter((item) => !state.radarDismissedFloatIds.includes(item.id));
-  const maxFloats = floatNode ? Math.max(0, Math.min(4, Math.floor((floatNode.clientWidth || 0) / 172))) : 0;
-  const floatItems = state.radarFloatsCollapsed ? [] : floatItemsAll.slice(0, maxFloats);
+  const allLiveFloatItems = buildRadarFloatItems(radar);
   const headlines = radar.headlines?.length
     ? radar.headlines
     : radar.items?.length
@@ -1355,21 +1349,39 @@ function renderBanner() {
       : ["Live radar updates are loading."];
   const signature = headlines.join(" | ");
   const useStaticLoadingHeadline = headlines.length === 1 && headlines[0] === "Live radar updates are loading.";
-  const radarSignature = `${signature}::${(radar.summary || "").slice(0, 48)}::${state.dashboard?.radarUpdatedAt || ""}`;
+  const radarSignature = `${signature}::${state.dashboard?.radarUpdatedAt || ""}::${allLiveFloatItems.map((item) => item.id).join("|")}`;
   if (floatNode && floatNode.dataset.radarSignature !== radarSignature) {
-    state.radarDismissedFloatIds = [];
-    state.radarFloatPositions = {};
-    state.radarFloatOpenId = "";
-    state.radarHeadlineDetail = null;
-    state.radarFloatsCollapsed = false;
+    const previousIds = (floatNode.dataset.radarIds || "").split("|").filter(Boolean);
+    const nextIds = allLiveFloatItems.map((item) => item.id);
+    state.radarFreshFloatIds = nextIds.filter((id) => !previousIds.includes(id));
+    state.radarDismissedFloatIds = state.radarDismissedFloatIds.filter((id) => nextIds.includes(id) && !state.radarFreshFloatIds.includes(id));
+    state.radarFloatPositions = Object.fromEntries(
+      Object.entries(state.radarFloatPositions).filter(([id]) => nextIds.includes(id)),
+    );
+    if (state.radarFloatOpenId && !nextIds.includes(state.radarFloatOpenId)) {
+      state.radarFloatOpenId = "";
+    }
+    if (state.radarFreshFloatIds.length) {
+      state.radarDismissedFloatIds = state.radarDismissedFloatIds.filter((id) => !state.radarFreshFloatIds.includes(id));
+      state.radarFloatsCollapsed = false;
+    }
     floatNode.dataset.radarSignature = radarSignature;
+    floatNode.dataset.radarIds = nextIds.join("|");
   }
+  const floatItemsAll = allLiveFloatItems.filter((item) => !state.radarDismissedFloatIds.includes(item.id));
+  const floatSlots = floatNode ? buildRadarFloatSlots(floatNode, floatItemsAll.length) : [];
+  const floatItems = state.radarFloatsCollapsed ? [] : floatItemsAll.slice(0, floatSlots.length);
   if (radarPanel) {
     radarPanel.classList.toggle("floats-collapsed", state.radarFloatsCollapsed || floatItems.length === 0);
   }
   if (popButton) {
-    popButton.disabled = floatItems.length === 0;
-    popButton.classList.toggle("is-idle", floatItems.length === 0);
+    const hasClouds = floatItemsAll.length > 0;
+    popButton.disabled = !hasClouds;
+    popButton.classList.toggle("is-idle", !hasClouds);
+    popButton.setAttribute("aria-label", state.radarFloatsCollapsed ? "Bring back clouds" : "Hide clouds");
+  }
+  if (popLabel) {
+    popLabel.textContent = state.radarFloatsCollapsed ? "Bring clouds" : "Hide clouds";
   }
   if (track.dataset.signature !== signature || !track.children.length) {
     const lane = headlines
@@ -1387,62 +1399,43 @@ function renderBanner() {
         <div class="ticker-lane ticker-lane-b" aria-hidden="true">${lane}</div>
       `;
   }
-  summary.textContent = radar.summary || "Global event radar is loading.";
-
   const hotspots = radar.hotspots || [];
-  const activeRegions = new Set(hotspots.map((item) => item.region));
-  [
-    "north_america",
-    "south_america",
-    "europe",
-    "africa",
-    "middle_east",
-    "south_asia",
-    "east_asia",
-  ].forEach((region) => {
-    const node = document.getElementById(`hotspot-${region}`);
-    if (!node) return;
-    node.classList.toggle("active", activeRegions.has(region));
-  });
-  hotspotNode.classList.toggle("is-fallback", hotspots.length === 0);
-
-  hotspotNode.innerHTML = hotspots.length
-    ? hotspots
-        .map(
-          (item) => `
-            <div class="radar-hotspot-card">
-              <strong>${item.region.replace("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase())}</strong>
-              <p>${item.headline || "Market-sensitive developments detected."}</p>
-            </div>
-          `,
-        )
-        .join("")
-    : `
-      <div class="radar-hotspot-card">
-        <strong>Global scan</strong>
-        <p>${headlines[0] || "Latest cross-market developments are being gathered."}</p>
-      </div>
-      <div class="radar-hotspot-card">
-        <strong>Watching</strong>
-        <p>${headlines[1] || "Macro, geopolitical, and company-driven market impacts will appear here."}</p>
-      </div>
-    `;
+  if (hotspotNode) {
+    hotspotNode.innerHTML = "";
+    hotspotNode.hidden = true;
+  }
 
   const radarSources = [...new Set((radar.items || []).map((item) => extractDomainLabel(item.url)).filter(Boolean))].slice(0, 4);
   sourceNote.textContent = radarSources.length
     ? `Radar sources: ${radarSources.join(" • ")}`
     : "Radar sources: live event scan";
+  if (radarPanel && footerNode) {
+    const footerHeight = Math.ceil(footerNode.getBoundingClientRect().height || 36);
+    radarPanel.style.setProperty("--radar-footer-height", `${footerHeight}px`);
+  }
+  if (sentimentBox) {
+    const sentiment = radar.sentiment || { label: "Mixed", score: 0 };
+    const score = Number(sentiment.score || 0);
+    const scoreText = score > 0 ? `+${(score * 100).toFixed(0)}` : `${(score * 100).toFixed(0)}`;
+    const toneClass = score > 0.2 ? "positive" : score < -0.2 ? "negative" : "neutral";
+    sentimentBox.className = `radar-sentiment-box ${toneClass}`;
+    sentimentBox.innerHTML = `
+      <span>Radar sentiment</span>
+      <strong>${sentiment.label || "Mixed"}</strong>
+      <small>${scoreText} headline balance</small>
+    `;
+  }
 
   hydrateRadarFloatPositions(floatItems);
   if (floatNode) {
     floatNode.innerHTML = floatItems
       .map((item, index) => {
-        const pos = state.radarFloatPositions[item.id] || getDefaultRadarFloatSlots()[index] || getDefaultRadarFloatSlots()[0];
+        const pos = state.radarFloatPositions[item.id] || floatSlots[index] || getDefaultRadarFloatSlots()[0];
         const size = item.title.length > 82 ? "large" : item.title.length > 58 ? "medium" : "small";
         const active = state.radarFloatOpenId === item.id;
         return `
           <div
-            class="radar-float-chip radar-float-chip-${size} radar-float-shape-${index % 6} ${active ? "active" : ""}"
+            class="radar-float-chip radar-float-chip-${size} radar-float-shape-${index % 6} ${active ? "active" : ""} ${state.radarFreshFloatIds.includes(item.id) ? "forming" : ""}"
             data-radar-float="${item.id}"
             style="left:${pos.x}px; top:${pos.y}px; --float-delay:${index * 1.15}s;"
             title="${item.title}"
@@ -1453,13 +1446,13 @@ function renderBanner() {
             <i class="cloud-puff cloud-puff-a" aria-hidden="true"></i>
             <i class="cloud-puff cloud-puff-b" aria-hidden="true"></i>
             <i class="cloud-puff cloud-puff-c" aria-hidden="true"></i>
-            <span>${item.region}</span>
+            <span><label>${item.region}</label><b>${item.when || "Live"}</b></span>
             <strong>${item.bubble}</strong>
-            <p>${item.summary || item.title}</p>
+            ${item.summary ? `<p>${item.summary}</p>` : ""}
             ${
               item.url
                 ? `<a class="radar-float-link" data-radar-detail="true" href="${item.url}" target="_blank" rel="noreferrer">${item.cta || "View detail"}</a>`
-                : `<em>${item.cta || "View detail"}</em>`
+                : ""
             }
           </div>
         `;
@@ -1657,7 +1650,14 @@ function renderOverview() {
 
   document.getElementById("hero-ticker").textContent = `${active.symbol} · ${active.name}`;
   document.getElementById("hero-regime").textContent = active.regime;
-  document.getElementById("hero-price").textContent = formatCurrency(active.price, active.currency);
+  document.getElementById("hero-price").innerHTML = formatCurrency(active.price, active.currency)
+    .split("")
+    .map((char) => {
+      const cls = /\d/.test(char) ? "digit" : char === "." ? "sep decimal" : char.trim() ? "sep symbol" : "sep space";
+      const safe = char === " " ? "&nbsp;" : char;
+      return `<span class="price-flip ${cls}">${safe}</span>`;
+    })
+    .join("");
   const changeNode = document.getElementById("hero-change");
   changeNode.textContent = formatPercent(active.changePercent);
   changeNode.className = `hero-change ${active.changePercent >= 0 ? "positive" : "negative"}`;
@@ -1670,18 +1670,46 @@ function renderOverview() {
   document.getElementById("buy-sell-signal").textContent = recommendation.signal || "Balanced";
   document.getElementById("buy-sell-breakdown").textContent = `Buy ${recommendation.buy ?? 0}% · Hold ${recommendation.hold ?? 100}% · Sell ${recommendation.sell ?? 0}%`;
   document.getElementById("model-agreement-note").textContent = `${agreement.summary} Score ${Number(agreement.score || 0).toFixed(0)}/100.`;
+  const overviewMetaItems = [
+    {
+      label: active.exchange || active.region || "Global",
+      help: "Exchange or market venue. It tells you where the stock trades, which affects market hours, liquidity, and local rules.",
+    },
+    {
+      label: `${active.currency || "USD"} pricing`,
+      help: "Trading currency for this stock. We show it so price changes are interpreted in the stock’s home market denomination.",
+    },
+    {
+      label: active.marketState || "Live",
+      help: "Current market session state. It helps you judge whether price moves are happening during regular trading or outside it.",
+    },
+    {
+      label: `Vol ${formatCompactNumber(active.volume)}`,
+      help: "Trade volume for the current session. Higher volume usually means stronger participation behind the move.",
+    },
+    {
+      label: active.asOf ? new Date(active.asOf).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "Delayed",
+      help: "Last update timestamp for the active quote, so you can quickly tell how fresh the displayed market data is.",
+    },
+  ];
   document.getElementById("overview-meta").innerHTML = `
-    <span>${active.exchange || active.region || "Global"}</span>
-    <span>${active.currency || "USD"} pricing</span>
-    <span>${active.marketState || "Live"}</span>
-    <span>Vol ${formatCompactNumber(active.volume)}</span>
-    <span>${active.asOf ? new Date(active.asOf).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "Delayed"}</span>
+    ${overviewMetaItems
+      .map(
+        (item) => `<span class="overview-meta-pill" data-help="${item.help.replace(/"/g, "&quot;")}" tabindex="0">${item.label}</span>`,
+      )
+      .join("")}
   `;
   const quoteSource = document.getElementById("quote-source-note");
   const asOf = active.asOf ? new Date(active.asOf).toLocaleString() : "";
   quoteSource.textContent = asOf
     ? `Quote source: ${formatSourceLabel(active.dataSource)} • Updated ${asOf}`
     : `Quote source: ${formatSourceLabel(active.dataSource)}`;
+  const majorEvent = Boolean(
+    (active.eventFocus?.category && ["war", "deals", "partnerships", "layoffs"].includes(active.eventFocus.category))
+      || String(forecast.eventPressureLabel || "").toLowerCase() === "high"
+  );
+  document.getElementById("overview-spotlight")?.classList.toggle("major-event", majorEvent);
+  document.querySelector(".event-panel")?.classList.toggle("major-event", majorEvent);
 
   window.clearInterval(state.marketSessionTimer);
   const marketSessionNode = document.getElementById("market-session-strip");
@@ -2076,6 +2104,18 @@ function popAllRadarClouds() {
   }, 260);
 }
 
+function toggleRadarClouds() {
+  const liveIds = buildRadarFloatItems(state.dashboard?.radar || {}).map((item) => item.id);
+  if (!liveIds.length) return;
+  if (state.radarFloatsCollapsed) {
+    state.radarDismissedFloatIds = state.radarDismissedFloatIds.filter((id) => !liveIds.includes(id));
+    state.radarFloatsCollapsed = false;
+    renderBanner();
+    return;
+  }
+  popAllRadarClouds();
+}
+
 function startRadarRefresh() {
   window.clearInterval(state.radarTimer);
   state.radarTimer = window.setInterval(() => {
@@ -2142,6 +2182,11 @@ function selectActiveTicker(symbol, { refresh = true } = {}) {
   state.activeTicker = cleaned;
   if (changed) {
     primeActiveTickerSelection(cleaned);
+    const knownName =
+      state.dashboard?.watchlist?.find((item) => item.symbol === cleaned)?.name
+      || state.recentTickers.find((item) => item.symbol === cleaned)?.name
+      || "";
+    pushRecentTicker(cleaned, knownName);
   }
   persistWatchlist();
   renderWatchlist();
@@ -2351,7 +2396,7 @@ function bindEvents() {
     renderBoard();
   });
   document.getElementById("pop-radar-clouds").addEventListener("click", () => {
-    popAllRadarClouds();
+    toggleRadarClouds();
   });
   document.getElementById("save-settings").addEventListener("click", async (event) => {
     event.preventDefault();
