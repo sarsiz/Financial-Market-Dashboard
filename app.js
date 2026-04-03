@@ -1825,9 +1825,19 @@ function renderOverview() {
       `,
     )
     .join("");
+  const seenContextLabels = new Set();
   const macroMicroContext = []
-    .concat((state.dashboard?.radar?.macroFactors || []).slice(0, 3))
-    .concat((state.dashboard?.radar?.microFactors || []).slice(0, 3))
+    .concat(state.dashboard?.radar?.macroFactors || [])
+    .concat(state.dashboard?.radar?.microFactors || [])
+    .filter((item) => {
+      const label = String(item?.label || "").trim();
+      if (!label) return false;
+      if (/(^|\b)(s&p|nasdaq|dow|nifty|sensex)(\b|$)/i.test(label)) return false;
+      const key = label.toLowerCase();
+      if (seenContextLabels.has(key)) return false;
+      seenContextLabels.add(key);
+      return true;
+    })
     .slice(0, 4);
   const relationshipCards = active.relationshipCards || forecast.factors || [];
   document.getElementById("factor-map").innerHTML = `
