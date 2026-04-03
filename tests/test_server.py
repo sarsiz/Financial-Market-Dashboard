@@ -212,13 +212,87 @@ class ForecastAndLabTests(unittest.TestCase):
       server,
       "fetch_google_news_rss",
       return_value=[{"title": "Major partnership signed", "url": "https://example.com/story", "source": "example.com", "publishedAt": "2026-04-01T01:00:00+00:00"}],
+    ), mock.patch.object(
+      server,
+      "fetch_popular_rss_items",
+      return_value=[{"title": "BBC says partnership expands", "url": "https://example.com/bbc", "source": "BBC Business", "publishedAt": "2026-04-01T02:00:00+00:00"}],
     ), mock.patch.object(server, "duckduckgo_search", return_value=[]), mock.patch.object(server, "generate_local_llm_answer", return_value=None):
       payload = server.build_event_feed("partnerships", "ICICIBANK.NS")
 
     self.assertEqual(payload["category"], "partnerships")
     self.assertTrue(payload["asOf"])
-    self.assertEqual(payload["items"][0]["publishedAt"], "2026-04-01T01:00:00+00:00")
+    published_times = {item["publishedAt"] for item in payload["items"]}
+    self.assertIn("2026-04-01T01:00:00+00:00", published_times)
+    self.assertIn("2026-04-01T02:00:00+00:00", published_times)
     self.assertGreater(payload["items"][0]["significance"], 0)
+    self.assertEqual(len(payload["items"]), 2)
+
+  def test_build_event_feed_all_merges_categories_and_sorts_by_time(self):
+    def fake_google(query):
+      if "war news" in query:
+        return [{"title": "War update", "url": "https://example.com/war", "source": "example.com", "publishedAt": "2026-04-01T03:00:00+00:00"}]
+      if "business news" in query:
+        return [{"title": "Business update", "url": "https://example.com/business", "source": "example.com", "publishedAt": "2026-04-01T01:00:00+00:00"}]
+      return []
+
+    with mock.patch.object(server, "fetch_google_news_rss", side_effect=fake_google), mock.patch.object(
+      server,
+      "fetch_popular_rss_items",
+      return_value=[],
+    ), mock.patch.object(
+      server,
+      "duckduckgo_search",
+      return_value=[],
+    ), mock.patch.object(server, "generate_local_llm_answer", return_value=None):
+      payload = server.build_event_feed("all", "ICICIBANK.NS")
+
+    self.assertEqual(payload["category"], "all")
+    self.assertGreaterEqual(len(payload["items"]), 2)
+    self.assertEqual(payload["items"][0]["title"], "War update")
+    self.assertEqual(payload["items"][0]["category"], "war")
+    self.assertEqual(payload["items"][1]["category"], "business")
+
+  def test_filter_market_relevant_items_drops_local_crime_noise(self):
+    items = [
+      {"title": "City police investigate downtown robbery", "source": "Local News", "publishedAt": "2026-04-01T01:00:00+00:00"},
+      {"title": "Oil prices jump as sanctions raise shipping risk", "source": "Market Desk", "publishedAt": "2026-04-01T02:00:00+00:00"},
+    ]
+
+    filtered = server.filter_market_relevant_items(items, "world", "ICICIBANK.NS")
+
+    self.assertEqual(len(filtered), 1)
+    self.assertIn("Oil prices jump", filtered[0]["title"])
+
+  def test_radar_priority_prefers_fresher_market_relevant_story(self):
+    fresh = {
+      "title": "Oil jumps after sanctions raise shipping risk",
+      "source": "BBC Business",
+      "publishedAt": "2026-04-01T10:00:00+00:00",
+      "category": "world",
+    }
+    stale = {
+      "title": "Generic geopolitical essay",
+      "source": "Unknown Source",
+      "publishedAt": "2026-03-01T10:00:00+00:00",
+      "category": "world",
+    }
+
+    self.assertGreater(server.radar_priority_score(fresh, "ICICIBANK.NS"), server.radar_priority_score(stale, "ICICIBANK.NS"))
+
+  def test_fetch_popular_rss_items_merges_configured_category_feeds(self):
+    with mock.patch.object(
+      server,
+      "fetch_rss_feed",
+      side_effect=[
+        [{"title": "BBC business update", "url": "https://example.com/bbc", "source": "BBC Business", "publishedAt": "2026-04-01T00:00:00+00:00"}],
+        [{"title": "NPR business update", "url": "https://example.com/npr", "source": "NPR Business", "publishedAt": "2026-04-01T01:00:00+00:00"}],
+      ],
+    ):
+      items = server.fetch_popular_rss_items("business")
+
+    self.assertEqual(len(items), 2)
+    self.assertEqual(items[0]["source"], "BBC Business")
+    self.assertEqual(items[1]["source"], "NPR Business")
 
 
 class DashboardAssemblyTests(unittest.TestCase):

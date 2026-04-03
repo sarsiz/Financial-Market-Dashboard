@@ -50,6 +50,7 @@ FALLBACK_TICKERS = {
   "TCS.NS": {"name": "TCS", "basePrice": 4125.0, "currency": "INR", "exchange": "NSE", "beta": 0.81, "pe": 31.2},
   "INFY.NS": {"name": "Infosys", "basePrice": 1518.0, "currency": "INR", "exchange": "NSE", "beta": 0.88, "pe": 24.6},
   "HDFCBANK.NS": {"name": "HDFC Bank", "basePrice": 1528.0, "currency": "INR", "exchange": "NSE", "beta": 0.77, "pe": 19.4},
+  "SBIN.NS": {"name": "State Bank of India", "basePrice": 818.0, "currency": "INR", "exchange": "NSE", "beta": 0.92, "pe": 10.9, "aliases": ["SBI", "STATE BANK OF INDIA"]},
 }
 
 MARKET_SUFFIXES = {
@@ -198,6 +199,7 @@ FALLBACK_MACRO_PULSE = [
 ]
 
 EVENT_CATEGORY_QUERIES = {
+  "all": "latest market moving events world business war deals partnerships layoffs brands today",
   "business": "latest global business news markets earnings deals",
   "world": "latest world news geopolitics economy today",
   "war": "latest war news global conflict defense markets today",
@@ -205,6 +207,76 @@ EVENT_CATEGORY_QUERIES = {
   "partnerships": "latest company partnerships business strategic alliance today",
   "deals": "latest mergers acquisitions deals companies today",
   "brands": "latest brand launches campaigns retail consumer brands today",
+}
+
+POPULAR_RSS_FEEDS = {
+  "business": [
+    {"url": "https://feeds.bbci.co.uk/news/business/rss.xml", "source": "BBC Business"},
+    {"url": "https://www.npr.org/rss/rss.php?id=1006", "source": "NPR Business"},
+    {"url": "https://feeds.npr.org/1006/rss.xml", "source": "NPR Business"},
+    {"url": "https://rss.nytimes.com/services/xml/rss/nyt/Business.xml", "source": "NYT Business"},
+    {"url": "https://feeds.content.dowjones.io/public/rss/mw_topstories", "source": "MarketWatch Top Stories"},
+    {"url": "https://feeds.content.dowjones.io/public/rss/mw_marketpulse", "source": "MarketWatch MarketPulse"},
+    {"url": "https://economictimes.indiatimes.com/markets/rssfeeds/1977021501.cms", "source": "Economic Times Markets"},
+    {"url": "https://timesofindia.indiatimes.com/rssfeeds/1898055.cms", "source": "Times of India Business"},
+    {"url": "https://www.smh.com.au/rss/business.xml", "source": "Sydney Morning Herald Business"},
+    {"url": "https://www.abc.net.au/news/feed/51892/rss.xml", "source": "ABC Australia Business"},
+    {"url": "https://www.theguardian.com/business/rss", "source": "Guardian Business"},
+  ],
+  "world": [
+    {"url": "https://feeds.bbci.co.uk/news/world/rss.xml", "source": "BBC World"},
+    {"url": "https://www.npr.org/rss/rss.php?id=1004", "source": "NPR World"},
+    {"url": "https://feeds.npr.org/1004/rss.xml", "source": "NPR World"},
+    {"url": "https://rss.nytimes.com/services/xml/rss/nyt/World.xml", "source": "NYT World"},
+    {"url": "https://feeds.content.dowjones.io/public/rss/mw_topstories", "source": "MarketWatch Top Stories"},
+    {"url": "https://economictimes.indiatimes.com/news/rssfeedsdefault.cms", "source": "Economic Times News"},
+    {"url": "https://timesofindia.indiatimes.com/rssfeeds/296589292.cms", "source": "Times of India World"},
+    {"url": "https://www.smh.com.au/rss/world.xml", "source": "Sydney Morning Herald World"},
+    {"url": "https://www.abc.net.au/news/feed/51120/rss.xml", "source": "ABC Australia World"},
+    {"url": "https://www.theguardian.com/world/rss", "source": "Guardian World"},
+    {"url": "https://www.theguardian.com/us-news/rss", "source": "Guardian US"},
+  ],
+  "war": [
+    {"url": "https://feeds.bbci.co.uk/news/world/rss.xml", "source": "BBC World"},
+    {"url": "https://www.npr.org/rss/rss.php?id=1004", "source": "NPR World"},
+    {"url": "https://rss.nytimes.com/services/xml/rss/nyt/World.xml", "source": "NYT World"},
+    {"url": "https://timesofindia.indiatimes.com/rssfeeds/296589292.cms", "source": "Times of India World"},
+    {"url": "https://www.smh.com.au/rss/world.xml", "source": "Sydney Morning Herald World"},
+    {"url": "https://www.abc.net.au/news/feed/51120/rss.xml", "source": "ABC Australia World"},
+    {"url": "https://www.theguardian.com/world/rss", "source": "Guardian World"},
+  ],
+  "layoffs": [
+    {"url": "https://feeds.bbci.co.uk/news/business/rss.xml", "source": "BBC Business"},
+    {"url": "https://www.npr.org/rss/rss.php?id=1006", "source": "NPR Business"},
+    {"url": "https://rss.nytimes.com/services/xml/rss/nyt/Business.xml", "source": "NYT Business"},
+    {"url": "https://feeds.content.dowjones.io/public/rss/mw_marketpulse", "source": "MarketWatch MarketPulse"},
+    {"url": "https://economictimes.indiatimes.com/news/rssfeedsdefault.cms", "source": "Economic Times News"},
+    {"url": "https://www.theguardian.com/business/rss", "source": "Guardian Business"},
+  ],
+  "partnerships": [
+    {"url": "https://feeds.bbci.co.uk/news/business/rss.xml", "source": "BBC Business"},
+    {"url": "https://www.npr.org/rss/rss.php?id=1006", "source": "NPR Business"},
+    {"url": "https://rss.nytimes.com/services/xml/rss/nyt/Business.xml", "source": "NYT Business"},
+    {"url": "https://feeds.content.dowjones.io/public/rss/mw_marketpulse", "source": "MarketWatch MarketPulse"},
+    {"url": "https://economictimes.indiatimes.com/markets/rssfeeds/1977021501.cms", "source": "Economic Times Markets"},
+    {"url": "https://www.theguardian.com/business/rss", "source": "Guardian Business"},
+  ],
+  "deals": [
+    {"url": "https://feeds.bbci.co.uk/news/business/rss.xml", "source": "BBC Business"},
+    {"url": "https://www.npr.org/rss/rss.php?id=1006", "source": "NPR Business"},
+    {"url": "https://rss.nytimes.com/services/xml/rss/nyt/Business.xml", "source": "NYT Business"},
+    {"url": "https://feeds.content.dowjones.io/public/rss/mw_marketpulse", "source": "MarketWatch MarketPulse"},
+    {"url": "https://economictimes.indiatimes.com/markets/rssfeeds/1977021501.cms", "source": "Economic Times Markets"},
+    {"url": "https://www.theguardian.com/business/rss", "source": "Guardian Business"},
+  ],
+  "brands": [
+    {"url": "https://feeds.bbci.co.uk/news/business/rss.xml", "source": "BBC Business"},
+    {"url": "https://www.npr.org/rss/rss.php?id=1006", "source": "NPR Business"},
+    {"url": "https://rss.nytimes.com/services/xml/rss/nyt/Business.xml", "source": "NYT Business"},
+    {"url": "https://feeds.content.dowjones.io/public/rss/mw_marketpulse", "source": "MarketWatch MarketPulse"},
+    {"url": "https://timesofindia.indiatimes.com/rssfeeds/1898055.cms", "source": "Times of India Business"},
+    {"url": "https://www.theguardian.com/business/rss", "source": "Guardian Business"},
+  ],
 }
 
 RADAR_REGION_KEYWORDS = {
@@ -940,14 +1012,23 @@ def local_search_results(query: str) -> list[dict]:
   cleaned = query.strip().upper()
   if not cleaned:
     return []
+  normalized_query = re.sub(r"[^A-Z0-9]+", " ", cleaned).strip()
   results = []
   for symbol, meta in FALLBACK_TICKERS.items():
     normalized_name = meta["name"].upper()
+    normalized_name_compact = re.sub(r"[^A-Z0-9]+", " ", normalized_name).strip()
+    aliases = [alias.upper() for alias in meta.get("aliases", [])]
+    alias_compact = [re.sub(r"[^A-Z0-9]+", " ", alias).strip() for alias in aliases]
     if (
       cleaned in symbol
       or cleaned in normalized_name
+      or normalized_query in normalized_name_compact
+      or cleaned in aliases
       or cleaned == symbol.replace(".NS", "")
       or cleaned == symbol.replace(".BO", "")
+      or any(cleaned in alias for alias in aliases)
+      or any(normalized_query in alias for alias in alias_compact)
+      or normalized_name_compact.startswith(normalized_query)
     ):
       results.append(
         {
@@ -978,21 +1059,31 @@ def ranked_results(query: str, remote_results: list[dict]) -> list[dict]:
   for item in remote_results:
     push(item)
 
-  ordered.sort(
-    key=lambda item: (
-      0 if item["symbol"].upper() == cleaned else 1,
-      0 if item["symbol"].upper() == f"{cleaned}.NS" else 1,
-      0 if item.get("exchange") == "NSE" else 1,
-      item["symbol"],
+  def rank_tuple(item: dict) -> tuple:
+    symbol = item["symbol"].upper()
+    name = (item.get("name") or "").upper()
+    exchange = (item.get("exchange") or "")
+    normalized_name = re.sub(r"[^A-Z0-9]+", " ", name).strip()
+    return (
+      0 if symbol == cleaned else 1,
+      0 if symbol == f"{cleaned}.NS" else 1,
+      0 if symbol.startswith(cleaned) else 1,
+      0 if normalized_name.startswith(cleaned) else 1,
+      0 if cleaned in normalized_name else 1,
+      0 if exchange == "NSE" else 1,
+      symbol,
     )
+
+  ordered.sort(
+    key=rank_tuple
   )
-  return ordered[:10]
+  return ordered[:16]
 
 
 def fetch_yahoo_search(query: str) -> list[dict]:
   quoted = urllib.parse.quote(query)
   payload = json_get(
-    f"https://query1.finance.yahoo.com/v1/finance/search?q={quoted}&quotesCount=10&newsCount=0"
+    f"https://query1.finance.yahoo.com/v1/finance/search?q={quoted}&quotesCount=20&newsCount=0"
   )
   results = []
   for item in (payload or {}).get("quotes", []):
@@ -1080,6 +1171,150 @@ def fetch_google_news_rss(query: str) -> list[dict]:
     if len(items) >= 12:
       break
   return items
+
+
+def fetch_rss_feed(url: str, source_hint: str = "", limit: int = 8) -> list[dict]:
+  xml_text = text_get(url)
+  if not xml_text:
+    return []
+  try:
+    root = ET.fromstring(xml_text)
+  except ET.ParseError:
+    return []
+
+  items = []
+  channel_title = ""
+  channel = root.find("channel")
+  if channel is not None:
+    channel_title = (channel.findtext("title") or "").strip()
+  for item in root.findall(".//item"):
+    title = (item.findtext("title") or "").strip()
+    link = (item.findtext("link") or "").strip()
+    published = parse_publish_time((item.findtext("pubDate") or "").strip())
+    source = source_hint or channel_title or (urllib.parse.urlparse(link).netloc.replace("www.", "") if link else "")
+    if title and link:
+      items.append(
+        {
+          "title": title,
+          "url": link,
+          "source": source,
+          "publishedAt": published,
+        }
+      )
+    if len(items) >= limit:
+      break
+  return items
+
+
+def fetch_popular_rss_items(category: str) -> list[dict]:
+  feeds = POPULAR_RSS_FEEDS.get(category, [])
+  if not feeds:
+    return []
+
+  with ThreadPoolExecutor(max_workers=min(6, len(feeds))) as executor:
+    futures = [executor.submit(fetch_rss_feed, feed["url"], feed.get("source", ""), 4) for feed in feeds]
+
+  results: list[dict] = []
+  for future in futures:
+    try:
+      results.extend(future.result())
+    except Exception:
+      continue
+  return results
+
+
+MARKET_RELEVANT_TERMS = {
+  "market", "markets", "stock", "stocks", "share", "shares", "equity", "equities", "index", "indexes",
+  "earnings", "revenue", "profit", "margin", "guidance", "forecast", "inflation", "rates", "yield", "bond",
+  "oil", "gold", "currency", "forex", "trade", "tariff", "sanction", "war", "ceasefire", "attack", "conflict",
+  "deal", "deals", "partnership", "merger", "acquisition", "layoff", "restructuring", "policy", "regulation",
+  "central bank", "fed", "rbi", "ecb", "boj", "economy", "economic", "gdp", "exports", "imports", "demand",
+  "supply", "bank", "banking", "credit", "pharma", "energy", "telecom", "technology", "semiconductor",
+  "automaker", "manufacturing", "shipping", "consumer", "retail", "brand", "ipo", "valuation", "risk",
+}
+
+MARKET_IRRELEVANT_TERMS = {
+  "murder", "homicide", "shooting", "stab", "stabbing", "robbery", "burglary", "police", "arrest",
+  "crime", "criminal", "court", "trial", "missing person", "firefighter", "weather alert", "storm warning",
+  "traffic", "road closure", "lottery", "celebrity", "movie review", "sports score", "festival", "concert",
+  "school board", "obituary", "wedding", "entertainment gossip", "sexual assault", "mosquito", "bite risk",
+}
+
+RADAR_SOURCE_BOOSTS = {
+  "bbc business": 4,
+  "bbc world": 4,
+  "npr business": 4,
+  "npr world": 4,
+  "nyt business": 5,
+  "nyt world": 5,
+  "marketwatch top stories": 5,
+  "marketwatch marketpulse": 5,
+  "economic times markets": 4,
+  "economic times news": 3,
+  "times of india business": 3,
+  "times of india world": 3,
+  "guardian business": 4,
+  "guardian world": 4,
+  "guardian us": 3,
+  "cnbc": 4,
+  "reuters": 6,
+  "bloomberg": 6,
+}
+
+
+def market_relevance_score(item: dict, category: str, symbol: str | None = None) -> int:
+  text = f"{item.get('title', '')} {item.get('source', '')}".lower()
+  score = 0
+  for term in MARKET_RELEVANT_TERMS:
+    if term in text:
+      score += 2
+  for term in MARKET_IRRELEVANT_TERMS:
+    if term in text:
+      score -= 5
+  if category in {"business", "deals", "partnerships", "layoffs", "brands"}:
+    score += 2
+  if category in {"world", "war"}:
+    score += sum(term in text for term in {"oil", "shipping", "sanction", "tariff", "rates", "inflation", "energy"})
+  if symbol:
+    meta = fallback_meta(symbol)
+    company_terms = {
+      meta.get("name", "").lower(),
+      symbol.lower(),
+      meta.get("exchange", "").lower(),
+      meta.get("sector", "").lower(),
+      meta.get("industry", "").lower(),
+    }
+    score += sum(bool(term and term in text) for term in company_terms) * 2
+  return score
+
+
+def filter_market_relevant_items(items: list[dict], category: str, symbol: str | None = None) -> list[dict]:
+  threshold = 2 if category == "all" else 1
+  filtered = [item for item in items if market_relevance_score(item, item.get("category") or category, symbol) >= threshold]
+  return filtered or items
+
+
+def item_age_hours(item: dict) -> float:
+  published_at = item.get("publishedAt")
+  if not published_at:
+    return 9999.0
+  try:
+    published = datetime.fromisoformat(published_at)
+  except ValueError:
+    return 9999.0
+  if published.tzinfo is None:
+    published = published.replace(tzinfo=timezone.utc)
+  return max(0.0, (datetime.now(timezone.utc) - published.astimezone(timezone.utc)).total_seconds() / 3600)
+
+
+def radar_priority_score(item: dict, symbol: str | None = None) -> float:
+  source = (item.get("source") or "").lower()
+  relevance = market_relevance_score(item, item.get("category") or "world", symbol)
+  significance = event_significance_score(item, item.get("category") or "world", symbol)
+  age_hours = item_age_hours(item)
+  freshness = 6 if age_hours <= 6 else 4 if age_hours <= 24 else 2 if age_hours <= 72 else -4
+  source_boost = sum(boost for key, boost in RADAR_SOURCE_BOOSTS.items() if key in source)
+  return (relevance * 2.2) + (significance * 1.8) + freshness + source_boost
 
 
 def event_significance_score(item: dict, category: str, symbol: str | None = None) -> int:
@@ -1222,28 +1457,63 @@ def build_event_feed(category: str, symbol: str | None = None, keyword: str | No
   normalized = (category or "business").strip().lower()
   if normalized not in EVENT_CATEGORY_QUERIES:
     normalized = "business"
+  event_categories = [key for key in EVENT_CATEGORY_QUERIES.keys() if key != "all"]
   symbol_query = ""
   if symbol:
     symbol_meta = fallback_meta(symbol)
     symbol_query = f" {symbol_meta['name']} {symbol_meta['exchange']}"
   query = (keyword or "").strip() or f"{EVENT_CATEGORY_QUERIES[normalized]}{symbol_query}"
-  rss_results = fetch_google_news_rss(query)
-  search_results = duckduckgo_search(query)
-  results = merge_event_items(rss_results, search_results)
+  results = []
+
+  if normalized == "all":
+    with ThreadPoolExecutor(max_workers=8) as executor:
+      future_map = {
+        ("search", "all"): executor.submit(duckduckgo_search, query),
+      }
+      for category_key in event_categories:
+        category_query = f"{EVENT_CATEGORY_QUERIES[category_key]}{symbol_query}"
+        future_map[("google", category_key)] = executor.submit(fetch_google_news_rss, category_query)
+        future_map[("popular", category_key)] = executor.submit(fetch_popular_rss_items, category_key)
+
+      for (source_type, category_key), future in future_map.items():
+        try:
+          fetched = future.result()
+        except Exception:
+          continue
+        if source_type == "search":
+          enriched = [{**item, "category": item.get("category") or "all"} for item in fetched]
+        else:
+          enriched = [{**item, "category": category_key} for item in fetched]
+        results = merge_event_items(results, enriched)
+  else:
+    with ThreadPoolExecutor(max_workers=3) as executor:
+      google_future = executor.submit(fetch_google_news_rss, query)
+      popular_future = executor.submit(fetch_popular_rss_items, normalized)
+      search_future = executor.submit(duckduckgo_search, query)
+      rss_results = [{**item, "category": normalized} for item in google_future.result()]
+      popular_results = [{**item, "category": normalized} for item in popular_future.result()]
+      search_results = [{**item, "category": normalized} for item in search_future.result()]
+    results = merge_event_items(rss_results, popular_results, search_results)
 
   titles = [item.get("title", "") for item in results if item.get("title")]
   if symbol and normalized in {"partnerships", "deals", "brands", "layoffs"}:
     company_meta = fallback_meta(symbol)
     company_query = f"{company_meta['name']} {normalized} latest news"
-    company_results = merge_event_items(fetch_google_news_rss(company_query), duckduckgo_search(company_query))
+    with ThreadPoolExecutor(max_workers=2) as executor:
+      company_google = executor.submit(fetch_google_news_rss, company_query)
+      company_search = executor.submit(duckduckgo_search, company_query)
+      company_results = merge_event_items(company_google.result(), company_search.result())
     results = merge_event_items(results, company_results)
     titles = [item.get("title", "") for item in results if item.get("title")]
+
+  results = filter_market_relevant_items(results, normalized, symbol)
 
   results = sorted(
     results,
     key=lambda item: (
-      event_significance_score(item, normalized, symbol),
+      market_relevance_score(item, item.get("category") or normalized, symbol),
       item.get("publishedAt") or "",
+      event_significance_score(item, item.get("category") or normalized, symbol),
     ),
     reverse=True,
   )[:10]
@@ -1273,14 +1543,15 @@ def build_event_feed(category: str, symbol: str | None = None, keyword: str | No
   structured_items = []
   for item in results[:8]:
     url = item.get("url", "")
+    item_category = item.get("category") or normalized
     structured_items.append(
       {
         "title": item.get("title", "Update"),
         "url": url,
         "source": item.get("source") or (urllib.parse.urlparse(url).netloc.replace("www.", "") if url else ""),
-        "category": normalized,
+        "category": item_category,
         "publishedAt": item.get("publishedAt"),
-        "significance": event_significance_score(item, normalized, symbol),
+        "significance": event_significance_score(item, item_category, symbol),
       }
     )
 
@@ -1385,26 +1656,34 @@ def infer_radar_hotspots(items: list[dict]) -> list[dict]:
 
 
 def build_market_radar(symbol: str | None = None) -> dict:
-  queries = [
-    EVENT_CATEGORY_QUERIES["world"],
-    EVENT_CATEGORY_QUERIES["war"],
-    EVENT_CATEGORY_QUERIES["business"],
-  ]
-  if symbol:
-    company = fallback_meta(symbol)
-    queries.append(f"{company['name']} latest news {company['exchange']}")
+  queries = [EVENT_CATEGORY_QUERIES["world"], EVENT_CATEGORY_QUERIES["war"], EVENT_CATEGORY_QUERIES["business"]]
+  with ThreadPoolExecutor(max_workers=5) as executor:
+    future_map = {
+      "world_google": executor.submit(fetch_google_news_rss, EVENT_CATEGORY_QUERIES["world"]),
+      "war_google": executor.submit(fetch_google_news_rss, EVENT_CATEGORY_QUERIES["war"]),
+      "business_google": executor.submit(fetch_google_news_rss, EVENT_CATEGORY_QUERIES["business"]),
+      "world_popular": executor.submit(fetch_popular_rss_items, "world"),
+      "business_popular": executor.submit(fetch_popular_rss_items, "business"),
+    }
+    if symbol:
+      company = fallback_meta(symbol)
+      queries.append(f"{company['name']} latest news {company['exchange']}")
+      future_map["company_google"] = executor.submit(fetch_google_news_rss, queries[-1])
 
-  items: list[dict] = []
-  for query in queries:
-    items.extend(duckduckgo_search(query))
-  unique_items = []
-  seen_urls = set()
-  for item in items:
-    url = item.get("url")
-    if not url or url in seen_urls:
-      continue
-    seen_urls.add(url)
-    unique_items.append(item)
+    items: list[dict] = []
+    for future in future_map.values():
+      try:
+        items.extend(future.result())
+      except Exception:
+        continue
+
+  unique_items = filter_market_relevant_items(merge_event_items(items), "world", symbol)
+  unique_items = [
+    item
+    for item in unique_items
+    if item_age_hours(item) <= 96 or radar_priority_score(item, symbol) >= 20
+  ]
+  unique_items = sorted(unique_items, key=lambda item: radar_priority_score(item, symbol), reverse=True)[:8]
 
   hotspots = infer_radar_hotspots(unique_items)
   titles = [item.get("title", "") for item in unique_items[:6] if item.get("title")]
@@ -2500,6 +2779,16 @@ def build_dashboard(symbols: list[str], active: str | None, chart_range: str = "
   }
 
 
+def build_radar_payload(symbol: str | None = None) -> dict:
+  radar = build_market_radar(symbol)
+  return {
+    "updatedAt": datetime.now(timezone.utc).isoformat(),
+    "symbol": symbol or "",
+    "radar": radar,
+    "headlines": list(dict.fromkeys(radar.get("headlines") or []))[:6],
+  }
+
+
 def build_live_quotes(symbols: list[str], active: str | None) -> dict:
   cleaned = [symbol.upper() for symbol in symbols if symbol]
   if not cleaned:
@@ -2549,6 +2838,19 @@ def build_live_quotes(symbols: list[str], active: str | None) -> dict:
   }
 
 
+def build_overview_payload(symbols: list[str], active: str | None) -> dict:
+  payload = build_live_quotes(symbols, active)
+  active_item = payload.get("active") or {}
+  exchange = active_item.get("exchange") or active_item.get("symbol") or "GLOBAL"
+  market_state = active_item.get("marketState") or "REGULAR"
+  payload["active"] = {
+    **active_item,
+    "marketSession": build_market_session(exchange, exchange, market_state),
+    "regime": "Refreshing active view",
+  }
+  return payload
+
+
 class FinancialBoardHandler(BaseHTTPRequestHandler):
   def do_GET(self) -> None:
     parsed = urllib.parse.urlparse(self.path)
@@ -2578,6 +2880,10 @@ class FinancialBoardHandler(BaseHTTPRequestHandler):
       symbol = ((params.get("symbol") or [""])[0] or "").upper() or None
       keyword = (params.get("q") or [""])[0]
       return self.send_json(build_event_feed(category, symbol, keyword))
+    if parsed.path == "/api/radar":
+      params = urllib.parse.parse_qs(parsed.query)
+      symbol = ((params.get("symbol") or [""])[0] or "").upper() or None
+      return self.send_json(build_radar_payload(symbol))
     if parsed.path == "/api/search":
       params = urllib.parse.parse_qs(parsed.query)
       query = (params.get("q") or [""])[0].strip()
@@ -2592,6 +2898,11 @@ class FinancialBoardHandler(BaseHTTPRequestHandler):
           }
         ]
       return self.send_json({"results": results})
+    if parsed.path == "/api/overview":
+      params = urllib.parse.parse_qs(parsed.query)
+      symbols = [item.upper() for item in ((params.get("symbols") or [""])[0].split(",")) if item]
+      active = ((params.get("active") or [""])[0] or "").upper() or None
+      return self.send_json(build_overview_payload(symbols, active))
     if parsed.path == "/api/stream":
       params = urllib.parse.parse_qs(parsed.query)
       symbols = [item for item in ((params.get("symbols") or [""])[0].split(",")) if item]

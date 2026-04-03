@@ -29,7 +29,12 @@ This platform is built as a lightweight full-stack app with a browser client and
 - forecasting and model-lab outputs are computed on the backend so the browser stays fast and thin
 - the client now renders in stages, so the active quote and overview paint first while slower Academy and event explainers fill in afterward
 - first load is optimized so the dashboard request starts immediately, while presets, settings, saved lists, and deeper explainers stream in after the first useful paint
+- the browser now hits a lightweight overview endpoint first, so watchlist quotes and the active overview can paint before the heavier full dashboard finishes
 - event flow is now timestamp-aware and significance-ranked, so important recent and prior events remain visible with source and publish time
+- market radar has its own refresh path and now auto-refreshes every 15 minutes without waiting for the full dashboard refresh
+- market radar surfaces multiple floating event clouds from live news items, with in-place expansion on click and intentional long-press drag instead of accidental pickup
+- the top watch overview can be compacted away with a user toggle, and radar clouds can be popped together so the panel shrinks upward when you want a denser layout
+- news retrieval now blends Google News RSS with popular publisher RSS feeds like BBC and NPR, then dedupes and ranks them server-side
 - large charts now carry timestamp-aware history series, axis labels, and hover inspection instead of only raw close arrays
 - local-LLM features are pinned to `Bonsai-8B-1bit`, even if another model name is saved in config, to keep inference lighter and more predictable
 
@@ -40,7 +45,7 @@ flowchart LR
   A["Browser UI<br/>index.html / styles.css / app.js"] --> A1["Progressive Boot<br/>core quote first, deferred academy/events"]
   A1 --> B["Python App Server<br/>server.py"]
   B --> C["Quote + History Adapters<br/>Yahoo / Google Finance fallback / Alpha Vantage"]
-  B --> D["News + Event Retrieval<br/>Google News RSS / RSS / search / ranking"]
+  B --> D["News + Event Retrieval<br/>Google News RSS / BBC + NPR RSS / search / ranking"]
   B --> E["Forecast + Backtest Engine<br/>classic factors / modern overlay / validation"]
   B --> F["Local Storage Layer<br/>SQLite watchlists + history cache"]
   B --> G["Local LLM Integration<br/>Bonsai-8B-1bit via Ollama-compatible endpoint"]
@@ -68,6 +73,7 @@ The current suite covers:
 - backend history caching and fallback behavior
 - dashboard assembly and model-lab payload shape
 - timestamped and significance-ranked event feed responses
+- multi-source RSS aggregation for event and radar feeds
 - local LLM config pinning to `Bonsai-8B-1bit`
 - recommendation and backtest regression checks
 - frontend HTML and JavaScript contract checks for the main dashboard panels and tabs
@@ -86,6 +92,7 @@ The current suite covers:
 - teach the active ticker through classic quant formulas such as momentum, z-score, volatility, volume ratio, beta, valuation, and drawdown inside Academy
 - enrich Academy with ticker-specific explainers grounded on live market state plus web search results and optional local-LLM summarization
 - rank and timestamp event flow items so major catalysts remain visible with source, publish time, and impact score
+- blend popular RSS feeds into radar and event flow so the news layer updates with broader publisher coverage
 - save and reload watchlists through SQLite
 
 ## Coverage notes
@@ -118,6 +125,7 @@ This project keeps provider calls on the server side so:
 - `POST /api/config`
 - `GET /api/academy?symbol=ICICIBANK.NS`
 - `GET /api/events?category=world&symbol=ICICIBANK.NS`
+- `GET /api/overview?symbols=ICICIBANK.NS,AAPL&active=AAPL`
 - `GET /api/presets`
 - `GET /api/search?q=AAPL`
 - `GET /api/watchlists`
