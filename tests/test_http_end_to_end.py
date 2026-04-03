@@ -92,6 +92,43 @@ class HttpRouteTests(unittest.TestCase):
     self.assertTrue(events["asOf"])
     self.assertEqual(events["items"][0]["publishedAt"], "2026-04-02T01:00:00+00:00")
 
+  def test_radar_route_returns_radar_payload(self):
+    radar_payload = {
+      "updatedAt": "2026-04-02T00:00:00+00:00",
+      "symbol": "ICICIBANK.NS",
+      "radar": {"summary": "Radar summary", "headlines": ["Headline one"], "hotspots": [], "items": []},
+      "headlines": ["Headline one"],
+    }
+
+    with mock.patch.object(server, "build_radar_payload", return_value=radar_payload):
+      radar = self.json_get("/api/radar?symbol=ICICIBANK.NS")
+
+    self.assertEqual(radar["symbol"], "ICICIBANK.NS")
+    self.assertEqual(radar["radar"]["summary"], "Radar summary")
+
+  def test_overview_route_returns_fast_payload(self):
+    overview_payload = {
+      "updatedAt": "2026-04-02T00:00:00+00:00",
+      "watchlist": [{"symbol": "AAPL", "price": 210.12, "changePercent": 0.5, "currency": "USD", "exchange": "NASDAQ", "volume": 1000}],
+      "active": {
+        "symbol": "AAPL",
+        "name": "Apple",
+        "price": 210.12,
+        "changePercent": 0.5,
+        "currency": "USD",
+        "exchange": "NASDAQ",
+        "marketState": "REGULAR",
+        "marketSession": {"status": "Open", "transitionLabel": "close", "timezone": "America/New_York"},
+        "regime": "Refreshing active view",
+      },
+    }
+
+    with mock.patch.object(server, "build_overview_payload", return_value=overview_payload):
+      overview = self.json_get("/api/overview?symbols=AAPL&active=AAPL")
+
+    self.assertEqual(overview["active"]["symbol"], "AAPL")
+    self.assertEqual(overview["active"]["marketSession"]["timezone"], "America/New_York")
+
 
 if __name__ == "__main__":
   unittest.main()

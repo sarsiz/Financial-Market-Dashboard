@@ -5,6 +5,7 @@ const STORAGE_KEYS = {
   chartRange: "financial-board-chart-range",
   chartFeatures: "financial-board-chart-features",
   eventCategory: "financial-board-event-category",
+  boardHidden: "financial-board-market-board-hidden",
 };
 
 const RESEARCH_REFERENCES = [
@@ -136,12 +137,23 @@ const state = {
   alerts: [],
   alertCooldowns: {},
   radarFloatOpenId: "",
+  radarHeadlineDetail: null,
+  radarFloatPositions: {},
+  radarDismissedFloatIds: [],
+  radarFloatDrag: null,
   marketSessionTimer: null,
   dashboardRequestId: 0,
+  overviewRequestId: 0,
   academyRequestId: 0,
+  radarRequestId: 0,
   academyDetail: null,
   academyCache: {},
   bootReady: false,
+  radarTimer: null,
+  radarGlobalPointerCleanupBound: false,
+  boardHidden: localStorage.getItem(STORAGE_KEYS.boardHidden) === "1",
+  radarFloatsCollapsed: false,
+  eventCategoryPinned: false,
 };
 
 if (state.watchlist.length === 0) {
@@ -184,6 +196,7 @@ function persistWatchlist() {
   localStorage.setItem(STORAGE_KEYS.chartRange, state.chartRange);
   localStorage.setItem(STORAGE_KEYS.chartFeatures, JSON.stringify(state.chartFeatures));
   localStorage.setItem(STORAGE_KEYS.eventCategory, state.eventCategory);
+  localStorage.setItem(STORAGE_KEYS.boardHidden, state.boardHidden ? "1" : "0");
 }
 
 function pushRecentTicker(symbol, name = "") {
@@ -312,11 +325,91 @@ function shortenHeadline(text, words = 5) {
   return `${parts.slice(0, words).join(" ")}...`;
 }
 
+const CLIENT_MARKET_SESSION_RULES = [
+  { matches: ["NSE", "BSE", "INDIA"], timeZone: "Asia/Kolkata", open: [9, 15], close: [15, 30], hoursLabel: "09:15-15:30 IST" },
+  { matches: ["NASDAQ", "NYSE", "US"], timeZone: "America/New_York", open: [9, 30], close: [16, 0], hoursLabel: "09:30-16:00 ET" },
+  { matches: ["LSE", "LONDON"], timeZone: "Europe/London", open: [8, 0], close: [16, 30], hoursLabel: "08:00-16:30 UK" },
+  { matches: ["ASX", "AUSTRALIA"], timeZone: "Australia/Sydney", open: [10, 0], close: [16, 0], hoursLabel: "10:00-16:00 AEST/AEDT" },
+  { matches: ["JPX", "TSE", "TOKYO"], timeZone: "Asia/Tokyo", open: [9, 0], close: [15, 0], hoursLabel: "09:00-15:00 JST" },
+];
+
+function getZonedDateParts(timeZone) {
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    weekday: "short",
+    hour12: false,
+  });
+  return formatter.formatToParts(new Date()).reduce((acc, part) => {
+    if (part.type !== "literal") acc[part.type] = part.value;
+    return acc;
+  }, {});
+}
+
+function buildClientMarketSession(exchange, marketState = "") {
+  const exchangeLabel = String(exchange || "").toUpperCase();
+  const rule = CLIENT_MARKET_SESSION_RULES.find((item) => item.matches.some((label) => exchangeLabel.includes(label)));
+  if (!rule) {
+    return {
+      status: marketState === "REGULAR" ? "Open" : "Closed",
+      isOpen: marketState === "REGULAR",
+      transitionLabel: marketState === "REGULAR" ? "close" : "open",
+      nextTransitionAt: null,
+      hoursLabel: "Hours unavailable",
+      timezone: "UTC",
+    };
+  }
+
+  const parts = getZonedDateParts(rule.timeZone);
+  const zonedNow = new Date(`${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}`);
+  const weekday = parts.weekday || "Mon";
+  const openTime = new Date(zonedNow);
+  openTime.setHours(rule.open[0], rule.open[1], 0, 0);
+  const closeTime = new Date(zonedNow);
+  closeTime.setHours(rule.close[0], rule.close[1], 0, 0);
+  const isWeekend = weekday === "Sat" || weekday === "Sun";
+
+  let isOpen = !isWeekend && zonedNow >= openTime && zonedNow < closeTime;
+  let transitionLabel = isOpen ? "close" : "open";
+  let nextTransitionLocal = new Date(zonedNow);
+
+  if (isWeekend) {
+    const daysToMonday = weekday === "Sat" ? 2 : 1;
+    nextTransitionLocal.setDate(nextTransitionLocal.getDate() + daysToMonday);
+    nextTransitionLocal.setHours(rule.open[0], rule.open[1], 0, 0);
+    isOpen = false;
+  } else if (isOpen) {
+    nextTransitionLocal = closeTime;
+  } else if (zonedNow < openTime) {
+    nextTransitionLocal = openTime;
+  } else {
+    nextTransitionLocal.setDate(nextTransitionLocal.getDate() + 1);
+    nextTransitionLocal.setHours(rule.open[0], rule.open[1], 0, 0);
+    const nextDay = nextTransitionLocal.getDay();
+    if (nextDay === 6) nextTransitionLocal.setDate(nextTransitionLocal.getDate() + 2);
+    if (nextDay === 0) nextTransitionLocal.setDate(nextTransitionLocal.getDate() + 1);
+  }
+
+  return {
+    status: isOpen ? "Open" : "Closed",
+    isOpen,
+    transitionLabel,
+    nextTransitionAt: new Date(Date.now() + (nextTransitionLocal.getTime() - zonedNow.getTime())).toISOString(),
+    hoursLabel: rule.hoursLabel,
+    timezone: rule.timeZone,
+  };
+}
+
 function buildRadarFloatItems(radar = {}) {
   const items = radar.items || [];
   const hotspots = radar.hotspots || [];
   const fromItems = items
-    .slice(0, 3)
+    .slice(0, 6)
     .map((item, index) => ({
       id: item.url || `radar-float-item-${index}`,
       title: item.title || "Market event",
@@ -324,6 +417,8 @@ function buildRadarFloatItems(radar = {}) {
       source: extractDomainLabel(item.url) || "Live scan",
       region: formatRegionLabel(hotspots[index]?.region || "world"),
       bubble: shortenHeadline(item.title || "Market event", 4),
+      summary: `${formatEventTime(item.publishedAt)} • ${(item.source || extractDomainLabel(item.url) || "Live scan")}`.trim(),
+      cta: item.url ? "View full" : "View detail",
     }));
   if (fromItems.length) {
     return fromItems;
@@ -331,7 +426,7 @@ function buildRadarFloatItems(radar = {}) {
 
   const fallbackHeadlines = (radar.headlines || [])
     .filter(Boolean)
-    .slice(0, 3)
+    .slice(0, 6)
     .map((headline, index) => ({
       id: `radar-float-headline-${index}`,
       title: headline,
@@ -339,19 +434,317 @@ function buildRadarFloatItems(radar = {}) {
       source: "Radar brief",
       region: formatRegionLabel(hotspots[index]?.region || "world"),
       bubble: shortenHeadline(headline, 4),
+      summary: "Live radar headline",
+      cta: "View detail",
     }));
   if (fallbackHeadlines.length) {
     return fallbackHeadlines;
   }
 
-  return hotspots.slice(0, 3).map((item, index) => ({
+  const hotspotItems = hotspots.slice(0, 6).map((item, index) => ({
     id: `radar-float-hotspot-${index}`,
     title: item.headline || `${formatRegionLabel(item.region)} market signal`,
     url: "",
     source: "Radar zone",
     region: formatRegionLabel(item.region || "world"),
     bubble: shortenHeadline(item.headline || `${formatRegionLabel(item.region)} signal`, 4),
+    summary: "Regional market pressure is elevated here.",
+    cta: "View detail",
   }));
+  if (hotspotItems.length) return hotspotItems;
+
+  return [
+    {
+      id: "radar-dummy-1",
+      title: "Oil corridor tensions are shaping market risk.",
+      url: "",
+      source: "Radar warmup",
+      region: "Middle East",
+      bubble: "Oil route tension",
+      summary: "Energy routes and geopolitical heat are shaping cross-asset risk.",
+      cta: "View detail",
+    },
+    {
+      id: "radar-dummy-2",
+      title: "Central-bank tone is shifting rate-sensitive sectors.",
+      url: "",
+      source: "Radar warmup",
+      region: "North America",
+      bubble: "Rate shift watch",
+      summary: "Rate-sensitive sectors are reacting to policy tone and inflation expectations.",
+      cta: "View detail",
+    },
+    {
+      id: "radar-dummy-3",
+      title: "Factory and export demand are moving Asia-linked names.",
+      url: "",
+      source: "Radar warmup",
+      region: "East Asia",
+      bubble: "Asia demand pulse",
+      summary: "Trade, exports, and factory signals are rippling into global cyclicals.",
+      cta: "View detail",
+    },
+    {
+      id: "radar-dummy-4",
+      title: "Credit and policy headlines are steering financial risk appetite.",
+      url: "",
+      source: "Radar warmup",
+      region: "Europe",
+      bubble: "Credit risk watch",
+      summary: "Rates, sovereign stress, and bank funding signals are shaping financials.",
+      cta: "View detail",
+    },
+  ];
+}
+
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function getDefaultRadarFloatSlots() {
+  return [
+    { x: 12, y: 8 },
+    { x: 176, y: 2 },
+    { x: 342, y: 12 },
+    { x: 508, y: 0 },
+    { x: 676, y: 10 },
+    { x: 844, y: 4 },
+  ];
+}
+
+function hydrateRadarFloatPositions(floatItems) {
+  const slots = getDefaultRadarFloatSlots();
+  const next = {};
+  floatItems.forEach((item, index) => {
+    const saved = state.radarFloatPositions[item.id];
+    next[item.id] = saved || slots[index] || slots[slots.length - 1];
+  });
+  state.radarFloatPositions = next;
+}
+
+function syncRadarFloatExpansion(floatNode) {
+  if (!floatNode) return;
+  floatNode.querySelectorAll("[data-radar-float]").forEach((card) => {
+    const isActive = card.dataset.radarFloat === state.radarFloatOpenId;
+    card.classList.toggle("active", isActive);
+    card.setAttribute("aria-expanded", isActive ? "true" : "false");
+  });
+}
+
+function bindRadarFloatInteractions(floatNode, floatItems) {
+  if (!floatNode) return;
+  const clearDrag = (pointerId = null) => {
+    const drag = state.radarFloatDrag;
+    if (!drag) return;
+    if (pointerId !== null && drag.pointerId !== pointerId) return;
+    if (drag.holdTimer) {
+      window.clearTimeout(drag.holdTimer);
+    }
+    const activeCard = document.querySelector(`[data-radar-float="${drag.id}"]`);
+    if (activeCard) {
+      activeCard.classList.remove("dragging");
+      activeCard.style.removeProperty("--drag-rotate");
+      activeCard.style.removeProperty("--drag-skew");
+      activeCard.style.removeProperty("--drag-scale-x");
+      activeCard.style.removeProperty("--drag-scale-y");
+      if (activeCard.hasPointerCapture?.(drag.pointerId)) {
+        activeCard.releasePointerCapture(drag.pointerId);
+      }
+    }
+    state.radarFloatDrag = null;
+  };
+  const bounds = () => ({
+    width: floatNode.clientWidth || 340,
+    height: floatNode.clientHeight || 188,
+  });
+
+  floatNode.querySelectorAll("[data-radar-float]").forEach((card) => {
+    const id = card.dataset.radarFloat;
+    card.addEventListener("pointerdown", (event) => {
+      if (!event.isPrimary || event.button !== 0) return;
+      if (event.target.closest("[data-radar-detail]")) return;
+      clearDrag();
+      const rect = card.getBoundingClientRect();
+      const holdTimer = window.setTimeout(() => {
+        const drag = state.radarFloatDrag;
+        if (!drag || drag.id !== id || drag.pointerId !== event.pointerId) return;
+        drag.dragReady = true;
+      }, 180);
+      state.radarFloatDrag = {
+        id,
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        originX: state.radarFloatPositions[id]?.x ?? rect.left,
+        originY: state.radarFloatPositions[id]?.y ?? rect.top,
+        moved: false,
+        dragging: false,
+        startedAt: performance.now(),
+        lastX: event.clientX,
+        lastY: event.clientY,
+        lastAt: performance.now(),
+        velocityX: 0,
+        velocityY: 0,
+        dragReady: false,
+        holdTimer,
+      };
+    });
+
+    card.addEventListener("pointermove", (event) => {
+      const drag = state.radarFloatDrag;
+      if (!drag || drag.id !== id || drag.pointerId !== event.pointerId) return;
+      if (event.buttons !== 1) {
+        clearDrag(event.pointerId);
+        return;
+      }
+      const area = bounds();
+      const dx = event.clientX - drag.startX;
+      const dy = event.clientY - drag.startY;
+      if (!drag.dragReady && Math.abs(dx) < 14 && Math.abs(dy) < 14) {
+        return;
+      }
+      drag.dragReady = true;
+      if (!drag.dragging) {
+        drag.dragging = true;
+        if (drag.holdTimer) {
+          window.clearTimeout(drag.holdTimer);
+          drag.holdTimer = null;
+        }
+        card.setPointerCapture(event.pointerId);
+        card.classList.add("dragging");
+      }
+      const nextX = clamp(drag.originX + dx, 0, area.width - card.offsetWidth);
+      const nextY = clamp(drag.originY + dy, 0, area.height - card.offsetHeight);
+      drag.moved = drag.moved || Math.abs(dx) > 5 || Math.abs(dy) > 5;
+      drag.velocityX = event.clientX - drag.lastX;
+      drag.velocityY = event.clientY - drag.lastY;
+      drag.lastX = event.clientX;
+      drag.lastY = event.clientY;
+      drag.lastAt = performance.now();
+      state.radarFloatPositions[id] = { x: nextX, y: nextY };
+      card.style.left = `${nextX}px`;
+      card.style.top = `${nextY}px`;
+      card.style.setProperty("--drag-rotate", `${clamp(drag.velocityX * 0.8, -16, 16)}deg`);
+      card.style.setProperty("--drag-skew", `${clamp(drag.velocityX * 0.12, -8, 8)}deg`);
+      card.style.setProperty("--drag-scale-x", `${1 + clamp(Math.abs(drag.velocityX) / 80, 0, 0.14)}`);
+      card.style.setProperty("--drag-scale-y", `${1 - clamp(Math.abs(drag.velocityX) / 180, 0, 0.08)}`);
+    });
+
+    const finishDrag = (event) => {
+      const drag = state.radarFloatDrag;
+      if (!drag || drag.id !== id || (event && drag.pointerId !== event.pointerId)) return;
+      if (drag.holdTimer) {
+        window.clearTimeout(drag.holdTimer);
+        drag.holdTimer = null;
+      }
+      if (drag.dragging) {
+        card.classList.remove("dragging");
+        if (card.hasPointerCapture?.(drag.pointerId)) {
+          card.releasePointerCapture(drag.pointerId);
+        }
+      }
+      const speed = Math.hypot(drag.velocityX, drag.velocityY);
+      const shouldDismiss = drag.dragging && drag.moved && speed > 20;
+      if (shouldDismiss) {
+        card.classList.add("popping");
+        card.style.setProperty("--pop-x", `${drag.velocityX * 2.4}px`);
+        card.style.setProperty("--pop-y", `${drag.velocityY * 2.4}px`);
+        window.setTimeout(() => {
+          state.radarDismissedFloatIds = [...new Set(state.radarDismissedFloatIds.concat(id))];
+          if (state.radarFloatOpenId === id) {
+            state.radarFloatOpenId = "";
+          }
+          renderBanner();
+        }, 260);
+      } else if (drag.dragging) {
+        card.style.removeProperty("--drag-rotate");
+        card.style.removeProperty("--drag-skew");
+        card.style.removeProperty("--drag-scale-x");
+        card.style.removeProperty("--drag-scale-y");
+      }
+
+      if (!drag.moved && !shouldDismiss) {
+        state.radarFloatOpenId = state.radarFloatOpenId === id ? "" : id;
+        syncRadarFloatExpansion(floatNode);
+      }
+      state.radarFloatDrag = null;
+    };
+
+    card.addEventListener("pointerup", finishDrag);
+    card.addEventListener("pointercancel", finishDrag);
+    card.addEventListener("lostpointercapture", () => {
+      clearDrag();
+    });
+    card.addEventListener("pointerleave", (event) => {
+      if (event.buttons !== 1) {
+        clearDrag();
+      }
+    });
+  });
+
+  if (!state.radarGlobalPointerCleanupBound) {
+    window.addEventListener(
+      "pointerup",
+      (event) => {
+        clearDrag(event.pointerId);
+      },
+      { passive: true },
+    );
+    state.radarGlobalPointerCleanupBound = true;
+  }
+}
+
+async function loadRadar({ silent = false } = {}) {
+  const requestId = ++state.radarRequestId;
+  if (!silent) {
+    setStatus("Loading radar");
+  }
+  const result = await api(`/api/radar?symbol=${encodeURIComponent(state.activeTicker || "")}`);
+  if (requestId !== state.radarRequestId) return;
+  if (!state.dashboard) {
+    state.dashboard = {};
+  }
+  state.dashboard.radar = result.radar || {};
+  state.dashboard.radarUpdatedAt = result.updatedAt || "";
+  state.dashboard.headlines = result.headlines || state.dashboard.headlines || [];
+  renderBanner();
+}
+
+async function loadOverviewFast({ silent = false } = {}) {
+  const requestId = ++state.overviewRequestId;
+  if (!silent) {
+    setStatus("Loading quote");
+  }
+  const params = new URLSearchParams({
+    symbols: state.watchlist.join(","),
+    active: state.activeTicker || "",
+  });
+  const result = await api(`/api/overview?${params.toString()}`);
+  if (requestId !== state.overviewRequestId) return;
+  if (!state.dashboard) {
+    state.dashboard = {};
+  }
+
+  state.dashboard.updatedAt = result.updatedAt || state.dashboard.updatedAt;
+  state.dashboard.watchlist = result.watchlist || state.dashboard.watchlist || [];
+  if (result.active) {
+    const previousActive = state.dashboard.active || {};
+    state.dashboard.active = {
+      ...buildPendingActive(result.active.symbol),
+      ...previousActive,
+      ...result.active,
+      marketSession:
+        result.active.marketSession ||
+        buildClientMarketSession(result.active.exchange || result.active.region, result.active.marketState),
+    };
+  }
+
+  nextFrame(() => {
+    renderWatchlist();
+    renderBoard();
+    renderOverview();
+    renderTopbar();
+  });
 }
 
 function emptyForecastPayload() {
@@ -392,6 +785,7 @@ function buildPendingActive(symbol) {
     driverCards: [],
     stats: watchItem?.symbol === previous.symbol ? previous.stats || [] : [],
     headlines: watchItem?.symbol === previous.symbol ? previous.headlines || [] : [],
+    marketSession: buildClientMarketSession(watchItem?.exchange || previous.exchange || previous.region, watchItem?.marketState || previous.marketState),
     forecast: {
       ...emptyForecastPayload(),
       ...(watchItem?.price !== undefined ? { expectedReturn: 0 } : {}),
@@ -415,7 +809,25 @@ function primeActiveTickerSelection(symbol) {
 function setStatus(message) {
   const node = document.getElementById("status-updated");
   if (!node) return;
-  node.textContent = message;
+  const activeCurrency =
+    state.dashboard?.active?.currency ||
+    (state.dashboard?.watchlist || []).find((item) => item.symbol === state.activeTicker)?.currency ||
+    "USD";
+  const label = node.querySelector(".status-label");
+  const token = node.querySelector(".status-token-code");
+  if (label) {
+    label.textContent = message;
+  } else {
+    node.textContent = message;
+  }
+  if (token) {
+    token.textContent = String(activeCurrency).slice(0, 4).toUpperCase();
+  }
+  const loadingWords = ["Loading", "Refreshing", "Searching", "Resolving", "Saving", "Running", "Thinking", "Syncing"];
+  const isLoading = loadingWords.some((word) => String(message).startsWith(word));
+  node.classList.toggle("loading", isLoading);
+  node.classList.toggle("ready", !isLoading);
+  node.dataset.currency = String(activeCurrency).slice(0, 4).toUpperCase();
 }
 
 function nextFrame(callback) {
@@ -813,14 +1225,21 @@ function renderRecentTickers() {
     node.innerHTML = `<p class="muted">Recent names will appear here.</p>`;
     return;
   }
+  const quoteMap = new Map((state.dashboard?.watchlist || []).map((item) => [item.symbol, item]));
   node.innerHTML = state.recentTickers
     .map(
-      (item) => `
-        <button class="recent-pill ${item.symbol === state.activeTicker ? "active" : ""}" type="button" data-symbol="${item.symbol}" title="${item.name || item.symbol}">
+      (item) => {
+        const quote = quoteMap.get(item.symbol);
+        const priceLabel = quote ? formatCurrency(quote.price, quote.currency) : "Price pending";
+        const moveClass = quote ? (Number(quote.changePercent || 0) >= 0 ? "up" : "down") : "";
+        return `
+        <button class="recent-pill ${moveClass} ${item.symbol === state.activeTicker ? "active" : ""}" type="button" data-symbol="${item.symbol}" title="${item.name || item.symbol}">
           <strong>${item.symbol}</strong>
           <span>${item.name || "Recent ticker"}</span>
+          <em>${priceLabel}</em>
         </button>
-      `,
+      `;
+      },
     )
     .join("");
 
@@ -917,22 +1336,52 @@ function renderBanner() {
   const sourceNote = document.getElementById("radar-source-note");
   const floatNode = document.getElementById("radar-floats");
   const floatDetailNode = document.getElementById("radar-float-detail");
+  const radarPanel = document.getElementById("market-radar");
+  const popButton = document.getElementById("pop-radar-clouds");
   const radar = state.dashboard?.radar || {};
+  const floatItemsAll = buildRadarFloatItems(radar).filter((item) => !state.radarDismissedFloatIds.includes(item.id));
+  const maxFloats = floatNode ? Math.max(0, Math.min(4, Math.floor((floatNode.clientWidth || 0) / 172))) : 0;
+  const floatItems = state.radarFloatsCollapsed ? [] : floatItemsAll.slice(0, maxFloats);
   const headlines = radar.headlines?.length
     ? radar.headlines
+    : radar.items?.length
+      ? radar.items.map((item) => item.title).filter(Boolean).slice(0, 6)
     : state.dashboard?.headlines?.length
       ? state.dashboard.headlines
       : ["Live radar updates are loading."];
   const signature = headlines.join(" | ");
-  if (track.dataset.signature !== signature) {
-    const lane = headlines.map((headline) => `<span class="ticker-headline">${headline}</span>`).join("");
-    const duration = Math.max(28, Math.round(signature.length / 6));
+  const useStaticLoadingHeadline = headlines.length === 1 && headlines[0] === "Live radar updates are loading.";
+  const radarSignature = `${signature}::${(radar.summary || "").slice(0, 48)}::${state.dashboard?.radarUpdatedAt || ""}`;
+  if (floatNode && floatNode.dataset.radarSignature !== radarSignature) {
+    state.radarDismissedFloatIds = [];
+    state.radarFloatPositions = {};
+    state.radarFloatOpenId = "";
+    state.radarHeadlineDetail = null;
+    state.radarFloatsCollapsed = false;
+    floatNode.dataset.radarSignature = radarSignature;
+  }
+  if (radarPanel) {
+    radarPanel.classList.toggle("floats-collapsed", state.radarFloatsCollapsed || floatItems.length === 0);
+  }
+  if (popButton) {
+    popButton.disabled = floatItems.length === 0;
+    popButton.classList.toggle("is-idle", floatItems.length === 0);
+  }
+  if (track.dataset.signature !== signature || !track.children.length) {
+    const lane = headlines
+      .map(
+        (headline) => `<span class="ticker-headline" title="${headline}">${headline}</span>`,
+      )
+      .join("");
+    const duration = Math.max(22, Math.round(signature.length / 8));
     track.dataset.signature = signature;
     track.style.setProperty("--ticker-duration", `${duration}s`);
-    track.innerHTML = `
-      <div class="ticker-lane ticker-lane-a">${lane}</div>
-      <div class="ticker-lane ticker-lane-b" aria-hidden="true">${lane}</div>
-    `;
+    track.innerHTML = useStaticLoadingHeadline
+      ? `<div class="ticker-status">${headlines[0]}</div>`
+      : `
+        <div class="ticker-lane ticker-lane-a">${lane}</div>
+        <div class="ticker-lane ticker-lane-b" aria-hidden="true">${lane}</div>
+      `;
   }
   summary.textContent = radar.summary || "Global event radar is loading.";
 
@@ -980,62 +1429,58 @@ function renderBanner() {
     ? `Radar sources: ${radarSources.join(" • ")}`
     : "Radar sources: live event scan";
 
-  const floatPositions = [
-    { x: "6%", y: "4px", delay: "0s" },
-    { x: "40%", y: "14px", delay: "1.6s" },
-    { x: "72%", y: "2px", delay: "3.1s" },
-  ];
-  const floatItems = buildRadarFloatItems(radar);
+  hydrateRadarFloatPositions(floatItems);
   if (floatNode) {
     floatNode.innerHTML = floatItems
       .map((item, index) => {
-        const pos = floatPositions[index] || floatPositions[floatPositions.length - 1];
+        const pos = state.radarFloatPositions[item.id] || getDefaultRadarFloatSlots()[index] || getDefaultRadarFloatSlots()[0];
+        const size = item.title.length > 82 ? "large" : item.title.length > 58 ? "medium" : "small";
+        const active = state.radarFloatOpenId === item.id;
         return `
-          <button
-            class="radar-float-chip ${state.radarFloatOpenId === item.id ? "active" : ""}"
-            type="button"
+          <div
+            class="radar-float-chip radar-float-chip-${size} radar-float-shape-${index % 6} ${active ? "active" : ""}"
             data-radar-float="${item.id}"
-            style="--float-x:${pos.x}; --float-y:${pos.y}; --float-delay:${pos.delay};"
+            style="left:${pos.x}px; top:${pos.y}px; --float-delay:${index * 1.15}s;"
             title="${item.title}"
+            role="button"
+            tabindex="0"
+            aria-expanded="${active ? "true" : "false"}"
           >
+            <i class="cloud-puff cloud-puff-a" aria-hidden="true"></i>
+            <i class="cloud-puff cloud-puff-b" aria-hidden="true"></i>
+            <i class="cloud-puff cloud-puff-c" aria-hidden="true"></i>
             <span>${item.region}</span>
             <strong>${item.bubble}</strong>
-          </button>
+            <p>${item.summary || item.title}</p>
+            ${
+              item.url
+                ? `<a class="radar-float-link" data-radar-detail="true" href="${item.url}" target="_blank" rel="noreferrer">${item.cta || "View detail"}</a>`
+                : `<em>${item.cta || "View detail"}</em>`
+            }
+          </div>
         `;
       })
       .join("");
-    floatNode.querySelectorAll("[data-radar-float]").forEach((button) => {
-      button.addEventListener("click", () => {
-        const id = button.dataset.radarFloat;
-        state.radarFloatOpenId = state.radarFloatOpenId === id ? "" : id;
-        renderBanner();
+    floatNode.querySelectorAll("[data-radar-detail]").forEach((link) => {
+      link.addEventListener("pointerdown", (event) => {
+        event.stopPropagation();
+      });
+      link.addEventListener("pointerup", (event) => {
+        event.stopPropagation();
+      });
+      link.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        window.open(link.href, "_blank", "noopener,noreferrer");
       });
     });
+    syncRadarFloatExpansion(floatNode);
+    bindRadarFloatInteractions(floatNode, floatItems);
   }
 
   if (floatDetailNode) {
-    const activeFloat = floatItems.find((item) => item.id === state.radarFloatOpenId);
-    if (!activeFloat) {
-      floatDetailNode.hidden = true;
-      floatDetailNode.innerHTML = "";
-    } else {
-      floatDetailNode.hidden = false;
-      floatDetailNode.innerHTML = `
-        <div class="radar-float-pop">
-          <button class="radar-float-close" type="button" data-radar-float-close="true">Close</button>
-          <span>${activeFloat.region} • ${activeFloat.source}</span>
-          <strong>${activeFloat.title}</strong>
-          ${activeFloat.url ? `<a href="${activeFloat.url}" target="_blank" rel="noreferrer">Open coverage</a>` : ""}
-        </div>
-      `;
-      const closeNode = floatDetailNode.querySelector("[data-radar-float-close]");
-      if (closeNode) {
-        closeNode.addEventListener("click", () => {
-          state.radarFloatOpenId = "";
-          renderBanner();
-        });
-      }
-    }
+    floatDetailNode.hidden = true;
+    floatDetailNode.innerHTML = "";
   }
 }
 
@@ -1044,18 +1489,47 @@ function renderEventFeed() {
   const list = document.getElementById("event-list");
   const label = document.getElementById("event-summary-label");
   const active = state.dashboard?.active;
-  label.textContent = state.eventCategory.charAt(0).toUpperCase() + state.eventCategory.slice(1);
+  label.textContent = state.eventCategory === "all" ? "All" : state.eventCategory.charAt(0).toUpperCase() + state.eventCategory.slice(1);
   document.querySelectorAll(".event-chip").forEach((button) => {
     button.classList.toggle("active", button.dataset.category === state.eventCategory);
   });
 
   if (!state.eventResult) {
-    brief.innerHTML = `<p class="muted">Event feed is loading.</p>`;
-    list.innerHTML = `<div class="event-card"><div class="event-card-header"><strong>Waiting for updates</strong><span class="event-tag">Loading</span></div><p>Latest category events will appear here.</p></div>`;
+    const fallbackItems = [...(state.dashboard?.radar?.items || [])]
+      .slice(0, 4)
+      .map((item) => ({
+        title: item.title || "Radar update",
+        url: item.url || "",
+        source: item.source || extractDomainLabel(item.url) || "Live source",
+        category: "radar",
+        publishedAt: item.publishedAt,
+        significance: 0,
+      }));
+    brief.innerHTML = `<p class="muted">${fallbackItems.length ? "Showing the latest radar-linked headlines while the full event feed refreshes." : "Event feed is loading."}</p>`;
+    list.innerHTML = fallbackItems.length
+      ? fallbackItems
+          .map(
+            (item) => `
+              <article class="event-card">
+                <div class="event-card-header">
+                  <span class="event-tag">${String(item.category).toUpperCase()}</span>
+                  <span class="event-source">${item.source}</span>
+                </div>
+                <a class="event-title" href="${item.url}" target="_blank" rel="noreferrer"><strong>${item.title}</strong></a>
+                <div class="event-card-meta">
+                  <span>${formatEventDateTime(item.publishedAt)}</span>
+                  <span>Refreshing</span>
+                </div>
+                <p>Full category event flow is being updated.</p>
+              </article>
+            `,
+          )
+          .join("")
+      : `<div class="event-card"><div class="event-card-header"><strong>Waiting for updates</strong><span class="event-tag">Loading</span></div><p>Latest category events will appear here.</p></div>`;
     return;
   }
 
-  const focusReason = active?.eventFocus?.category === state.eventCategory
+  const focusReason = state.eventCategory !== "all" && active?.eventFocus?.category === state.eventCategory
     ? `<div class="event-brief-note"><span class="event-brief-tag">Focus</span><strong>${active.eventFocus.label}</strong><p>${active.eventFocus.reason}</p></div>`
     : "";
   brief.innerHTML = `
@@ -1063,14 +1537,16 @@ function renderEventFeed() {
     <div class="event-brief-meta">Updated ${formatEventDateTime(state.eventResult.asOf)}</div>
     ${focusReason}
   `;
-  const items = (state.eventResult.items || []).slice(0, 4);
+  const items = [...(state.eventResult.items || [])]
+    .sort((a, b) => String(b.publishedAt || "").localeCompare(String(a.publishedAt || "")))
+    .slice(0, 5);
   list.innerHTML = items.length
     ? items
         .map(
           (item) => `
             <article class="event-card">
               <div class="event-card-header">
-                <span class="event-tag">${(item.category || state.eventResult.category).toUpperCase()}</span>
+                <span class="event-tag">${String(item.category || state.eventResult.category || "event").toUpperCase()}</span>
                 <span class="event-source">${item.source || extractDomainLabel(item.url) || "Live source"}</span>
               </div>
               <a class="event-title" href="${item.url}" target="_blank" rel="noreferrer"><strong>${item.title || "Update"}</strong></a>
@@ -1088,14 +1564,41 @@ function renderEventFeed() {
 
 function renderPulse() {
   const grid = document.getElementById("pulse-grid");
-  const items = state.dashboard?.macroPulse || [];
+  const items = state.dashboard?.macroPulse?.length
+    ? state.dashboard.macroPulse
+    : state.dashboard?.active
+      ? [
+          {
+            label: "Risk tone",
+            value: state.dashboard.active.regime || "Refreshing",
+            trend: state.dashboard.active.marketState || "Live",
+            positive: true,
+          },
+          {
+            label: "Active move",
+            value: formatPercent(state.dashboard.active.changePercent || 0),
+            trend: `${state.dashboard.active.exchange || state.dashboard.active.region || "Market"} pulse`,
+            positive: Number(state.dashboard.active.changePercent || 0) >= 0,
+          },
+        ]
+      : [];
+  if (!items.length) {
+    grid.innerHTML = `
+      <div class="pulse-card">
+        <span>Market pulse</span>
+        <strong>Loading</strong>
+        <div class="metric-trend neutral">Cross-asset read is refreshing</div>
+      </div>
+    `;
+    return;
+  }
   grid.innerHTML = items
     .map(
       (item) => `
         <div class="pulse-card">
           <span>${item.label}</span>
           <strong>${item.value}</strong>
-          <div class="metric-trend ${item.positive ? "positive" : "negative"}">${item.trend}</div>
+          <div class="metric-trend ${typeof item.positive === "boolean" ? (item.positive ? "positive" : "negative") : "neutral"}">${item.trend}</div>
         </div>
       `,
     )
@@ -1104,7 +1607,24 @@ function renderPulse() {
 
 function renderBoard() {
   const board = document.getElementById("overview-board");
+  const panel = document.getElementById("market-board-panel");
+  const utilityGrid = document.querySelector(".utility-grid");
+  const toggle = document.getElementById("toggle-market-board");
   const entries = (state.dashboard?.watchlist || []).slice(0, 8);
+  if (panel) {
+    panel.classList.toggle("collapsed", state.boardHidden);
+  }
+  if (utilityGrid) {
+    utilityGrid.classList.toggle("board-hidden", state.boardHidden);
+  }
+  if (toggle) {
+    toggle.textContent = state.boardHidden ? "Show" : "Hide";
+    toggle.setAttribute("aria-pressed", state.boardHidden ? "true" : "false");
+  }
+  if (state.boardHidden) {
+    board.innerHTML = "";
+    return;
+  }
   board.innerHTML = entries
     .map(
       (item) => `
@@ -1162,7 +1682,9 @@ function renderOverview() {
   window.clearInterval(state.marketSessionTimer);
   const marketSessionNode = document.getElementById("market-session-strip");
   const renderSession = () => {
-    const session = active.marketSession || {};
+    const session = active.marketSession?.nextTransitionAt
+      ? active.marketSession
+      : buildClientMarketSession(active.exchange || active.region, active.marketState);
     const nextTransitionAt = session.nextTransitionAt ? new Date(session.nextTransitionAt) : null;
     const remainingSeconds = nextTransitionAt ? Math.max(0, Math.floor((nextTransitionAt.getTime() - Date.now()) / 1000)) : 0;
     const countdown = nextTransitionAt ? formatDuration(remainingSeconds) : "--:--:--";
@@ -1443,7 +1965,7 @@ function renderResearch() {
 
 function renderTopbar() {
   document.getElementById("provider-badge").textContent = state.dashboard?.provider || state.config?.provider || "yahoo";
-  document.getElementById("status-updated").textContent = state.dashboard?.updatedAt ? "Live now" : "Loading data";
+  setStatus(state.dashboard?.updatedAt ? "Live now" : "Loading data");
   document.body.classList.toggle("app-ready", state.bootReady);
   document.body.classList.toggle("app-booting", !state.bootReady);
 }
@@ -1484,11 +2006,18 @@ function applyLiveQuoteUpdate(payload) {
     state.dashboard.active = {
       ...state.dashboard.active,
       ...payload.active,
+      marketSession:
+        payload.active.marketSession ||
+        buildClientMarketSession(payload.active.exchange || payload.active.region, payload.active.marketState),
     };
   } else if (payload.active) {
     const live = quoteMap.get(state.activeTicker);
     if (live && state.dashboard.active) {
-      state.dashboard.active = { ...state.dashboard.active, ...live };
+      state.dashboard.active = {
+        ...state.dashboard.active,
+        ...live,
+        marketSession: buildClientMarketSession(live.exchange || live.region, live.marketState),
+      };
     }
   }
 
@@ -1524,6 +2053,32 @@ function render() {
   renderCorePanels();
   renderDeferredPanels();
   document.getElementById("lab-ticker").value = state.activeTicker;
+}
+
+function popAllRadarClouds() {
+  const floatNode = document.getElementById("radar-floats");
+  const liveItems = buildRadarFloatItems(state.dashboard?.radar || {}).filter((item) => !state.radarDismissedFloatIds.includes(item.id));
+  if (!floatNode || !liveItems.length) return;
+  floatNode.querySelectorAll("[data-radar-float]").forEach((card, index) => {
+    card.classList.add("popping");
+    card.style.setProperty("--pop-x", `${(index % 2 === 0 ? -1 : 1) * (34 + index * 7)}px`);
+    card.style.setProperty("--pop-y", `${-38 - index * 9}px`);
+  });
+  window.setTimeout(() => {
+    state.radarDismissedFloatIds = [...new Set(state.radarDismissedFloatIds.concat(liveItems.map((item) => item.id)))];
+    state.radarFloatOpenId = "";
+    state.radarFloatsCollapsed = true;
+    renderBanner();
+  }, 260);
+}
+
+function startRadarRefresh() {
+  window.clearInterval(state.radarTimer);
+  state.radarTimer = window.setInterval(() => {
+    loadRadar({ silent: true }).catch((error) => {
+      console.error(error);
+    });
+  }, 900000);
 }
 
 async function loadConfig() {
@@ -1594,6 +2149,9 @@ function selectActiveTicker(symbol, { refresh = true } = {}) {
   if (!refresh) return;
   if (changed) {
     setStatus("Loading quote");
+    loadOverviewFast({ silent: true }).catch((error) => {
+      console.error(error);
+    });
   }
   refreshDashboard();
 }
@@ -1601,6 +2159,9 @@ function selectActiveTicker(symbol, { refresh = true } = {}) {
 async function refreshDashboard() {
   const requestId = ++state.dashboardRequestId;
   setStatus("Refreshing");
+  loadOverviewFast({ silent: true }).catch((error) => {
+    console.error(error);
+  });
   const payload = await api("/api/dashboard", {
     method: "POST",
     body: JSON.stringify({
@@ -1614,7 +2175,9 @@ async function refreshDashboard() {
   state.dashboard = payload;
   state.watchlist = payload.watchlist.map((item) => item.symbol);
   state.activeTicker = payload.active.symbol;
-  state.eventCategory = payload.active?.eventFocus?.category || state.eventCategory;
+  if (!state.eventCategoryPinned) {
+    state.eventCategory = payload.active?.eventFocus?.category || state.eventCategory;
+  }
   if (!state.labResult || state.labResult.symbol !== state.activeTicker) {
     state.labResult = payload.active.lab;
   }
@@ -1655,6 +2218,9 @@ async function refreshDashboard() {
     .catch((error) => {
       console.error(error);
     });
+  loadRadar({ silent: true }).catch((error) => {
+    console.error(error);
+  });
 }
 
 async function runSearch() {
@@ -1719,7 +2285,6 @@ function bindEvents() {
     addTickerFromInput();
   });
 
-  document.getElementById("search-button").addEventListener("click", runSearch);
   document.getElementById("ticker-input").addEventListener("input", () => {
     window.clearTimeout(bindEvents.searchTimer);
     bindEvents.searchTimer = window.setTimeout(runSearch, 260);
@@ -1749,6 +2314,7 @@ function bindEvents() {
 
   document.querySelectorAll(".event-chip").forEach((button) => {
     button.addEventListener("click", async () => {
+      state.eventCategoryPinned = true;
       state.eventCategory = button.dataset.category;
       persistWatchlist();
       await loadEventFeed();
@@ -1775,6 +2341,14 @@ function bindEvents() {
 
   const settingsDialog = document.getElementById("settings-dialog");
   document.getElementById("open-settings").addEventListener("click", () => settingsDialog.showModal());
+  document.getElementById("toggle-market-board").addEventListener("click", () => {
+    state.boardHidden = !state.boardHidden;
+    persistWatchlist();
+    renderBoard();
+  });
+  document.getElementById("pop-radar-clouds").addEventListener("click", () => {
+    popAllRadarClouds();
+  });
   document.getElementById("save-settings").addEventListener("click", async (event) => {
     event.preventDefault();
     setStatus("Saving config");
@@ -1873,9 +2447,13 @@ async function init() {
   setStatus("Loading data");
   bindEvents();
   render();
+  loadOverviewFast({ silent: true }).catch((error) => {
+    console.error(error);
+  });
   const dashboardPromise = refreshDashboard();
   const backgroundLoads = Promise.allSettled([loadConfig(), loadPresets(), loadSavedWatchlists()]);
   await dashboardPromise;
+  startRadarRefresh();
   backgroundLoads.then(() => {
     flashStatus("Workspace ready", 1200);
   });

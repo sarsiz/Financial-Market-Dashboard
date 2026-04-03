@@ -10,3 +10,5 @@ config.json
 
 .pytest_cache/
 .mypy_cache/
+
+.playwright-cli/

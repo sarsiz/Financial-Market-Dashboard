@@ -30,15 +30,18 @@
             <h2>Watchlist</h2>
             <span id="watchlist-count">0</span>
           </div>
-          <form id="ticker-form" class="ticker-form">
+          <form id="ticker-form" class="ticker-form" autocomplete="off">
             <input
               id="ticker-input"
               type="text"
               maxlength="24"
               placeholder="Search ticker or company, e.g. Bharti Airtel, ICICI Bank, AAPL"
               aria-label="Ticker symbol"
+              autocomplete="off"
+              autocapitalize="off"
+              autocorrect="off"
+              spellcheck="false"
             />
-            <button id="search-button" type="button">Search</button>
           </form>
           <div id="search-results" class="search-results"></div>
           <div id="watchlist" class="watchlist"></div>
@@ -87,12 +90,24 @@
           </div>
           <div class="live-cluster">
             <div class="live-dot"></div>
-            <span id="status-updated" class="status-pill">Loading data</span>
+            <span id="status-updated" class="status-pill loading" aria-live="polite">
+              <span class="status-token" aria-hidden="true">
+                <span class="status-token-fill"></span>
+                <span class="status-token-code">USD</span>
+              </span>
+              <span class="status-label">Loading data</span>
+            </span>
           </div>
         </header>
 
-        <section class="ticker-banner glass-panel">
-          <div class="banner-label">Market radar</div>
+        <section id="market-radar" class="ticker-banner glass-panel">
+          <div class="banner-topbar">
+            <div class="banner-label">Market radar</div>
+            <button id="pop-radar-clouds" class="radar-glass-button" type="button" aria-label="Pop all clouds">
+              <span class="radar-glass-dot" aria-hidden="true"></span>
+              <span>Pop clouds</span>
+            </button>
+          </div>
           <div id="radar-floats" class="radar-floats" aria-live="polite"></div>
           <div id="radar-float-detail" class="radar-float-detail" hidden></div>
           <div class="radar-layout">
@@ -108,20 +123,15 @@
         </section>
 
         <div class="utility-grid">
-          <section class="glass-panel board-strip-panel">
+          <section id="market-board-panel" class="glass-panel board-strip-panel">
             <div class="section-heading compact">
               <h3>Market Board</h3>
-              <span>Watch overview</span>
+              <div class="section-heading-actions">
+                <span>Watch overview</span>
+                <button id="toggle-market-board" class="ghost-button compact-ghost" type="button">Hide</button>
+              </div>
             </div>
             <div id="overview-board" class="overview-board"></div>
-          </section>
-
-          <section class="glass-panel recent-strip-panel">
-            <div class="section-heading compact">
-              <h3>Recent</h3>
-              <span>Recently viewed</span>
-            </div>
-            <div id="recent-tickers" class="recent-tickers compact"></div>
           </section>
         </div>
 
@@ -204,6 +214,14 @@
             </article>
 
             <div class="overview-side-stack">
+              <article class="glass-panel recent-strip-panel side-recent-panel">
+                <div class="section-heading compact">
+                  <h3>Recent</h3>
+                  <span>Recently viewed</span>
+                </div>
+                <div id="recent-tickers" class="recent-tickers compact"></div>
+              </article>
+
               <article class="glass-panel metrics-panel">
                 <div class="section-heading">
                   <h3>Market Pulse</h3>
@@ -219,6 +237,7 @@
                 </div>
                 <div class="event-toolbar">
                   <div class="event-categories" id="event-categories">
+                    <button class="event-chip" type="button" data-category="all">All</button>
                     <button class="event-chip active" type="button" data-category="business">Business</button>
                     <button class="event-chip" type="button" data-category="world">World</button>
                     <button class="event-chip" type="button" data-category="war">War</button>
