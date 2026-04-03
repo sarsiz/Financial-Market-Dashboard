@@ -317,6 +317,10 @@ function formatEventDateTime(value) {
   });
 }
 
+function formatEventTime(value) {
+  return formatEventDateTime(value);
+}
+
 function shortenHeadline(text, words = 5) {
   const clean = String(text || "").replace(/\s+/g, " ").trim();
   if (!clean) return "Live event";
