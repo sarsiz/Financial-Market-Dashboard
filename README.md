@@ -32,7 +32,8 @@ This platform is built as a lightweight full-stack app with a browser client and
 - the browser now hits a lightweight overview endpoint first, so watchlist quotes and the active overview can paint before the heavier full dashboard finishes
 - event flow is now timestamp-aware and significance-ranked, so important recent and prior events remain visible with source and publish time
 - market radar has its own refresh path and now auto-refreshes every 15 minutes without waiting for the full dashboard refresh
-- market radar surfaces multiple floating event clouds from live news items, with in-place expansion on click and intentional long-press drag instead of accidental pickup
+- market radar surfaces floating event clouds only from live news items, with in-place expansion on click, a hide/show glass toggle, and fresh-item re-formation when more important stories arrive
+- market radar now blends live event headlines with macro pulse and active-ticker micro context, so the section reflects both top-down and stock-specific pressure
 - the top watch overview can be compacted away with a user toggle, and radar clouds can be popped together so the panel shrinks upward when you want a denser layout
 - news retrieval now blends Google News RSS with popular publisher RSS feeds like BBC and NPR, then dedupes and ranks them server-side
 - large charts now carry timestamp-aware history series, axis labels, and hover inspection instead of only raw close arrays
@@ -52,6 +53,7 @@ flowchart LR
   B --> H["SSE Quote Stream<br/>sub-second live updates"]
   C --> C1["Timestamped History Series<br/>chart labels / hover inspection"]
   D --> D1["Event Significance Layer<br/>recency + catalyst scoring + source notes"]
+  D1 --> D2["Radar Cloud Layer<br/>live-only clouds / 15 min refresh / incremental re-forming"]
 ```
 
 ## Run
@@ -92,6 +94,7 @@ The current suite covers:
 - teach the active ticker through classic quant formulas such as momentum, z-score, volatility, volume ratio, beta, valuation, and drawdown inside Academy
 - enrich Academy with ticker-specific explainers grounded on live market state plus web search results and optional local-LLM summarization
 - rank and timestamp event flow items so major catalysts remain visible with source, publish time, and impact score
+- highlight major active-ticker catalyst regimes visually when event pressure is elevated
 - blend popular RSS feeds into radar and event flow so the news layer updates with broader publisher coverage
 - save and reload watchlists through SQLite
 
