@@ -1673,23 +1673,23 @@ function renderOverview() {
   const overviewMetaItems = [
     {
       label: active.exchange || active.region || "Global",
-      help: "Exchange or market venue. It tells you where the stock trades, which affects market hours, liquidity, and local rules.",
+      help: "Where the stock trades.",
     },
     {
       label: `${active.currency || "USD"} pricing`,
-      help: "Trading currency for this stock. We show it so price changes are interpreted in the stock’s home market denomination.",
+      help: "Home-market trading currency.",
     },
     {
       label: active.marketState || "Live",
-      help: "Current market session state. It helps you judge whether price moves are happening during regular trading or outside it.",
+      help: "Current session state.",
     },
     {
       label: `Vol ${formatCompactNumber(active.volume)}`,
-      help: "Trade volume for the current session. Higher volume usually means stronger participation behind the move.",
+      help: "Current traded volume.",
     },
     {
       label: active.asOf ? new Date(active.asOf).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "Delayed",
-      help: "Last update timestamp for the active quote, so you can quickly tell how fresh the displayed market data is.",
+      help: "Last quote update time.",
     },
   ];
   document.getElementById("overview-meta").innerHTML = `
