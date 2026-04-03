@@ -1363,7 +1363,7 @@ def merge_event_items(*groups: list[dict]) -> list[dict]:
   return merged
 
 
-def generate_local_llm_answer(prompt: str, config: dict) -> str | None:
+def generate_local_llm_answer(prompt: str, config: dict, timeout: int = 12) -> str | None:
   base = (config.get("localLlmBaseUrl") or DEFAULT_CONFIG["localLlmBaseUrl"]).rstrip("/")
   model = resolve_local_llm_model(config)
   payload = {
@@ -1372,7 +1372,7 @@ def generate_local_llm_answer(prompt: str, config: dict) -> str | None:
     "prompt": prompt,
     "options": {"temperature": 0.2},
   }
-  response = post_json(f"{base}/api/generate", payload)
+  response = post_json(f"{base}/api/generate", payload, timeout=timeout)
   if not response:
     return None
   return (response.get("response") or "").strip() or None
@@ -1436,7 +1436,7 @@ def run_research_agent(query: str, symbol: str | None, use_web: bool, use_llm: b
     ]
   )
 
-  answer = generate_local_llm_answer(prompt, config) if use_llm else None
+  answer = generate_local_llm_answer(prompt, config, timeout=10) if use_llm else None
   if not answer:
     answer = synthesize_without_llm(query, context, web_results)
 
@@ -1580,11 +1580,14 @@ def build_academy_payload(symbol: str | None, use_web: bool = True, use_llm: boo
   if not symbol:
     return payload
 
-  snapshot = build_ticker_snapshot(symbol)
-  web_results: list[dict] = []
-  if use_web:
-    company_query = f"{snapshot['name']} {snapshot['exchange']} latest news outlook risk"
-    web_results = duckduckgo_search(company_query)
+  with ThreadPoolExecutor(max_workers=2) as executor:
+    snapshot_future = executor.submit(build_ticker_snapshot, symbol)
+    snapshot = snapshot_future.result()
+    web_future = None
+    if use_web:
+      company_query = f"{snapshot['name']} {snapshot['exchange']} latest news outlook risk"
+      web_future = executor.submit(duckduckgo_search, company_query)
+    web_results: list[dict] = web_future.result() if web_future is not None else []
 
   config = load_config()
   titles = [item.get("title", "") for item in web_results[:5] if item.get("title")]
@@ -1596,7 +1599,7 @@ def build_academy_payload(symbol: str | None, use_web: bool = True, use_llm: boo
       f"Web result titles: {json.dumps(titles, ensure_ascii=True)}",
     ]
   )
-  summary = generate_local_llm_answer(prompt, config) if use_llm else None
+  summary = generate_local_llm_answer(prompt, config, timeout=8) if use_llm else None
   if not summary:
     summary = (
       f"{snapshot['name']} is currently in a {snapshot['forecast']['direction'].lower()} setup. "
