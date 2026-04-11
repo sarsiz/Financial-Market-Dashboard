@@ -1,0 +1,47 @@
+[
+  {
+    "title": "Temporal Relational Ranking for Stock Prediction",
+    "year": 2018,
+    "type": "relation graph",
+    "url": "https://arxiv.org/abs/1809.09441",
+    "factors": ["company relations", "price history", "temporal ranking"],
+    "updateCadence": "daily",
+    "whyItMatters": "Useful for ranking stocks using relation structure instead of isolated tickers."
+  },
+  {
+    "title": "HIST: A Graph-based Framework for Stock Trend Forecasting via Mining Concept-Oriented Shared Information",
+    "year": 2021,
+    "type": "concept graph",
+    "url": "https://arxiv.org/abs/2110.13716",
+    "factors": ["concept nodes", "shared sector information", "trend history"],
+    "updateCadence": "daily",
+    "whyItMatters": "Useful for mapping company, concept, and sector linkages beyond plain correlation."
+  },
+  {
+    "title": "Chronos: Learning the Language of Time Series",
+    "year": 2024,
+    "type": "forecasting",
+    "url": "https://arxiv.org/abs/2403.07815",
+    "factors": ["historical prices", "multi-horizon forecasting", "uncertainty"],
+    "updateCadence": "weekly",
+    "whyItMatters": "Good modern overlay for sequence-style forecasting once the local history substrate is clean."
+  },
+  {
+    "title": "TimesFM",
+    "year": 2023,
+    "type": "forecasting",
+    "url": "https://arxiv.org/abs/2310.10688",
+    "factors": ["historical prices", "long context", "multi-step projection"],
+    "updateCadence": "weekly",
+    "whyItMatters": "Good for stable foundation-model-style forecasting on cached time-series."
+  },
+  {
+    "title": "Foundations of Technical Analysis",
+    "year": 2000,
+    "type": "classic quant",
+    "url": "https://doi.org/10.1111/0022-1082.00265",
+    "factors": ["momentum", "trend", "reversal"],
+    "updateCadence": "daily",
+    "whyItMatters": "Classic statistical base layer for trend and reversal interpretation."
+  }
+]

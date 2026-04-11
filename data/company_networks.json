@@ -1,0 +1,80 @@
+{
+  "BHARTIARTL.NS": {
+    "entities": [
+      {"id": "jio-competition", "label": "Reliance Jio", "type": "competitor"},
+      {"id": "tower-partners", "label": "Tower partners", "type": "infrastructure"},
+      {"id": "capex-cycle", "label": "5G capex", "type": "capital"},
+      {"id": "subscriber-demand", "label": "Subscriber growth", "type": "demand"}
+    ],
+    "links": [
+      {"source": "BHARTIARTL.NS", "target": "jio-competition", "relation": "competition", "direction": "negative", "value": 1.4},
+      {"source": "BHARTIARTL.NS", "target": "tower-partners", "relation": "infrastructure", "direction": "positive", "value": 1.1},
+      {"source": "capex-cycle", "target": "BHARTIARTL.NS", "relation": "capex", "direction": "negative", "value": 1.0},
+      {"source": "subscriber-demand", "target": "BHARTIARTL.NS", "relation": "demand", "direction": "positive", "value": 1.5}
+    ]
+  },
+  "ICICIBANK.NS": {
+    "entities": [
+      {"id": "credit-growth", "label": "Credit growth", "type": "demand"},
+      {"id": "deposit-cost", "label": "Deposit costs", "type": "funding"},
+      {"id": "rbi-policy", "label": "RBI policy", "type": "policy"},
+      {"id": "retail-slippages", "label": "Retail asset quality", "type": "risk"}
+    ],
+    "links": [
+      {"source": "credit-growth", "target": "ICICIBANK.NS", "relation": "loan growth", "direction": "positive", "value": 1.6},
+      {"source": "deposit-cost", "target": "ICICIBANK.NS", "relation": "margin pressure", "direction": "negative", "value": 1.2},
+      {"source": "rbi-policy", "target": "ICICIBANK.NS", "relation": "policy transmission", "direction": "neutral", "value": 1.0},
+      {"source": "retail-slippages", "target": "ICICIBANK.NS", "relation": "credit risk", "direction": "negative", "value": 1.1}
+    ]
+  },
+  "GLENMARK.NS": {
+    "entities": [
+      {"id": "us-generics", "label": "US generics pricing", "type": "pricing"},
+      {"id": "fda-risk", "label": "FDA risk", "type": "policy"},
+      {"id": "r-and-d", "label": "R&D pipeline", "type": "innovation"}
+    ],
+    "links": [
+      {"source": "us-generics", "target": "GLENMARK.NS", "relation": "pricing", "direction": "negative", "value": 1.3},
+      {"source": "fda-risk", "target": "GLENMARK.NS", "relation": "regulation", "direction": "negative", "value": 1.1},
+      {"source": "r-and-d", "target": "GLENMARK.NS", "relation": "pipeline", "direction": "positive", "value": 1.2}
+    ]
+  },
+  "AAPL": {
+    "entities": [
+      {"id": "foxconn", "label": "Foxconn", "type": "manufacturer"},
+      {"id": "tsmc", "label": "TSMC", "type": "supplier"},
+      {"id": "app-store", "label": "App Store", "type": "platform"},
+      {"id": "consumer-upgrade", "label": "Upgrade cycle", "type": "demand"}
+    ],
+    "links": [
+      {"source": "foxconn", "target": "AAPL", "relation": "assembly", "direction": "positive", "value": 1.2},
+      {"source": "tsmc", "target": "AAPL", "relation": "chips", "direction": "positive", "value": 1.4},
+      {"source": "app-store", "target": "AAPL", "relation": "services", "direction": "positive", "value": 1.1},
+      {"source": "consumer-upgrade", "target": "AAPL", "relation": "demand", "direction": "positive", "value": 1.5}
+    ]
+  },
+  "MSFT": {
+    "entities": [
+      {"id": "azure-demand", "label": "Azure demand", "type": "cloud"},
+      {"id": "enterprise-spend", "label": "Enterprise spend", "type": "demand"},
+      {"id": "openai-ecosystem", "label": "AI ecosystem", "type": "partner"}
+    ],
+    "links": [
+      {"source": "azure-demand", "target": "MSFT", "relation": "cloud", "direction": "positive", "value": 1.5},
+      {"source": "enterprise-spend", "target": "MSFT", "relation": "software", "direction": "positive", "value": 1.2},
+      {"source": "openai-ecosystem", "target": "MSFT", "relation": "AI", "direction": "positive", "value": 1.4}
+    ]
+  },
+  "NVDA": {
+    "entities": [
+      {"id": "hyperscalers", "label": "Hyperscaler capex", "type": "demand"},
+      {"id": "tsmc-nvda", "label": "TSMC", "type": "supplier"},
+      {"id": "ai-cycle", "label": "AI infrastructure cycle", "type": "macro"}
+    ],
+    "links": [
+      {"source": "hyperscalers", "target": "NVDA", "relation": "capex demand", "direction": "positive", "value": 1.7},
+      {"source": "tsmc-nvda", "target": "NVDA", "relation": "manufacturing", "direction": "positive", "value": 1.3},
+      {"source": "ai-cycle", "target": "NVDA", "relation": "theme", "direction": "positive", "value": 1.5}
+    ]
+  }
+}

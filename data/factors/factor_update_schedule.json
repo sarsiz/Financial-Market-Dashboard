@@ -1,0 +1,51 @@
+[
+  {
+    "key": "bond_yields",
+    "label": "Government bond yields",
+    "cadence": "intraday",
+    "significance": "Very high",
+    "use": "Anchor for discount rates, curve shape, and sector leadership."
+  },
+  {
+    "key": "inflation",
+    "label": "Inflation and breakevens",
+    "cadence": "daily / release days",
+    "significance": "Very high",
+    "use": "Explains whether rates are moving because of price pressure or growth stress."
+  },
+  {
+    "key": "policy",
+    "label": "Central bank and policy expectations",
+    "cadence": "event-driven",
+    "significance": "Very high",
+    "use": "Shapes the front-end of the curve and financing conditions."
+  },
+  {
+    "key": "equity_leadership",
+    "label": "Equity leadership and breadth",
+    "cadence": "intraday",
+    "significance": "High",
+    "use": "Shows whether rates pressure is spilling into growth, banks, defensives, or cyclicals."
+  },
+  {
+    "key": "volume_liquidity",
+    "label": "Volume and liquidity",
+    "cadence": "intraday",
+    "significance": "High",
+    "use": "Separates high-conviction moves from weak participation."
+  },
+  {
+    "key": "events",
+    "label": "Events and catalysts",
+    "cadence": "15-30 min",
+    "significance": "High",
+    "use": "Overrides slower factors when policy, war, deals, or earnings shocks dominate."
+  },
+  {
+    "key": "correlation_graph",
+    "label": "Relation graph",
+    "cadence": "daily / weekly refresh",
+    "significance": "Medium",
+    "use": "Maps transmission between companies, sectors, and related entities."
+  }
+]

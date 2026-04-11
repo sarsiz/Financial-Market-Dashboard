@@ -1,0 +1,191 @@
+{
+  "jobName": "sensex30_1y_full",
+  "universe": "sensex30",
+  "range": "1Y",
+  "offset": 0,
+  "members": 30,
+  "completed": 30,
+  "updatedAt": "2026-04-11T09:29:31.027861+00:00",
+  "results": [
+    {
+      "symbol": "ETERNAL.BO",
+      "points": 20,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "ASIANPAINT.BO",
+      "points": 20,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "HCLTECH.BO",
+      "points": 21,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "AXISBANK.BO",
+      "points": 20,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "ADANIPORTS.BO",
+      "points": 20,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "BHARTIARTL.BO",
+      "points": 20,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "BEL.BO",
+      "points": 20,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "HDFCBANK.BO",
+      "points": 20,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "BAJAJFINSV.BO",
+      "points": 20,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "BAJFINANCE.BO",
+      "points": 20,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "HINDUNILVR.BO",
+      "points": 20,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "ICICIBANK.BO",
+      "points": 20,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "INDIGO.BO",
+      "points": 20,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "INFY.BO",
+      "points": 20,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "ITC.BO",
+      "points": 20,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "M&M.BO",
+      "points": 20,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "LT.BO",
+      "points": 21,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "KOTAKBANK.BO",
+      "points": 20,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "MARUTI.BO",
+      "points": 20,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "NTPC.BO",
+      "points": 21,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "POWERGRID.BO",
+      "points": 21,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "RELIANCE.BO",
+      "points": 20,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "SBIN.BO",
+      "points": 20,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "TCS.BO",
+      "points": 20,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "SUNPHARMA.BO",
+      "points": 20,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "TATASTEEL.BO",
+      "points": 20,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "TECHM.BO",
+      "points": 21,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "TITAN.BO",
+      "points": 20,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "ULTRACEMCO.BO",
+      "points": 21,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "TRENT.BO",
+      "points": 20,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    }
+  ]
+}

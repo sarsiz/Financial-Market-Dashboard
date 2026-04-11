@@ -1,0 +1,31 @@
+---
+symbol: QQQG
+name: Pacer Nasdaq 100 Top 50 Cash Cows Growth Leaders ETF
+region: us
+exchange: NASDAQ
+sector: 
+---
+
+# QQQG
+
+Pacer Nasdaq 100 Top 50 Cash Cows Growth Leaders ETF sits inside the local market graph as a market exposure for us analysis.
+
+## Core context
+
+- Name: Pacer Nasdaq 100 Top 50 Cash Cows Growth Leaders ETF
+- Exchange: NASDAQ
+- Region: us
+- Sector: 
+
+## Graph neighbors
+
+- No strong cached links yet.
+
+## Entity map
+
+- No local entity map yet.
+
+## Analyst note
+
+- This note is generated from local universes, cached history, relation graphs, and repo KB notes.
+- Use it as a durable context layer, not as a direct recommendation.

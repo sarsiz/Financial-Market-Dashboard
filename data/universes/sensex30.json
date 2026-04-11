@@ -1,0 +1,302 @@
+[
+  {
+    "symbol": "ADANIPORTS.BO",
+    "rawSymbol": "ADANIPORTS.BO",
+    "ticker": "532921",
+    "name": "Adani Ports & SEZ",
+    "sector": "Ports",
+    "exchange": "BSE SENSEX",
+    "region": "india",
+    "source": "Wikipedia BSE SENSEX companies"
+  },
+  {
+    "symbol": "ASIANPAINT.BO",
+    "rawSymbol": "ASIANPAINT.BO",
+    "ticker": "500820",
+    "name": "Asian Paints",
+    "sector": "Consumer Durables",
+    "exchange": "BSE SENSEX",
+    "region": "india",
+    "source": "Wikipedia BSE SENSEX companies"
+  },
+  {
+    "symbol": "AXISBANK.BO",
+    "rawSymbol": "AXISBANK.BO",
+    "ticker": "532215",
+    "name": "Axis Bank",
+    "sector": "Banks",
+    "exchange": "BSE SENSEX",
+    "region": "india",
+    "source": "Wikipedia BSE SENSEX companies"
+  },
+  {
+    "symbol": "BAJFINANCE.BO",
+    "rawSymbol": "BAJFINANCE.BO",
+    "ticker": "500034",
+    "name": "Bajaj Finance",
+    "sector": "Finance",
+    "exchange": "BSE SENSEX",
+    "region": "india",
+    "source": "Wikipedia BSE SENSEX companies"
+  },
+  {
+    "symbol": "BAJAJFINSV.BO",
+    "rawSymbol": "BAJAJFINSV.BO",
+    "ticker": "532978",
+    "name": "Bajaj Finserv",
+    "sector": "Finance",
+    "exchange": "BSE SENSEX",
+    "region": "india",
+    "source": "Wikipedia BSE SENSEX companies"
+  },
+  {
+    "symbol": "BEL.BO",
+    "rawSymbol": "BEL.BO",
+    "ticker": "500049",
+    "name": "Bharat Electronics",
+    "sector": "Aerospace & Defence",
+    "exchange": "BSE SENSEX",
+    "region": "india",
+    "source": "Wikipedia BSE SENSEX companies"
+  },
+  {
+    "symbol": "BHARTIARTL.BO",
+    "rawSymbol": "BHARTIARTL.BO",
+    "ticker": "532454",
+    "name": "Bharti Airtel",
+    "sector": "Telecommunication",
+    "exchange": "BSE SENSEX",
+    "region": "india",
+    "source": "Wikipedia BSE SENSEX companies"
+  },
+  {
+    "symbol": "ETERNAL.BO",
+    "rawSymbol": "ETERNAL.BO",
+    "ticker": "543320",
+    "name": "Eternal",
+    "sector": "Retailing",
+    "exchange": "BSE SENSEX",
+    "region": "india",
+    "source": "Wikipedia BSE SENSEX companies"
+  },
+  {
+    "symbol": "HCLTECH.BO",
+    "rawSymbol": "HCLTECH.BO",
+    "ticker": "532281",
+    "name": "HCLTech",
+    "sector": "IT",
+    "exchange": "BSE SENSEX",
+    "region": "india",
+    "source": "Wikipedia BSE SENSEX companies"
+  },
+  {
+    "symbol": "HDFCBANK.BO",
+    "rawSymbol": "HDFCBANK.BO",
+    "ticker": "500180",
+    "name": "HDFC Bank",
+    "sector": "Banks",
+    "exchange": "BSE SENSEX",
+    "region": "india",
+    "source": "Wikipedia BSE SENSEX companies"
+  },
+  {
+    "symbol": "HINDUNILVR.BO",
+    "rawSymbol": "HINDUNILVR.BO",
+    "ticker": "500696",
+    "name": "Hindustan Unilever",
+    "sector": "FMCG",
+    "exchange": "BSE SENSEX",
+    "region": "india",
+    "source": "Wikipedia BSE SENSEX companies"
+  },
+  {
+    "symbol": "ICICIBANK.BO",
+    "rawSymbol": "ICICIBANK.BO",
+    "ticker": "532174",
+    "name": "ICICI Bank",
+    "sector": "Banks",
+    "exchange": "BSE SENSEX",
+    "region": "india",
+    "source": "Wikipedia BSE SENSEX companies"
+  },
+  {
+    "symbol": "INDIGO.BO",
+    "rawSymbol": "INDIGO.BO",
+    "ticker": "539448",
+    "name": "IndiGo",
+    "sector": "Airlines",
+    "exchange": "BSE SENSEX",
+    "region": "india",
+    "source": "Wikipedia BSE SENSEX companies"
+  },
+  {
+    "symbol": "INFY.BO",
+    "rawSymbol": "INFY.BO",
+    "ticker": "500209",
+    "name": "Infosys",
+    "sector": "IT",
+    "exchange": "BSE SENSEX",
+    "region": "india",
+    "source": "Wikipedia BSE SENSEX companies"
+  },
+  {
+    "symbol": "ITC.BO",
+    "rawSymbol": "ITC.BO",
+    "ticker": "500875",
+    "name": "ITC",
+    "sector": "FMCG",
+    "exchange": "BSE SENSEX",
+    "region": "india",
+    "source": "Wikipedia BSE SENSEX companies"
+  },
+  {
+    "symbol": "KOTAKBANK.BO",
+    "rawSymbol": "KOTAKBANK.BO",
+    "ticker": "500247",
+    "name": "Kotak Mahindra Bank",
+    "sector": "Banks",
+    "exchange": "BSE SENSEX",
+    "region": "india",
+    "source": "Wikipedia BSE SENSEX companies"
+  },
+  {
+    "symbol": "LT.BO",
+    "rawSymbol": "LT.BO",
+    "ticker": "500510",
+    "name": "Larsen & Toubro",
+    "sector": "Construction",
+    "exchange": "BSE SENSEX",
+    "region": "india",
+    "source": "Wikipedia BSE SENSEX companies"
+  },
+  {
+    "symbol": "M&M.BO",
+    "rawSymbol": "M&M.BO",
+    "ticker": "500520",
+    "name": "Mahindra & Mahindra",
+    "sector": "Automobiles",
+    "exchange": "BSE SENSEX",
+    "region": "india",
+    "source": "Wikipedia BSE SENSEX companies"
+  },
+  {
+    "symbol": "MARUTI.BO",
+    "rawSymbol": "MARUTI.BO",
+    "ticker": "532500",
+    "name": "Maruti Suzuki",
+    "sector": "Automobiles",
+    "exchange": "BSE SENSEX",
+    "region": "india",
+    "source": "Wikipedia BSE SENSEX companies"
+  },
+  {
+    "symbol": "NTPC.BO",
+    "rawSymbol": "NTPC.BO",
+    "ticker": "532555",
+    "name": "NTPC",
+    "sector": "Power",
+    "exchange": "BSE SENSEX",
+    "region": "india",
+    "source": "Wikipedia BSE SENSEX companies"
+  },
+  {
+    "symbol": "POWERGRID.BO",
+    "rawSymbol": "POWERGRID.BO",
+    "ticker": "532898",
+    "name": "Power Grid",
+    "sector": "Power",
+    "exchange": "BSE SENSEX",
+    "region": "india",
+    "source": "Wikipedia BSE SENSEX companies"
+  },
+  {
+    "symbol": "RELIANCE.BO",
+    "rawSymbol": "RELIANCE.BO",
+    "ticker": "500325",
+    "name": "Reliance Industries",
+    "sector": "Petroleum",
+    "exchange": "BSE SENSEX",
+    "region": "india",
+    "source": "Wikipedia BSE SENSEX companies"
+  },
+  {
+    "symbol": "SBIN.BO",
+    "rawSymbol": "SBIN.BO",
+    "ticker": "500112",
+    "name": "State Bank of India",
+    "sector": "Banks",
+    "exchange": "BSE SENSEX",
+    "region": "india",
+    "source": "Wikipedia BSE SENSEX companies"
+  },
+  {
+    "symbol": "SUNPHARMA.BO",
+    "rawSymbol": "SUNPHARMA.BO",
+    "ticker": "524715",
+    "name": "Sun Pharma",
+    "sector": "Pharmaceuticals",
+    "exchange": "BSE SENSEX",
+    "region": "india",
+    "source": "Wikipedia BSE SENSEX companies"
+  },
+  {
+    "symbol": "TCS.BO",
+    "rawSymbol": "TCS.BO",
+    "ticker": "532540",
+    "name": "Tata Consultancy Services",
+    "sector": "IT",
+    "exchange": "BSE SENSEX",
+    "region": "india",
+    "source": "Wikipedia BSE SENSEX companies"
+  },
+  {
+    "symbol": "TATASTEEL.BO",
+    "rawSymbol": "TATASTEEL.BO",
+    "ticker": "500470",
+    "name": "Tata Steel",
+    "sector": "Metals",
+    "exchange": "BSE SENSEX",
+    "region": "india",
+    "source": "Wikipedia BSE SENSEX companies"
+  },
+  {
+    "symbol": "TECHM.BO",
+    "rawSymbol": "TECHM.BO",
+    "ticker": "532755",
+    "name": "Tech Mahindra",
+    "sector": "IT",
+    "exchange": "BSE SENSEX",
+    "region": "india",
+    "source": "Wikipedia BSE SENSEX companies"
+  },
+  {
+    "symbol": "TITAN.BO",
+    "rawSymbol": "TITAN.BO",
+    "ticker": "500114",
+    "name": "Titan Company",
+    "sector": "Consumer Durables",
+    "exchange": "BSE SENSEX",
+    "region": "india",
+    "source": "Wikipedia BSE SENSEX companies"
+  },
+  {
+    "symbol": "TRENT.BO",
+    "rawSymbol": "TRENT.BO",
+    "ticker": "500251",
+    "name": "Trent",
+    "sector": "Retailing",
+    "exchange": "BSE SENSEX",
+    "region": "india",
+    "source": "Wikipedia BSE SENSEX companies"
+  },
+  {
+    "symbol": "ULTRACEMCO.BO",
+    "rawSymbol": "ULTRACEMCO.BO",
+    "ticker": "532538",
+    "name": "UltraTech Cement",
+    "sector": "Cement",
+    "exchange": "BSE SENSEX",
+    "region": "india",
+    "source": "Wikipedia BSE SENSEX companies"
+  }
+]

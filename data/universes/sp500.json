@@ -1,0 +1,5032 @@
+[
+  {
+    "symbol": "MMM",
+    "rawSymbol": "MMM",
+    "name": "3M",
+    "sector": "Industrials",
+    "subIndustry": "Industrial Conglomerates",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "AOS",
+    "rawSymbol": "AOS",
+    "name": "A. O. Smith",
+    "sector": "Industrials",
+    "subIndustry": "Building Products",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "ABT",
+    "rawSymbol": "ABT",
+    "name": "Abbott Laboratories",
+    "sector": "Health Care",
+    "subIndustry": "Health Care Equipment",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "ABBV",
+    "rawSymbol": "ABBV",
+    "name": "AbbVie",
+    "sector": "Health Care",
+    "subIndustry": "Biotechnology",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "ACN",
+    "rawSymbol": "ACN",
+    "name": "Accenture",
+    "sector": "Information Technology",
+    "subIndustry": "IT Consulting & Other Services",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "ADBE",
+    "rawSymbol": "ADBE",
+    "name": "Adobe Inc.",
+    "sector": "Information Technology",
+    "subIndustry": "Application Software",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "AMD",
+    "rawSymbol": "AMD",
+    "name": "Advanced Micro Devices",
+    "sector": "Information Technology",
+    "subIndustry": "Semiconductors",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "AES",
+    "rawSymbol": "AES",
+    "name": "AES Corporation",
+    "sector": "Utilities",
+    "subIndustry": "Independent Power Producers & Energy Traders",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "AFL",
+    "rawSymbol": "AFL",
+    "name": "Aflac",
+    "sector": "Financials",
+    "subIndustry": "Life & Health Insurance",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "A",
+    "rawSymbol": "A",
+    "name": "Agilent Technologies",
+    "sector": "Health Care",
+    "subIndustry": "Life Sciences Tools & Services",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "APD",
+    "rawSymbol": "APD",
+    "name": "Air Products",
+    "sector": "Materials",
+    "subIndustry": "Industrial Gases",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "ABNB",
+    "rawSymbol": "ABNB",
+    "name": "Airbnb",
+    "sector": "Consumer Discretionary",
+    "subIndustry": "Hotels, Resorts & Cruise Lines",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "AKAM",
+    "rawSymbol": "AKAM",
+    "name": "Akamai Technologies",
+    "sector": "Information Technology",
+    "subIndustry": "Internet Services & Infrastructure",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "ALB",
+    "rawSymbol": "ALB",
+    "name": "Albemarle Corporation",
+    "sector": "Materials",
+    "subIndustry": "Specialty Chemicals",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "ARE",
+    "rawSymbol": "ARE",
+    "name": "Alexandria Real Estate Equities",
+    "sector": "Real Estate",
+    "subIndustry": "Office REITs",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "ALGN",
+    "rawSymbol": "ALGN",
+    "name": "Align Technology",
+    "sector": "Health Care",
+    "subIndustry": "Health Care Supplies",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "ALLE",
+    "rawSymbol": "ALLE",
+    "name": "Allegion",
+    "sector": "Industrials",
+    "subIndustry": "Building Products",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "LNT",
+    "rawSymbol": "LNT",
+    "name": "Alliant Energy",
+    "sector": "Utilities",
+    "subIndustry": "Electric Utilities",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "ALL",
+    "rawSymbol": "ALL",
+    "name": "Allstate",
+    "sector": "Financials",
+    "subIndustry": "Property & Casualty Insurance",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "GOOGL",
+    "rawSymbol": "GOOGL",
+    "name": "Alphabet Inc. (Class A)",
+    "sector": "Communication Services",
+    "subIndustry": "Interactive Media & Services",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "GOOG",
+    "rawSymbol": "GOOG",
+    "name": "Alphabet Inc. (Class C)",
+    "sector": "Communication Services",
+    "subIndustry": "Interactive Media & Services",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "MO",
+    "rawSymbol": "MO",
+    "name": "Altria",
+    "sector": "Consumer Staples",
+    "subIndustry": "Tobacco",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "AMZN",
+    "rawSymbol": "AMZN",
+    "name": "Amazon",
+    "sector": "Consumer Discretionary",
+    "subIndustry": "Broadline Retail",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "AMCR",
+    "rawSymbol": "AMCR",
+    "name": "Amcor",
+    "sector": "Materials",
+    "subIndustry": "Paper & Plastic Packaging Products & Materials",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "AEE",
+    "rawSymbol": "AEE",
+    "name": "Ameren",
+    "sector": "Utilities",
+    "subIndustry": "Multi-Utilities",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "AEP",
+    "rawSymbol": "AEP",
+    "name": "American Electric Power",
+    "sector": "Utilities",
+    "subIndustry": "Electric Utilities",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "AXP",
+    "rawSymbol": "AXP",
+    "name": "American Express",
+    "sector": "Financials",
+    "subIndustry": "Consumer Finance",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "AIG",
+    "rawSymbol": "AIG",
+    "name": "American International Group",
+    "sector": "Financials",
+    "subIndustry": "Multi-line Insurance",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "AMT",
+    "rawSymbol": "AMT",
+    "name": "American Tower",
+    "sector": "Real Estate",
+    "subIndustry": "Telecom Tower REITs",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "AWK",
+    "rawSymbol": "AWK",
+    "name": "American Water Works",
+    "sector": "Utilities",
+    "subIndustry": "Water Utilities",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "AMP",
+    "rawSymbol": "AMP",
+    "name": "Ameriprise Financial",
+    "sector": "Financials",
+    "subIndustry": "Asset Management & Custody Banks",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "AME",
+    "rawSymbol": "AME",
+    "name": "Ametek",
+    "sector": "Industrials",
+    "subIndustry": "Electrical Components & Equipment",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "AMGN",
+    "rawSymbol": "AMGN",
+    "name": "Amgen",
+    "sector": "Health Care",
+    "subIndustry": "Biotechnology",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "APH",
+    "rawSymbol": "APH",
+    "name": "Amphenol",
+    "sector": "Information Technology",
+    "subIndustry": "Electronic Components",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "ADI",
+    "rawSymbol": "ADI",
+    "name": "Analog Devices",
+    "sector": "Information Technology",
+    "subIndustry": "Semiconductors",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "AON",
+    "rawSymbol": "AON",
+    "name": "Aon plc",
+    "sector": "Financials",
+    "subIndustry": "Insurance Brokers",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "APA",
+    "rawSymbol": "APA",
+    "name": "APA Corporation",
+    "sector": "Energy",
+    "subIndustry": "Oil & Gas Exploration & Production",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "APO",
+    "rawSymbol": "APO",
+    "name": "Apollo Global Management",
+    "sector": "Financials",
+    "subIndustry": "Asset Management & Custody Banks",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "AAPL",
+    "rawSymbol": "AAPL",
+    "name": "Apple Inc.",
+    "sector": "Information Technology",
+    "subIndustry": "Technology Hardware, Storage & Peripherals",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "AMAT",
+    "rawSymbol": "AMAT",
+    "name": "Applied Materials",
+    "sector": "Information Technology",
+    "subIndustry": "Semiconductor Materials & Equipment",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "APP",
+    "rawSymbol": "APP",
+    "name": "AppLovin",
+    "sector": "Information Technology",
+    "subIndustry": "Application Software",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "APTV",
+    "rawSymbol": "APTV",
+    "name": "Aptiv",
+    "sector": "Consumer Discretionary",
+    "subIndustry": "Automotive Parts & Equipment",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "ACGL",
+    "rawSymbol": "ACGL",
+    "name": "Arch Capital Group",
+    "sector": "Financials",
+    "subIndustry": "Property & Casualty Insurance",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "ADM",
+    "rawSymbol": "ADM",
+    "name": "Archer Daniels Midland",
+    "sector": "Consumer Staples",
+    "subIndustry": "Agricultural Products & Services",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "ARES",
+    "rawSymbol": "ARES",
+    "name": "Ares Management",
+    "sector": "Financials",
+    "subIndustry": "Asset Management & Custody Banks",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "ANET",
+    "rawSymbol": "ANET",
+    "name": "Arista Networks",
+    "sector": "Information Technology",
+    "subIndustry": "Communications Equipment",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "AJG",
+    "rawSymbol": "AJG",
+    "name": "Arthur J. Gallagher & Co.",
+    "sector": "Financials",
+    "subIndustry": "Insurance Brokers",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "AIZ",
+    "rawSymbol": "AIZ",
+    "name": "Assurant",
+    "sector": "Financials",
+    "subIndustry": "Multi-line Insurance",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "T",
+    "rawSymbol": "T",
+    "name": "AT&T",
+    "sector": "Communication Services",
+    "subIndustry": "Integrated Telecommunication Services",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "ATO",
+    "rawSymbol": "ATO",
+    "name": "Atmos Energy",
+    "sector": "Utilities",
+    "subIndustry": "Gas Utilities",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "ADSK",
+    "rawSymbol": "ADSK",
+    "name": "Autodesk",
+    "sector": "Information Technology",
+    "subIndustry": "Application Software",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "ADP",
+    "rawSymbol": "ADP",
+    "name": "Automatic Data Processing",
+    "sector": "Industrials",
+    "subIndustry": "Human Resource & Employment Services",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "AZO",
+    "rawSymbol": "AZO",
+    "name": "AutoZone",
+    "sector": "Consumer Discretionary",
+    "subIndustry": "Automotive Retail",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "AVB",
+    "rawSymbol": "AVB",
+    "name": "AvalonBay Communities",
+    "sector": "Real Estate",
+    "subIndustry": "Multi-Family Residential REITs",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "AVY",
+    "rawSymbol": "AVY",
+    "name": "Avery Dennison",
+    "sector": "Materials",
+    "subIndustry": "Paper & Plastic Packaging Products & Materials",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "AXON",
+    "rawSymbol": "AXON",
+    "name": "Axon Enterprise",
+    "sector": "Industrials",
+    "subIndustry": "Aerospace & Defense",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "BKR",
+    "rawSymbol": "BKR",
+    "name": "Baker Hughes",
+    "sector": "Energy",
+    "subIndustry": "Oil & Gas Equipment & Services",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "BALL",
+    "rawSymbol": "BALL",
+    "name": "Ball Corporation",
+    "sector": "Materials",
+    "subIndustry": "Metal, Glass & Plastic Containers",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "BAC",
+    "rawSymbol": "BAC",
+    "name": "Bank of America",
+    "sector": "Financials",
+    "subIndustry": "Diversified Banks",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "BAX",
+    "rawSymbol": "BAX",
+    "name": "Baxter International",
+    "sector": "Health Care",
+    "subIndustry": "Health Care Equipment",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "BDX",
+    "rawSymbol": "BDX",
+    "name": "Becton Dickinson",
+    "sector": "Health Care",
+    "subIndustry": "Health Care Equipment",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "BRK-B",
+    "rawSymbol": "BRK.B",
+    "name": "Berkshire Hathaway",
+    "sector": "Financials",
+    "subIndustry": "Multi-Sector Holdings",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "BBY",
+    "rawSymbol": "BBY",
+    "name": "Best Buy",
+    "sector": "Consumer Discretionary",
+    "subIndustry": "Computer & Electronics Retail",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "TECH",
+    "rawSymbol": "TECH",
+    "name": "Bio-Techne",
+    "sector": "Health Care",
+    "subIndustry": "Life Sciences Tools & Services",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "BIIB",
+    "rawSymbol": "BIIB",
+    "name": "Biogen",
+    "sector": "Health Care",
+    "subIndustry": "Biotechnology",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "BLK",
+    "rawSymbol": "BLK",
+    "name": "BlackRock",
+    "sector": "Financials",
+    "subIndustry": "Asset Management & Custody Banks",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "BX",
+    "rawSymbol": "BX",
+    "name": "Blackstone Inc.",
+    "sector": "Financials",
+    "subIndustry": "Asset Management & Custody Banks",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "XYZ",
+    "rawSymbol": "XYZ",
+    "name": "Block, Inc.",
+    "sector": "Financials",
+    "subIndustry": "Transaction & Payment Processing Services",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "BK",
+    "rawSymbol": "BK",
+    "name": "BNY Mellon",
+    "sector": "Financials",
+    "subIndustry": "Asset Management & Custody Banks",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "BA",
+    "rawSymbol": "BA",
+    "name": "Boeing",
+    "sector": "Industrials",
+    "subIndustry": "Aerospace & Defense",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "BKNG",
+    "rawSymbol": "BKNG",
+    "name": "Booking Holdings",
+    "sector": "Consumer Discretionary",
+    "subIndustry": "Hotels, Resorts & Cruise Lines",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "BSX",
+    "rawSymbol": "BSX",
+    "name": "Boston Scientific",
+    "sector": "Health Care",
+    "subIndustry": "Health Care Equipment",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "BMY",
+    "rawSymbol": "BMY",
+    "name": "Bristol Myers Squibb",
+    "sector": "Health Care",
+    "subIndustry": "Pharmaceuticals",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "AVGO",
+    "rawSymbol": "AVGO",
+    "name": "Broadcom",
+    "sector": "Information Technology",
+    "subIndustry": "Semiconductors",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "BR",
+    "rawSymbol": "BR",
+    "name": "Broadridge Financial Solutions",
+    "sector": "Industrials",
+    "subIndustry": "Data Processing & Outsourced Services",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "BRO",
+    "rawSymbol": "BRO",
+    "name": "Brown & Brown",
+    "sector": "Financials",
+    "subIndustry": "Insurance Brokers",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "BF-B",
+    "rawSymbol": "BF.B",
+    "name": "Brown\u2013Forman",
+    "sector": "Consumer Staples",
+    "subIndustry": "Distillers & Vintners",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "BLDR",
+    "rawSymbol": "BLDR",
+    "name": "Builders FirstSource",
+    "sector": "Industrials",
+    "subIndustry": "Building Products",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "BG",
+    "rawSymbol": "BG",
+    "name": "Bunge Global",
+    "sector": "Consumer Staples",
+    "subIndustry": "Agricultural Products & Services",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "BXP",
+    "rawSymbol": "BXP",
+    "name": "BXP, Inc.",
+    "sector": "Real Estate",
+    "subIndustry": "Office REITs",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "CHRW",
+    "rawSymbol": "CHRW",
+    "name": "C.H. Robinson",
+    "sector": "Industrials",
+    "subIndustry": "Air Freight & Logistics",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "CDNS",
+    "rawSymbol": "CDNS",
+    "name": "Cadence Design Systems",
+    "sector": "Information Technology",
+    "subIndustry": "Application Software",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "CPT",
+    "rawSymbol": "CPT",
+    "name": "Camden Property Trust",
+    "sector": "Real Estate",
+    "subIndustry": "Multi-Family Residential REITs",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "CPB",
+    "rawSymbol": "CPB",
+    "name": "Campbell's Company (The)",
+    "sector": "Consumer Staples",
+    "subIndustry": "Packaged Foods & Meats",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "COF",
+    "rawSymbol": "COF",
+    "name": "Capital One",
+    "sector": "Financials",
+    "subIndustry": "Consumer Finance",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "CAH",
+    "rawSymbol": "CAH",
+    "name": "Cardinal Health",
+    "sector": "Health Care",
+    "subIndustry": "Health Care Distributors",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "CCL",
+    "rawSymbol": "CCL",
+    "name": "Carnival",
+    "sector": "Consumer Discretionary",
+    "subIndustry": "Hotels, Resorts & Cruise Lines",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "CARR",
+    "rawSymbol": "CARR",
+    "name": "Carrier Global",
+    "sector": "Industrials",
+    "subIndustry": "Building Products",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "CVNA",
+    "rawSymbol": "CVNA",
+    "name": "Carvana",
+    "sector": "Consumer Discretionary",
+    "subIndustry": "Automotive Retail",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "CASY",
+    "rawSymbol": "CASY",
+    "name": "Casey's",
+    "sector": "Consumer Staples",
+    "subIndustry": "Food Retail",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "CAT",
+    "rawSymbol": "CAT",
+    "name": "Caterpillar Inc.",
+    "sector": "Industrials",
+    "subIndustry": "Construction Machinery & Heavy Transportation Equipment",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "CBOE",
+    "rawSymbol": "CBOE",
+    "name": "Cboe Global Markets",
+    "sector": "Financials",
+    "subIndustry": "Financial Exchanges & Data",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "CBRE",
+    "rawSymbol": "CBRE",
+    "name": "CBRE Group",
+    "sector": "Real Estate",
+    "subIndustry": "Real Estate Services",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "CDW",
+    "rawSymbol": "CDW",
+    "name": "CDW Corporation",
+    "sector": "Information Technology",
+    "subIndustry": "Technology Distributors",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "COR",
+    "rawSymbol": "COR",
+    "name": "Cencora",
+    "sector": "Health Care",
+    "subIndustry": "Health Care Distributors",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "CNC",
+    "rawSymbol": "CNC",
+    "name": "Centene Corporation",
+    "sector": "Health Care",
+    "subIndustry": "Managed Health Care",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "CNP",
+    "rawSymbol": "CNP",
+    "name": "CenterPoint Energy",
+    "sector": "Utilities",
+    "subIndustry": "Multi-Utilities",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "CF",
+    "rawSymbol": "CF",
+    "name": "CF Industries",
+    "sector": "Materials",
+    "subIndustry": "Fertilizers & Agricultural Chemicals",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "CRL",
+    "rawSymbol": "CRL",
+    "name": "Charles River Laboratories",
+    "sector": "Health Care",
+    "subIndustry": "Life Sciences Tools & Services",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "SCHW",
+    "rawSymbol": "SCHW",
+    "name": "Charles Schwab Corporation",
+    "sector": "Financials",
+    "subIndustry": "Investment Banking & Brokerage",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "CHTR",
+    "rawSymbol": "CHTR",
+    "name": "Charter Communications",
+    "sector": "Communication Services",
+    "subIndustry": "Cable & Satellite",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "CVX",
+    "rawSymbol": "CVX",
+    "name": "Chevron Corporation",
+    "sector": "Energy",
+    "subIndustry": "Integrated Oil & Gas",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "CMG",
+    "rawSymbol": "CMG",
+    "name": "Chipotle Mexican Grill",
+    "sector": "Consumer Discretionary",
+    "subIndustry": "Restaurants",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "CB",
+    "rawSymbol": "CB",
+    "name": "Chubb Limited",
+    "sector": "Financials",
+    "subIndustry": "Property & Casualty Insurance",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "CHD",
+    "rawSymbol": "CHD",
+    "name": "Church & Dwight",
+    "sector": "Consumer Staples",
+    "subIndustry": "Household Products",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "CIEN",
+    "rawSymbol": "CIEN",
+    "name": "Ciena",
+    "sector": "Information Technology",
+    "subIndustry": "Communications Equipment",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "CI",
+    "rawSymbol": "CI",
+    "name": "Cigna",
+    "sector": "Health Care",
+    "subIndustry": "Health Care Services",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "CINF",
+    "rawSymbol": "CINF",
+    "name": "Cincinnati Financial",
+    "sector": "Financials",
+    "subIndustry": "Property & Casualty Insurance",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "CTAS",
+    "rawSymbol": "CTAS",
+    "name": "Cintas",
+    "sector": "Industrials",
+    "subIndustry": "Diversified Support Services",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "CSCO",
+    "rawSymbol": "CSCO",
+    "name": "Cisco",
+    "sector": "Information Technology",
+    "subIndustry": "Communications Equipment",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "C",
+    "rawSymbol": "C",
+    "name": "Citigroup",
+    "sector": "Financials",
+    "subIndustry": "Diversified Banks",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "CFG",
+    "rawSymbol": "CFG",
+    "name": "Citizens Financial Group",
+    "sector": "Financials",
+    "subIndustry": "Regional Banks",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "CLX",
+    "rawSymbol": "CLX",
+    "name": "Clorox",
+    "sector": "Consumer Staples",
+    "subIndustry": "Household Products",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "CME",
+    "rawSymbol": "CME",
+    "name": "CME Group",
+    "sector": "Financials",
+    "subIndustry": "Financial Exchanges & Data",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "CMS",
+    "rawSymbol": "CMS",
+    "name": "CMS Energy",
+    "sector": "Utilities",
+    "subIndustry": "Multi-Utilities",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "KO",
+    "rawSymbol": "KO",
+    "name": "Coca-Cola Company (The)",
+    "sector": "Consumer Staples",
+    "subIndustry": "Soft Drinks & Non-alcoholic Beverages",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "CTSH",
+    "rawSymbol": "CTSH",
+    "name": "Cognizant",
+    "sector": "Information Technology",
+    "subIndustry": "IT Consulting & Other Services",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "COHR",
+    "rawSymbol": "COHR",
+    "name": "Coherent Corp.",
+    "sector": "Information Technology",
+    "subIndustry": "Electronic Components",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "COIN",
+    "rawSymbol": "COIN",
+    "name": "Coinbase",
+    "sector": "Financials",
+    "subIndustry": "Financial Exchanges & Data",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "CL",
+    "rawSymbol": "CL",
+    "name": "Colgate-Palmolive",
+    "sector": "Consumer Staples",
+    "subIndustry": "Household Products",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "CMCSA",
+    "rawSymbol": "CMCSA",
+    "name": "Comcast",
+    "sector": "Communication Services",
+    "subIndustry": "Cable & Satellite",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "FIX",
+    "rawSymbol": "FIX",
+    "name": "Comfort Systems USA",
+    "sector": "Industrials",
+    "subIndustry": "Construction & Engineering",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "CAG",
+    "rawSymbol": "CAG",
+    "name": "Conagra Brands",
+    "sector": "Consumer Staples",
+    "subIndustry": "Packaged Foods & Meats",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "COP",
+    "rawSymbol": "COP",
+    "name": "ConocoPhillips",
+    "sector": "Energy",
+    "subIndustry": "Oil & Gas Exploration & Production",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "ED",
+    "rawSymbol": "ED",
+    "name": "Consolidated Edison",
+    "sector": "Utilities",
+    "subIndustry": "Multi-Utilities",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "STZ",
+    "rawSymbol": "STZ",
+    "name": "Constellation Brands",
+    "sector": "Consumer Staples",
+    "subIndustry": "Distillers & Vintners",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "CEG",
+    "rawSymbol": "CEG",
+    "name": "Constellation Energy",
+    "sector": "Utilities",
+    "subIndustry": "Electric Utilities",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "COO",
+    "rawSymbol": "COO",
+    "name": "Cooper Companies (The)",
+    "sector": "Health Care",
+    "subIndustry": "Health Care Supplies",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "CPRT",
+    "rawSymbol": "CPRT",
+    "name": "Copart",
+    "sector": "Industrials",
+    "subIndustry": "Diversified Support Services",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "GLW",
+    "rawSymbol": "GLW",
+    "name": "Corning Inc.",
+    "sector": "Information Technology",
+    "subIndustry": "Electronic Components",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "CPAY",
+    "rawSymbol": "CPAY",
+    "name": "Corpay",
+    "sector": "Financials",
+    "subIndustry": "Transaction & Payment Processing Services",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "CTVA",
+    "rawSymbol": "CTVA",
+    "name": "Corteva",
+    "sector": "Materials",
+    "subIndustry": "Fertilizers & Agricultural Chemicals",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "CSGP",
+    "rawSymbol": "CSGP",
+    "name": "CoStar Group",
+    "sector": "Real Estate",
+    "subIndustry": "Real Estate Services",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "COST",
+    "rawSymbol": "COST",
+    "name": "Costco",
+    "sector": "Consumer Staples",
+    "subIndustry": "Consumer Staples Merchandise Retail",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "CTRA",
+    "rawSymbol": "CTRA",
+    "name": "Coterra",
+    "sector": "Energy",
+    "subIndustry": "Oil & Gas Exploration & Production",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "CRH",
+    "rawSymbol": "CRH",
+    "name": "CRH plc",
+    "sector": "Materials",
+    "subIndustry": "Construction Materials",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "CRWD",
+    "rawSymbol": "CRWD",
+    "name": "CrowdStrike",
+    "sector": "Information Technology",
+    "subIndustry": "Systems Software",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "CCI",
+    "rawSymbol": "CCI",
+    "name": "Crown Castle",
+    "sector": "Real Estate",
+    "subIndustry": "Telecom Tower REITs",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "CSX",
+    "rawSymbol": "CSX",
+    "name": "CSX Corporation",
+    "sector": "Industrials",
+    "subIndustry": "Rail Transportation",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "CMI",
+    "rawSymbol": "CMI",
+    "name": "Cummins",
+    "sector": "Industrials",
+    "subIndustry": "Construction Machinery & Heavy Transportation Equipment",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "CVS",
+    "rawSymbol": "CVS",
+    "name": "CVS Health",
+    "sector": "Health Care",
+    "subIndustry": "Health Care Services",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "DHR",
+    "rawSymbol": "DHR",
+    "name": "Danaher Corporation",
+    "sector": "Health Care",
+    "subIndustry": "Life Sciences Tools & Services",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "DRI",
+    "rawSymbol": "DRI",
+    "name": "Darden Restaurants",
+    "sector": "Consumer Discretionary",
+    "subIndustry": "Restaurants",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "DDOG",
+    "rawSymbol": "DDOG",
+    "name": "Datadog",
+    "sector": "Information Technology",
+    "subIndustry": "Application Software",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "DVA",
+    "rawSymbol": "DVA",
+    "name": "DaVita",
+    "sector": "Health Care",
+    "subIndustry": "Health Care Services",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "DECK",
+    "rawSymbol": "DECK",
+    "name": "Deckers Brands",
+    "sector": "Consumer Discretionary",
+    "subIndustry": "Footwear",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "DE",
+    "rawSymbol": "DE",
+    "name": "Deere & Company",
+    "sector": "Industrials",
+    "subIndustry": "Agricultural & Farm Machinery",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "DELL",
+    "rawSymbol": "DELL",
+    "name": "Dell Technologies",
+    "sector": "Information Technology",
+    "subIndustry": "Technology Hardware, Storage & Peripherals",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "DAL",
+    "rawSymbol": "DAL",
+    "name": "Delta Air Lines",
+    "sector": "Industrials",
+    "subIndustry": "Passenger Airlines",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "DVN",
+    "rawSymbol": "DVN",
+    "name": "Devon Energy",
+    "sector": "Energy",
+    "subIndustry": "Oil & Gas Exploration & Production",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "DXCM",
+    "rawSymbol": "DXCM",
+    "name": "Dexcom",
+    "sector": "Health Care",
+    "subIndustry": "Health Care Equipment",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "FANG",
+    "rawSymbol": "FANG",
+    "name": "Diamondback Energy",
+    "sector": "Energy",
+    "subIndustry": "Oil & Gas Exploration & Production",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "DLR",
+    "rawSymbol": "DLR",
+    "name": "Digital Realty",
+    "sector": "Real Estate",
+    "subIndustry": "Data Center REITs",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "DG",
+    "rawSymbol": "DG",
+    "name": "Dollar General",
+    "sector": "Consumer Staples",
+    "subIndustry": "Consumer Staples Merchandise Retail",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "DLTR",
+    "rawSymbol": "DLTR",
+    "name": "Dollar Tree",
+    "sector": "Consumer Staples",
+    "subIndustry": "Consumer Staples Merchandise Retail",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "D",
+    "rawSymbol": "D",
+    "name": "Dominion Energy",
+    "sector": "Utilities",
+    "subIndustry": "Multi-Utilities",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "DPZ",
+    "rawSymbol": "DPZ",
+    "name": "Domino's",
+    "sector": "Consumer Discretionary",
+    "subIndustry": "Restaurants",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "DASH",
+    "rawSymbol": "DASH",
+    "name": "DoorDash",
+    "sector": "Consumer Discretionary",
+    "subIndustry": "Specialized Consumer Services",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "DOV",
+    "rawSymbol": "DOV",
+    "name": "Dover Corporation",
+    "sector": "Industrials",
+    "subIndustry": "Industrial Machinery & Supplies & Components",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "DOW",
+    "rawSymbol": "DOW",
+    "name": "Dow Inc.",
+    "sector": "Materials",
+    "subIndustry": "Commodity Chemicals",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "DHI",
+    "rawSymbol": "DHI",
+    "name": "D. R. Horton",
+    "sector": "Consumer Discretionary",
+    "subIndustry": "Homebuilding",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "DTE",
+    "rawSymbol": "DTE",
+    "name": "DTE Energy",
+    "sector": "Utilities",
+    "subIndustry": "Multi-Utilities",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "DUK",
+    "rawSymbol": "DUK",
+    "name": "Duke Energy",
+    "sector": "Utilities",
+    "subIndustry": "Electric Utilities",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "DD",
+    "rawSymbol": "DD",
+    "name": "DuPont",
+    "sector": "Materials",
+    "subIndustry": "Specialty Chemicals",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "ETN",
+    "rawSymbol": "ETN",
+    "name": "Eaton Corporation",
+    "sector": "Industrials",
+    "subIndustry": "Electrical Components & Equipment",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "EBAY",
+    "rawSymbol": "EBAY",
+    "name": "eBay Inc.",
+    "sector": "Consumer Discretionary",
+    "subIndustry": "Broadline Retail",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "SATS",
+    "rawSymbol": "SATS",
+    "name": "EchoStar",
+    "sector": "Communication Services",
+    "subIndustry": "Wireless Telecommunication Services",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "ECL",
+    "rawSymbol": "ECL",
+    "name": "Ecolab",
+    "sector": "Materials",
+    "subIndustry": "Specialty Chemicals",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "EIX",
+    "rawSymbol": "EIX",
+    "name": "Edison International",
+    "sector": "Utilities",
+    "subIndustry": "Electric Utilities",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "EW",
+    "rawSymbol": "EW",
+    "name": "Edwards Lifesciences",
+    "sector": "Health Care",
+    "subIndustry": "Health Care Equipment",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "EA",
+    "rawSymbol": "EA",
+    "name": "Electronic Arts",
+    "sector": "Communication Services",
+    "subIndustry": "Interactive Home Entertainment",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "ELV",
+    "rawSymbol": "ELV",
+    "name": "Elevance Health",
+    "sector": "Health Care",
+    "subIndustry": "Managed Health Care",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "EME",
+    "rawSymbol": "EME",
+    "name": "Emcor",
+    "sector": "Industrials",
+    "subIndustry": "Construction & Engineering",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "EMR",
+    "rawSymbol": "EMR",
+    "name": "Emerson Electric",
+    "sector": "Industrials",
+    "subIndustry": "Electrical Components & Equipment",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "ETR",
+    "rawSymbol": "ETR",
+    "name": "Entergy",
+    "sector": "Utilities",
+    "subIndustry": "Electric Utilities",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "EOG",
+    "rawSymbol": "EOG",
+    "name": "EOG Resources",
+    "sector": "Energy",
+    "subIndustry": "Oil & Gas Exploration & Production",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "EPAM",
+    "rawSymbol": "EPAM",
+    "name": "EPAM Systems",
+    "sector": "Information Technology",
+    "subIndustry": "IT Consulting & Other Services",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "EQT",
+    "rawSymbol": "EQT",
+    "name": "EQT Corporation",
+    "sector": "Energy",
+    "subIndustry": "Oil & Gas Exploration & Production",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "EFX",
+    "rawSymbol": "EFX",
+    "name": "Equifax",
+    "sector": "Industrials",
+    "subIndustry": "Research & Consulting Services",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "EQIX",
+    "rawSymbol": "EQIX",
+    "name": "Equinix",
+    "sector": "Real Estate",
+    "subIndustry": "Data Center REITs",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "EQR",
+    "rawSymbol": "EQR",
+    "name": "Equity Residential",
+    "sector": "Real Estate",
+    "subIndustry": "Multi-Family Residential REITs",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "ERIE",
+    "rawSymbol": "ERIE",
+    "name": "Erie Indemnity",
+    "sector": "Financials",
+    "subIndustry": "Insurance Brokers",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "ESS",
+    "rawSymbol": "ESS",
+    "name": "Essex Property Trust",
+    "sector": "Real Estate",
+    "subIndustry": "Multi-Family Residential REITs",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "EL",
+    "rawSymbol": "EL",
+    "name": "Est\u00e9e Lauder Companies (The)",
+    "sector": "Consumer Staples",
+    "subIndustry": "Personal Care Products",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "EG",
+    "rawSymbol": "EG",
+    "name": "Everest Group",
+    "sector": "Financials",
+    "subIndustry": "Reinsurance",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "EVRG",
+    "rawSymbol": "EVRG",
+    "name": "Evergy",
+    "sector": "Utilities",
+    "subIndustry": "Electric Utilities",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "ES",
+    "rawSymbol": "ES",
+    "name": "Eversource Energy",
+    "sector": "Utilities",
+    "subIndustry": "Electric Utilities",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "EXC",
+    "rawSymbol": "EXC",
+    "name": "Exelon",
+    "sector": "Utilities",
+    "subIndustry": "Electric Utilities",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "EXE",
+    "rawSymbol": "EXE",
+    "name": "Expand Energy",
+    "sector": "Energy",
+    "subIndustry": "Oil & Gas Exploration & Production",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "EXPE",
+    "rawSymbol": "EXPE",
+    "name": "Expedia Group",
+    "sector": "Consumer Discretionary",
+    "subIndustry": "Hotels, Resorts & Cruise Lines",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "EXPD",
+    "rawSymbol": "EXPD",
+    "name": "Expeditors International",
+    "sector": "Industrials",
+    "subIndustry": "Air Freight & Logistics",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "EXR",
+    "rawSymbol": "EXR",
+    "name": "Extra Space Storage",
+    "sector": "Real Estate",
+    "subIndustry": "Self-Storage REITs",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "XOM",
+    "rawSymbol": "XOM",
+    "name": "ExxonMobil",
+    "sector": "Energy",
+    "subIndustry": "Integrated Oil & Gas",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "FFIV",
+    "rawSymbol": "FFIV",
+    "name": "F5, Inc.",
+    "sector": "Information Technology",
+    "subIndustry": "Communications Equipment",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "FDS",
+    "rawSymbol": "FDS",
+    "name": "FactSet",
+    "sector": "Financials",
+    "subIndustry": "Financial Exchanges & Data",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "FICO",
+    "rawSymbol": "FICO",
+    "name": "Fair Isaac",
+    "sector": "Information Technology",
+    "subIndustry": "Application Software",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "FAST",
+    "rawSymbol": "FAST",
+    "name": "Fastenal",
+    "sector": "Industrials",
+    "subIndustry": "Trading Companies & Distributors",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "FRT",
+    "rawSymbol": "FRT",
+    "name": "Federal Realty Investment Trust",
+    "sector": "Real Estate",
+    "subIndustry": "Retail REITs",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "FDX",
+    "rawSymbol": "FDX",
+    "name": "FedEx",
+    "sector": "Industrials",
+    "subIndustry": "Air Freight & Logistics",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "FIS",
+    "rawSymbol": "FIS",
+    "name": "Fidelity National Information Services",
+    "sector": "Financials",
+    "subIndustry": "Transaction & Payment Processing Services",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "FITB",
+    "rawSymbol": "FITB",
+    "name": "Fifth Third Bancorp",
+    "sector": "Financials",
+    "subIndustry": "Regional Banks",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "FSLR",
+    "rawSymbol": "FSLR",
+    "name": "First Solar",
+    "sector": "Information Technology",
+    "subIndustry": "Semiconductors",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "FE",
+    "rawSymbol": "FE",
+    "name": "FirstEnergy",
+    "sector": "Utilities",
+    "subIndustry": "Electric Utilities",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "FISV",
+    "rawSymbol": "FISV",
+    "name": "Fiserv",
+    "sector": "Financials",
+    "subIndustry": "Transaction & Payment Processing Services",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "F",
+    "rawSymbol": "F",
+    "name": "Ford Motor Company",
+    "sector": "Consumer Discretionary",
+    "subIndustry": "Automobile Manufacturers",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "FTNT",
+    "rawSymbol": "FTNT",
+    "name": "Fortinet",
+    "sector": "Information Technology",
+    "subIndustry": "Systems Software",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "FTV",
+    "rawSymbol": "FTV",
+    "name": "Fortive",
+    "sector": "Industrials",
+    "subIndustry": "Industrial Machinery & Supplies & Components",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "FOXA",
+    "rawSymbol": "FOXA",
+    "name": "Fox Corporation (Class A)",
+    "sector": "Communication Services",
+    "subIndustry": "Broadcasting",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "FOX",
+    "rawSymbol": "FOX",
+    "name": "Fox Corporation (Class B)",
+    "sector": "Communication Services",
+    "subIndustry": "Broadcasting",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "BEN",
+    "rawSymbol": "BEN",
+    "name": "Franklin Resources",
+    "sector": "Financials",
+    "subIndustry": "Asset Management & Custody Banks",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "FCX",
+    "rawSymbol": "FCX",
+    "name": "Freeport-McMoRan",
+    "sector": "Materials",
+    "subIndustry": "Copper",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "GRMN",
+    "rawSymbol": "GRMN",
+    "name": "Garmin",
+    "sector": "Consumer Discretionary",
+    "subIndustry": "Consumer Electronics",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "IT",
+    "rawSymbol": "IT",
+    "name": "Gartner",
+    "sector": "Information Technology",
+    "subIndustry": "IT Consulting & Other Services",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "GE",
+    "rawSymbol": "GE",
+    "name": "GE Aerospace",
+    "sector": "Industrials",
+    "subIndustry": "Aerospace & Defense",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "GEHC",
+    "rawSymbol": "GEHC",
+    "name": "GE HealthCare",
+    "sector": "Health Care",
+    "subIndustry": "Health Care Equipment",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "GEV",
+    "rawSymbol": "GEV",
+    "name": "GE Vernova",
+    "sector": "Industrials",
+    "subIndustry": "Heavy Electrical Equipment",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "GEN",
+    "rawSymbol": "GEN",
+    "name": "Gen Digital",
+    "sector": "Information Technology",
+    "subIndustry": "Systems Software",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "GNRC",
+    "rawSymbol": "GNRC",
+    "name": "Generac",
+    "sector": "Industrials",
+    "subIndustry": "Electrical Components & Equipment",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "GD",
+    "rawSymbol": "GD",
+    "name": "General Dynamics",
+    "sector": "Industrials",
+    "subIndustry": "Aerospace & Defense",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "GIS",
+    "rawSymbol": "GIS",
+    "name": "General Mills",
+    "sector": "Consumer Staples",
+    "subIndustry": "Packaged Foods & Meats",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "GM",
+    "rawSymbol": "GM",
+    "name": "General Motors",
+    "sector": "Consumer Discretionary",
+    "subIndustry": "Automobile Manufacturers",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "GPC",
+    "rawSymbol": "GPC",
+    "name": "Genuine Parts Company",
+    "sector": "Consumer Discretionary",
+    "subIndustry": "Distributors",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "GILD",
+    "rawSymbol": "GILD",
+    "name": "Gilead Sciences",
+    "sector": "Health Care",
+    "subIndustry": "Biotechnology",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "GPN",
+    "rawSymbol": "GPN",
+    "name": "Global Payments",
+    "sector": "Financials",
+    "subIndustry": "Transaction & Payment Processing Services",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "GL",
+    "rawSymbol": "GL",
+    "name": "Globe Life",
+    "sector": "Financials",
+    "subIndustry": "Life & Health Insurance",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "GDDY",
+    "rawSymbol": "GDDY",
+    "name": "GoDaddy",
+    "sector": "Information Technology",
+    "subIndustry": "Internet Services & Infrastructure",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "GS",
+    "rawSymbol": "GS",
+    "name": "Goldman Sachs",
+    "sector": "Financials",
+    "subIndustry": "Investment Banking & Brokerage",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "HAL",
+    "rawSymbol": "HAL",
+    "name": "Halliburton",
+    "sector": "Energy",
+    "subIndustry": "Oil & Gas Equipment & Services",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "HIG",
+    "rawSymbol": "HIG",
+    "name": "Hartford (The)",
+    "sector": "Financials",
+    "subIndustry": "Property & Casualty Insurance",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "HAS",
+    "rawSymbol": "HAS",
+    "name": "Hasbro",
+    "sector": "Consumer Discretionary",
+    "subIndustry": "Leisure Products",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "HCA",
+    "rawSymbol": "HCA",
+    "name": "HCA Healthcare",
+    "sector": "Health Care",
+    "subIndustry": "Health Care Facilities",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "DOC",
+    "rawSymbol": "DOC",
+    "name": "Healthpeak Properties",
+    "sector": "Real Estate",
+    "subIndustry": "Health Care REITs",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "HSIC",
+    "rawSymbol": "HSIC",
+    "name": "Henry Schein",
+    "sector": "Health Care",
+    "subIndustry": "Health Care Distributors",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "HSY",
+    "rawSymbol": "HSY",
+    "name": "Hershey Company (The)",
+    "sector": "Consumer Staples",
+    "subIndustry": "Packaged Foods & Meats",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "HPE",
+    "rawSymbol": "HPE",
+    "name": "Hewlett Packard Enterprise",
+    "sector": "Information Technology",
+    "subIndustry": "Technology Hardware, Storage & Peripherals",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "HLT",
+    "rawSymbol": "HLT",
+    "name": "Hilton Worldwide",
+    "sector": "Consumer Discretionary",
+    "subIndustry": "Hotels, Resorts & Cruise Lines",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "HD",
+    "rawSymbol": "HD",
+    "name": "Home Depot (The)",
+    "sector": "Consumer Discretionary",
+    "subIndustry": "Home Improvement Retail",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "HON",
+    "rawSymbol": "HON",
+    "name": "Honeywell",
+    "sector": "Industrials",
+    "subIndustry": "Industrial Conglomerates",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "HRL",
+    "rawSymbol": "HRL",
+    "name": "Hormel Foods",
+    "sector": "Consumer Staples",
+    "subIndustry": "Packaged Foods & Meats",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "HST",
+    "rawSymbol": "HST",
+    "name": "Host Hotels & Resorts",
+    "sector": "Real Estate",
+    "subIndustry": "Hotel & Resort REITs",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "HWM",
+    "rawSymbol": "HWM",
+    "name": "Howmet Aerospace",
+    "sector": "Industrials",
+    "subIndustry": "Aerospace & Defense",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "HPQ",
+    "rawSymbol": "HPQ",
+    "name": "HP Inc.",
+    "sector": "Information Technology",
+    "subIndustry": "Technology Hardware, Storage & Peripherals",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "HUBB",
+    "rawSymbol": "HUBB",
+    "name": "Hubbell Incorporated",
+    "sector": "Industrials",
+    "subIndustry": "Industrial Machinery & Supplies & Components",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "HUM",
+    "rawSymbol": "HUM",
+    "name": "Humana",
+    "sector": "Health Care",
+    "subIndustry": "Managed Health Care",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "HBAN",
+    "rawSymbol": "HBAN",
+    "name": "Huntington Bancshares",
+    "sector": "Financials",
+    "subIndustry": "Regional Banks",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "HII",
+    "rawSymbol": "HII",
+    "name": "Huntington Ingalls Industries",
+    "sector": "Industrials",
+    "subIndustry": "Aerospace & Defense",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "IBM",
+    "rawSymbol": "IBM",
+    "name": "IBM",
+    "sector": "Information Technology",
+    "subIndustry": "IT Consulting & Other Services",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "IEX",
+    "rawSymbol": "IEX",
+    "name": "IDEX Corporation",
+    "sector": "Industrials",
+    "subIndustry": "Industrial Machinery & Supplies & Components",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "IDXX",
+    "rawSymbol": "IDXX",
+    "name": "Idexx Laboratories",
+    "sector": "Health Care",
+    "subIndustry": "Health Care Equipment",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "ITW",
+    "rawSymbol": "ITW",
+    "name": "Illinois Tool Works",
+    "sector": "Industrials",
+    "subIndustry": "Industrial Machinery & Supplies & Components",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "INCY",
+    "rawSymbol": "INCY",
+    "name": "Incyte",
+    "sector": "Health Care",
+    "subIndustry": "Biotechnology",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "IR",
+    "rawSymbol": "IR",
+    "name": "Ingersoll Rand",
+    "sector": "Industrials",
+    "subIndustry": "Industrial Machinery & Supplies & Components",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "PODD",
+    "rawSymbol": "PODD",
+    "name": "Insulet Corporation",
+    "sector": "Health Care",
+    "subIndustry": "Health Care Equipment",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "INTC",
+    "rawSymbol": "INTC",
+    "name": "Intel",
+    "sector": "Information Technology",
+    "subIndustry": "Semiconductors",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "IBKR",
+    "rawSymbol": "IBKR",
+    "name": "Interactive Brokers",
+    "sector": "Financials",
+    "subIndustry": "Investment Banking & Brokerage",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "ICE",
+    "rawSymbol": "ICE",
+    "name": "Intercontinental Exchange",
+    "sector": "Financials",
+    "subIndustry": "Financial Exchanges & Data",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "IFF",
+    "rawSymbol": "IFF",
+    "name": "International Flavors & Fragrances",
+    "sector": "Materials",
+    "subIndustry": "Specialty Chemicals",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "IP",
+    "rawSymbol": "IP",
+    "name": "International Paper",
+    "sector": "Materials",
+    "subIndustry": "Paper & Plastic Packaging Products & Materials",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "INTU",
+    "rawSymbol": "INTU",
+    "name": "Intuit",
+    "sector": "Information Technology",
+    "subIndustry": "Application Software",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "ISRG",
+    "rawSymbol": "ISRG",
+    "name": "Intuitive Surgical",
+    "sector": "Health Care",
+    "subIndustry": "Health Care Equipment",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "IVZ",
+    "rawSymbol": "IVZ",
+    "name": "Invesco",
+    "sector": "Financials",
+    "subIndustry": "Asset Management & Custody Banks",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "INVH",
+    "rawSymbol": "INVH",
+    "name": "Invitation Homes",
+    "sector": "Real Estate",
+    "subIndustry": "Single-Family Residential REITs",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "IQV",
+    "rawSymbol": "IQV",
+    "name": "IQVIA",
+    "sector": "Health Care",
+    "subIndustry": "Life Sciences Tools & Services",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "IRM",
+    "rawSymbol": "IRM",
+    "name": "Iron Mountain",
+    "sector": "Real Estate",
+    "subIndustry": "Other Specialized REITs",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "JBHT",
+    "rawSymbol": "JBHT",
+    "name": "J.B. Hunt",
+    "sector": "Industrials",
+    "subIndustry": "Cargo Ground Transportation",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "JBL",
+    "rawSymbol": "JBL",
+    "name": "Jabil",
+    "sector": "Information Technology",
+    "subIndustry": "Electronic Manufacturing Services",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "JKHY",
+    "rawSymbol": "JKHY",
+    "name": "Jack Henry & Associates",
+    "sector": "Financials",
+    "subIndustry": "Transaction & Payment Processing Services",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "J",
+    "rawSymbol": "J",
+    "name": "Jacobs Solutions",
+    "sector": "Industrials",
+    "subIndustry": "Construction & Engineering",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "JNJ",
+    "rawSymbol": "JNJ",
+    "name": "Johnson & Johnson",
+    "sector": "Health Care",
+    "subIndustry": "Pharmaceuticals",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "JCI",
+    "rawSymbol": "JCI",
+    "name": "Johnson Controls",
+    "sector": "Industrials",
+    "subIndustry": "Building Products",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "JPM",
+    "rawSymbol": "JPM",
+    "name": "JPMorgan Chase",
+    "sector": "Financials",
+    "subIndustry": "Diversified Banks",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "KVUE",
+    "rawSymbol": "KVUE",
+    "name": "Kenvue",
+    "sector": "Consumer Staples",
+    "subIndustry": "Personal Care Products",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "KDP",
+    "rawSymbol": "KDP",
+    "name": "Keurig Dr Pepper",
+    "sector": "Consumer Staples",
+    "subIndustry": "Soft Drinks & Non-alcoholic Beverages",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "KEY",
+    "rawSymbol": "KEY",
+    "name": "KeyCorp",
+    "sector": "Financials",
+    "subIndustry": "Regional Banks",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "KEYS",
+    "rawSymbol": "KEYS",
+    "name": "Keysight Technologies",
+    "sector": "Information Technology",
+    "subIndustry": "Electronic Equipment & Instruments",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "KMB",
+    "rawSymbol": "KMB",
+    "name": "Kimberly-Clark",
+    "sector": "Consumer Staples",
+    "subIndustry": "Household Products",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "KIM",
+    "rawSymbol": "KIM",
+    "name": "Kimco Realty",
+    "sector": "Real Estate",
+    "subIndustry": "Retail REITs",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "KMI",
+    "rawSymbol": "KMI",
+    "name": "Kinder Morgan",
+    "sector": "Energy",
+    "subIndustry": "Oil & Gas Storage & Transportation",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "KKR",
+    "rawSymbol": "KKR",
+    "name": "KKR & Co.",
+    "sector": "Financials",
+    "subIndustry": "Asset Management & Custody Banks",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "KLAC",
+    "rawSymbol": "KLAC",
+    "name": "KLA Corporation",
+    "sector": "Information Technology",
+    "subIndustry": "Semiconductor Materials & Equipment",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "KHC",
+    "rawSymbol": "KHC",
+    "name": "Kraft Heinz",
+    "sector": "Consumer Staples",
+    "subIndustry": "Packaged Foods & Meats",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "KR",
+    "rawSymbol": "KR",
+    "name": "Kroger",
+    "sector": "Consumer Staples",
+    "subIndustry": "Food Retail",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "LHX",
+    "rawSymbol": "LHX",
+    "name": "L3Harris",
+    "sector": "Industrials",
+    "subIndustry": "Aerospace & Defense",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "LH",
+    "rawSymbol": "LH",
+    "name": "Labcorp",
+    "sector": "Health Care",
+    "subIndustry": "Health Care Services",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "LRCX",
+    "rawSymbol": "LRCX",
+    "name": "Lam Research",
+    "sector": "Information Technology",
+    "subIndustry": "Semiconductor Materials & Equipment",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "LVS",
+    "rawSymbol": "LVS",
+    "name": "Las Vegas Sands",
+    "sector": "Consumer Discretionary",
+    "subIndustry": "Casinos & Gaming",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "LDOS",
+    "rawSymbol": "LDOS",
+    "name": "Leidos",
+    "sector": "Industrials",
+    "subIndustry": "Diversified Support Services",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "LEN",
+    "rawSymbol": "LEN",
+    "name": "Lennar",
+    "sector": "Consumer Discretionary",
+    "subIndustry": "Homebuilding",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "LII",
+    "rawSymbol": "LII",
+    "name": "Lennox International",
+    "sector": "Industrials",
+    "subIndustry": "Building Products",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "LLY",
+    "rawSymbol": "LLY",
+    "name": "Lilly (Eli)",
+    "sector": "Health Care",
+    "subIndustry": "Pharmaceuticals",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "LIN",
+    "rawSymbol": "LIN",
+    "name": "Linde plc",
+    "sector": "Materials",
+    "subIndustry": "Industrial Gases",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "LYV",
+    "rawSymbol": "LYV",
+    "name": "Live Nation Entertainment",
+    "sector": "Communication Services",
+    "subIndustry": "Movies & Entertainment",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "LMT",
+    "rawSymbol": "LMT",
+    "name": "Lockheed Martin",
+    "sector": "Industrials",
+    "subIndustry": "Aerospace & Defense",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "L",
+    "rawSymbol": "L",
+    "name": "Loews Corporation",
+    "sector": "Financials",
+    "subIndustry": "Multi-line Insurance",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "LOW",
+    "rawSymbol": "LOW",
+    "name": "Lowe's",
+    "sector": "Consumer Discretionary",
+    "subIndustry": "Home Improvement Retail",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "LULU",
+    "rawSymbol": "LULU",
+    "name": "Lululemon Athletica",
+    "sector": "Consumer Discretionary",
+    "subIndustry": "Apparel, Accessories & Luxury Goods",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "LITE",
+    "rawSymbol": "LITE",
+    "name": "Lumentum",
+    "sector": "Information Technology",
+    "subIndustry": "Communications Equipment",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "LYB",
+    "rawSymbol": "LYB",
+    "name": "LyondellBasell",
+    "sector": "Materials",
+    "subIndustry": "Specialty Chemicals",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "MTB",
+    "rawSymbol": "MTB",
+    "name": "M&T Bank",
+    "sector": "Financials",
+    "subIndustry": "Regional Banks",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "MPC",
+    "rawSymbol": "MPC",
+    "name": "Marathon Petroleum",
+    "sector": "Energy",
+    "subIndustry": "Oil & Gas Refining & Marketing",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "MAR",
+    "rawSymbol": "MAR",
+    "name": "Marriott International",
+    "sector": "Consumer Discretionary",
+    "subIndustry": "Hotels, Resorts & Cruise Lines",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "MRSH",
+    "rawSymbol": "MRSH",
+    "name": "Marsh McLennan",
+    "sector": "Financials",
+    "subIndustry": "Insurance Brokers",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "MLM",
+    "rawSymbol": "MLM",
+    "name": "Martin Marietta Materials",
+    "sector": "Materials",
+    "subIndustry": "Construction Materials",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "MAS",
+    "rawSymbol": "MAS",
+    "name": "Masco",
+    "sector": "Industrials",
+    "subIndustry": "Building Products",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "MA",
+    "rawSymbol": "MA",
+    "name": "Mastercard",
+    "sector": "Financials",
+    "subIndustry": "Transaction & Payment Processing Services",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "MKC",
+    "rawSymbol": "MKC",
+    "name": "McCormick & Company",
+    "sector": "Consumer Staples",
+    "subIndustry": "Packaged Foods & Meats",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "MCD",
+    "rawSymbol": "MCD",
+    "name": "McDonald's",
+    "sector": "Consumer Discretionary",
+    "subIndustry": "Restaurants",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "MCK",
+    "rawSymbol": "MCK",
+    "name": "McKesson Corporation",
+    "sector": "Health Care",
+    "subIndustry": "Health Care Distributors",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "MDT",
+    "rawSymbol": "MDT",
+    "name": "Medtronic",
+    "sector": "Health Care",
+    "subIndustry": "Health Care Equipment",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "MRK",
+    "rawSymbol": "MRK",
+    "name": "Merck & Co.",
+    "sector": "Health Care",
+    "subIndustry": "Pharmaceuticals",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "META",
+    "rawSymbol": "META",
+    "name": "Meta Platforms",
+    "sector": "Communication Services",
+    "subIndustry": "Interactive Media & Services",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "MET",
+    "rawSymbol": "MET",
+    "name": "MetLife",
+    "sector": "Financials",
+    "subIndustry": "Life & Health Insurance",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "MTD",
+    "rawSymbol": "MTD",
+    "name": "Mettler Toledo",
+    "sector": "Health Care",
+    "subIndustry": "Life Sciences Tools & Services",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "MGM",
+    "rawSymbol": "MGM",
+    "name": "MGM Resorts",
+    "sector": "Consumer Discretionary",
+    "subIndustry": "Casinos & Gaming",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "MCHP",
+    "rawSymbol": "MCHP",
+    "name": "Microchip Technology",
+    "sector": "Information Technology",
+    "subIndustry": "Semiconductors",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "MU",
+    "rawSymbol": "MU",
+    "name": "Micron Technology",
+    "sector": "Information Technology",
+    "subIndustry": "Semiconductors",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "MSFT",
+    "rawSymbol": "MSFT",
+    "name": "Microsoft",
+    "sector": "Information Technology",
+    "subIndustry": "Systems Software",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "MAA",
+    "rawSymbol": "MAA",
+    "name": "Mid-America Apartment Communities",
+    "sector": "Real Estate",
+    "subIndustry": "Multi-Family Residential REITs",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "MRNA",
+    "rawSymbol": "MRNA",
+    "name": "Moderna",
+    "sector": "Health Care",
+    "subIndustry": "Biotechnology",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "TAP",
+    "rawSymbol": "TAP",
+    "name": "Molson Coors Beverage Company",
+    "sector": "Consumer Staples",
+    "subIndustry": "Brewers",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "MDLZ",
+    "rawSymbol": "MDLZ",
+    "name": "Mondelez International",
+    "sector": "Consumer Staples",
+    "subIndustry": "Packaged Foods & Meats",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "MPWR",
+    "rawSymbol": "MPWR",
+    "name": "Monolithic Power Systems",
+    "sector": "Information Technology",
+    "subIndustry": "Semiconductors",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "MNST",
+    "rawSymbol": "MNST",
+    "name": "Monster Beverage",
+    "sector": "Consumer Staples",
+    "subIndustry": "Soft Drinks & Non-alcoholic Beverages",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "MCO",
+    "rawSymbol": "MCO",
+    "name": "Moody's Corporation",
+    "sector": "Financials",
+    "subIndustry": "Financial Exchanges & Data",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "MS",
+    "rawSymbol": "MS",
+    "name": "Morgan Stanley",
+    "sector": "Financials",
+    "subIndustry": "Investment Banking & Brokerage",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "MOS",
+    "rawSymbol": "MOS",
+    "name": "Mosaic Company (The)",
+    "sector": "Materials",
+    "subIndustry": "Fertilizers & Agricultural Chemicals",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "MSI",
+    "rawSymbol": "MSI",
+    "name": "Motorola Solutions",
+    "sector": "Information Technology",
+    "subIndustry": "Communications Equipment",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "MSCI",
+    "rawSymbol": "MSCI",
+    "name": "MSCI Inc.",
+    "sector": "Financials",
+    "subIndustry": "Financial Exchanges & Data",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "NDAQ",
+    "rawSymbol": "NDAQ",
+    "name": "Nasdaq, Inc.",
+    "sector": "Financials",
+    "subIndustry": "Financial Exchanges & Data",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "NTAP",
+    "rawSymbol": "NTAP",
+    "name": "NetApp",
+    "sector": "Information Technology",
+    "subIndustry": "Technology Hardware, Storage & Peripherals",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "NFLX",
+    "rawSymbol": "NFLX",
+    "name": "Netflix",
+    "sector": "Communication Services",
+    "subIndustry": "Movies & Entertainment",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "NEM",
+    "rawSymbol": "NEM",
+    "name": "Newmont",
+    "sector": "Materials",
+    "subIndustry": "Gold",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "NWSA",
+    "rawSymbol": "NWSA",
+    "name": "News Corp (Class A)",
+    "sector": "Communication Services",
+    "subIndustry": "Publishing",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "NWS",
+    "rawSymbol": "NWS",
+    "name": "News Corp (Class B)",
+    "sector": "Communication Services",
+    "subIndustry": "Publishing",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "NEE",
+    "rawSymbol": "NEE",
+    "name": "NextEra Energy",
+    "sector": "Utilities",
+    "subIndustry": "Multi-Utilities",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "NKE",
+    "rawSymbol": "NKE",
+    "name": "Nike, Inc.",
+    "sector": "Consumer Discretionary",
+    "subIndustry": "Apparel, Accessories & Luxury Goods",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "NI",
+    "rawSymbol": "NI",
+    "name": "NiSource",
+    "sector": "Utilities",
+    "subIndustry": "Multi-Utilities",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "NDSN",
+    "rawSymbol": "NDSN",
+    "name": "Nordson Corporation",
+    "sector": "Industrials",
+    "subIndustry": "Industrial Machinery & Supplies & Components",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "NSC",
+    "rawSymbol": "NSC",
+    "name": "Norfolk Southern",
+    "sector": "Industrials",
+    "subIndustry": "Rail Transportation",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "NTRS",
+    "rawSymbol": "NTRS",
+    "name": "Northern Trust",
+    "sector": "Financials",
+    "subIndustry": "Asset Management & Custody Banks",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "NOC",
+    "rawSymbol": "NOC",
+    "name": "Northrop Grumman",
+    "sector": "Industrials",
+    "subIndustry": "Aerospace & Defense",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "NCLH",
+    "rawSymbol": "NCLH",
+    "name": "Norwegian Cruise Line Holdings",
+    "sector": "Consumer Discretionary",
+    "subIndustry": "Hotels, Resorts & Cruise Lines",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "NRG",
+    "rawSymbol": "NRG",
+    "name": "NRG Energy",
+    "sector": "Utilities",
+    "subIndustry": "Independent Power Producers & Energy Traders",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "NUE",
+    "rawSymbol": "NUE",
+    "name": "Nucor",
+    "sector": "Materials",
+    "subIndustry": "Steel",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "NVDA",
+    "rawSymbol": "NVDA",
+    "name": "Nvidia",
+    "sector": "Information Technology",
+    "subIndustry": "Semiconductors",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "NVR",
+    "rawSymbol": "NVR",
+    "name": "NVR, Inc.",
+    "sector": "Consumer Discretionary",
+    "subIndustry": "Homebuilding",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "NXPI",
+    "rawSymbol": "NXPI",
+    "name": "NXP Semiconductors",
+    "sector": "Information Technology",
+    "subIndustry": "Semiconductors",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "ORLY",
+    "rawSymbol": "ORLY",
+    "name": "O\u2019Reilly Automotive",
+    "sector": "Consumer Discretionary",
+    "subIndustry": "Automotive Retail",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "OXY",
+    "rawSymbol": "OXY",
+    "name": "Occidental Petroleum",
+    "sector": "Energy",
+    "subIndustry": "Oil & Gas Exploration & Production",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "ODFL",
+    "rawSymbol": "ODFL",
+    "name": "Old Dominion",
+    "sector": "Industrials",
+    "subIndustry": "Cargo Ground Transportation",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "OMC",
+    "rawSymbol": "OMC",
+    "name": "Omnicom Group",
+    "sector": "Communication Services",
+    "subIndustry": "Advertising",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "ON",
+    "rawSymbol": "ON",
+    "name": "ON Semiconductor",
+    "sector": "Information Technology",
+    "subIndustry": "Semiconductors",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "OKE",
+    "rawSymbol": "OKE",
+    "name": "Oneok",
+    "sector": "Energy",
+    "subIndustry": "Oil & Gas Storage & Transportation",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "ORCL",
+    "rawSymbol": "ORCL",
+    "name": "Oracle Corporation",
+    "sector": "Information Technology",
+    "subIndustry": "Application Software",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "OTIS",
+    "rawSymbol": "OTIS",
+    "name": "Otis Worldwide",
+    "sector": "Industrials",
+    "subIndustry": "Industrial Machinery & Supplies & Components",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "PCAR",
+    "rawSymbol": "PCAR",
+    "name": "Paccar",
+    "sector": "Industrials",
+    "subIndustry": "Construction Machinery & Heavy Transportation Equipment",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "PKG",
+    "rawSymbol": "PKG",
+    "name": "Packaging Corporation of America",
+    "sector": "Materials",
+    "subIndustry": "Paper & Plastic Packaging Products & Materials",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "PLTR",
+    "rawSymbol": "PLTR",
+    "name": "Palantir Technologies",
+    "sector": "Information Technology",
+    "subIndustry": "Application Software",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "PANW",
+    "rawSymbol": "PANW",
+    "name": "Palo Alto Networks",
+    "sector": "Information Technology",
+    "subIndustry": "Systems Software",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "PSKY",
+    "rawSymbol": "PSKY",
+    "name": "Paramount Skydance Corporation",
+    "sector": "Communication Services",
+    "subIndustry": "Movies & Entertainment",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "PH",
+    "rawSymbol": "PH",
+    "name": "Parker Hannifin",
+    "sector": "Industrials",
+    "subIndustry": "Industrial Machinery & Supplies & Components",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "PAYX",
+    "rawSymbol": "PAYX",
+    "name": "Paychex",
+    "sector": "Industrials",
+    "subIndustry": "Human Resource & Employment Services",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "PYPL",
+    "rawSymbol": "PYPL",
+    "name": "PayPal",
+    "sector": "Financials",
+    "subIndustry": "Transaction & Payment Processing Services",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "PNR",
+    "rawSymbol": "PNR",
+    "name": "Pentair",
+    "sector": "Industrials",
+    "subIndustry": "Industrial Machinery & Supplies & Components",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "PEP",
+    "rawSymbol": "PEP",
+    "name": "PepsiCo",
+    "sector": "Consumer Staples",
+    "subIndustry": "Soft Drinks & Non-alcoholic Beverages",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "PFE",
+    "rawSymbol": "PFE",
+    "name": "Pfizer",
+    "sector": "Health Care",
+    "subIndustry": "Pharmaceuticals",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "PCG",
+    "rawSymbol": "PCG",
+    "name": "PG&E Corporation",
+    "sector": "Utilities",
+    "subIndustry": "Multi-Utilities",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "PM",
+    "rawSymbol": "PM",
+    "name": "Philip Morris International",
+    "sector": "Consumer Staples",
+    "subIndustry": "Tobacco",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "PSX",
+    "rawSymbol": "PSX",
+    "name": "Phillips 66",
+    "sector": "Energy",
+    "subIndustry": "Oil & Gas Refining & Marketing",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "PNW",
+    "rawSymbol": "PNW",
+    "name": "Pinnacle West Capital",
+    "sector": "Utilities",
+    "subIndustry": "Multi-Utilities",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "PNC",
+    "rawSymbol": "PNC",
+    "name": "PNC Financial Services",
+    "sector": "Financials",
+    "subIndustry": "Diversified Banks",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "POOL",
+    "rawSymbol": "POOL",
+    "name": "Pool Corporation",
+    "sector": "Consumer Discretionary",
+    "subIndustry": "Distributors",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "PPG",
+    "rawSymbol": "PPG",
+    "name": "PPG Industries",
+    "sector": "Materials",
+    "subIndustry": "Specialty Chemicals",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "PPL",
+    "rawSymbol": "PPL",
+    "name": "PPL Corporation",
+    "sector": "Utilities",
+    "subIndustry": "Electric Utilities",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "PFG",
+    "rawSymbol": "PFG",
+    "name": "Principal Financial Group",
+    "sector": "Financials",
+    "subIndustry": "Life & Health Insurance",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "PG",
+    "rawSymbol": "PG",
+    "name": "Procter & Gamble",
+    "sector": "Consumer Staples",
+    "subIndustry": "Personal Care Products",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "PGR",
+    "rawSymbol": "PGR",
+    "name": "Progressive Corporation",
+    "sector": "Financials",
+    "subIndustry": "Property & Casualty Insurance",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "PLD",
+    "rawSymbol": "PLD",
+    "name": "Prologis",
+    "sector": "Real Estate",
+    "subIndustry": "Industrial REITs",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "PRU",
+    "rawSymbol": "PRU",
+    "name": "Prudential Financial",
+    "sector": "Financials",
+    "subIndustry": "Life & Health Insurance",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "PEG",
+    "rawSymbol": "PEG",
+    "name": "Public Service Enterprise Group",
+    "sector": "Utilities",
+    "subIndustry": "Electric Utilities",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "PTC",
+    "rawSymbol": "PTC",
+    "name": "PTC Inc.",
+    "sector": "Information Technology",
+    "subIndustry": "Application Software",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "PSA",
+    "rawSymbol": "PSA",
+    "name": "Public Storage",
+    "sector": "Real Estate",
+    "subIndustry": "Self-Storage REITs",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "PHM",
+    "rawSymbol": "PHM",
+    "name": "PulteGroup",
+    "sector": "Consumer Discretionary",
+    "subIndustry": "Homebuilding",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "PWR",
+    "rawSymbol": "PWR",
+    "name": "Quanta Services",
+    "sector": "Industrials",
+    "subIndustry": "Construction & Engineering",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "QCOM",
+    "rawSymbol": "QCOM",
+    "name": "Qualcomm",
+    "sector": "Information Technology",
+    "subIndustry": "Semiconductors",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "DGX",
+    "rawSymbol": "DGX",
+    "name": "Quest Diagnostics",
+    "sector": "Health Care",
+    "subIndustry": "Health Care Services",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "Q",
+    "rawSymbol": "Q",
+    "name": "Qnity Electronics",
+    "sector": "Information Technology",
+    "subIndustry": "Semiconductor Materials & Equipment",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "RL",
+    "rawSymbol": "RL",
+    "name": "Ralph Lauren Corporation",
+    "sector": "Consumer Discretionary",
+    "subIndustry": "Apparel, Accessories & Luxury Goods",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "RJF",
+    "rawSymbol": "RJF",
+    "name": "Raymond James Financial",
+    "sector": "Financials",
+    "subIndustry": "Investment Banking & Brokerage",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "RTX",
+    "rawSymbol": "RTX",
+    "name": "RTX Corporation",
+    "sector": "Industrials",
+    "subIndustry": "Aerospace & Defense",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "O",
+    "rawSymbol": "O",
+    "name": "Realty Income",
+    "sector": "Real Estate",
+    "subIndustry": "Retail REITs",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "REG",
+    "rawSymbol": "REG",
+    "name": "Regency Centers",
+    "sector": "Real Estate",
+    "subIndustry": "Retail REITs",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "REGN",
+    "rawSymbol": "REGN",
+    "name": "Regeneron Pharmaceuticals",
+    "sector": "Health Care",
+    "subIndustry": "Biotechnology",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "RF",
+    "rawSymbol": "RF",
+    "name": "Regions Financial Corporation",
+    "sector": "Financials",
+    "subIndustry": "Regional Banks",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "RSG",
+    "rawSymbol": "RSG",
+    "name": "Republic Services",
+    "sector": "Industrials",
+    "subIndustry": "Environmental & Facilities Services",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "RMD",
+    "rawSymbol": "RMD",
+    "name": "ResMed",
+    "sector": "Health Care",
+    "subIndustry": "Health Care Equipment",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "RVTY",
+    "rawSymbol": "RVTY",
+    "name": "Revvity",
+    "sector": "Health Care",
+    "subIndustry": "Health Care Equipment",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "HOOD",
+    "rawSymbol": "HOOD",
+    "name": "Robinhood Markets",
+    "sector": "Financials",
+    "subIndustry": "Investment Banking & Brokerage",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "ROK",
+    "rawSymbol": "ROK",
+    "name": "Rockwell Automation",
+    "sector": "Industrials",
+    "subIndustry": "Electrical Components & Equipment",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "ROL",
+    "rawSymbol": "ROL",
+    "name": "Rollins, Inc.",
+    "sector": "Industrials",
+    "subIndustry": "Environmental & Facilities Services",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "ROP",
+    "rawSymbol": "ROP",
+    "name": "Roper Technologies",
+    "sector": "Information Technology",
+    "subIndustry": "Electronic Equipment & Instruments",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "ROST",
+    "rawSymbol": "ROST",
+    "name": "Ross Stores",
+    "sector": "Consumer Discretionary",
+    "subIndustry": "Apparel Retail",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "RCL",
+    "rawSymbol": "RCL",
+    "name": "Royal Caribbean Group",
+    "sector": "Consumer Discretionary",
+    "subIndustry": "Hotels, Resorts & Cruise Lines",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "SPGI",
+    "rawSymbol": "SPGI",
+    "name": "S&P Global",
+    "sector": "Financials",
+    "subIndustry": "Financial Exchanges & Data",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "CRM",
+    "rawSymbol": "CRM",
+    "name": "Salesforce",
+    "sector": "Information Technology",
+    "subIndustry": "Application Software",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "SNDK",
+    "rawSymbol": "SNDK",
+    "name": "Sandisk",
+    "sector": "Information Technology",
+    "subIndustry": "Technology Hardware, Storage & Peripherals",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "SBAC",
+    "rawSymbol": "SBAC",
+    "name": "SBA Communications",
+    "sector": "Real Estate",
+    "subIndustry": "Telecom Tower REITs",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "SLB",
+    "rawSymbol": "SLB",
+    "name": "Schlumberger",
+    "sector": "Energy",
+    "subIndustry": "Oil & Gas Equipment & Services",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "STX",
+    "rawSymbol": "STX",
+    "name": "Seagate Technology",
+    "sector": "Information Technology",
+    "subIndustry": "Technology Hardware, Storage & Peripherals",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "SRE",
+    "rawSymbol": "SRE",
+    "name": "Sempra",
+    "sector": "Utilities",
+    "subIndustry": "Multi-Utilities",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "NOW",
+    "rawSymbol": "NOW",
+    "name": "ServiceNow",
+    "sector": "Information Technology",
+    "subIndustry": "Systems Software",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "SHW",
+    "rawSymbol": "SHW",
+    "name": "Sherwin-Williams",
+    "sector": "Materials",
+    "subIndustry": "Specialty Chemicals",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "SPG",
+    "rawSymbol": "SPG",
+    "name": "Simon Property Group",
+    "sector": "Real Estate",
+    "subIndustry": "Retail REITs",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "SWKS",
+    "rawSymbol": "SWKS",
+    "name": "Skyworks Solutions",
+    "sector": "Information Technology",
+    "subIndustry": "Semiconductors",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "SJM",
+    "rawSymbol": "SJM",
+    "name": "J.M. Smucker Company (The)",
+    "sector": "Consumer Staples",
+    "subIndustry": "Packaged Foods & Meats",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "SW",
+    "rawSymbol": "SW",
+    "name": "Smurfit Westrock",
+    "sector": "Materials",
+    "subIndustry": "Paper & Plastic Packaging Products & Materials",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "SNA",
+    "rawSymbol": "SNA",
+    "name": "Snap-on",
+    "sector": "Industrials",
+    "subIndustry": "Industrial Machinery & Supplies & Components",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "SOLV",
+    "rawSymbol": "SOLV",
+    "name": "Solventum",
+    "sector": "Health Care",
+    "subIndustry": "Health Care Technology",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "SO",
+    "rawSymbol": "SO",
+    "name": "Southern Company",
+    "sector": "Utilities",
+    "subIndustry": "Electric Utilities",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "LUV",
+    "rawSymbol": "LUV",
+    "name": "Southwest Airlines",
+    "sector": "Industrials",
+    "subIndustry": "Passenger Airlines",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "SWK",
+    "rawSymbol": "SWK",
+    "name": "Stanley Black & Decker",
+    "sector": "Industrials",
+    "subIndustry": "Industrial Machinery & Supplies & Components",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "SBUX",
+    "rawSymbol": "SBUX",
+    "name": "Starbucks",
+    "sector": "Consumer Discretionary",
+    "subIndustry": "Restaurants",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "STT",
+    "rawSymbol": "STT",
+    "name": "State Street Corporation",
+    "sector": "Financials",
+    "subIndustry": "Asset Management & Custody Banks",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "STLD",
+    "rawSymbol": "STLD",
+    "name": "Steel Dynamics",
+    "sector": "Materials",
+    "subIndustry": "Steel",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "STE",
+    "rawSymbol": "STE",
+    "name": "Steris",
+    "sector": "Health Care",
+    "subIndustry": "Health Care Equipment",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "SYK",
+    "rawSymbol": "SYK",
+    "name": "Stryker Corporation",
+    "sector": "Health Care",
+    "subIndustry": "Health Care Equipment",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "SMCI",
+    "rawSymbol": "SMCI",
+    "name": "Supermicro",
+    "sector": "Information Technology",
+    "subIndustry": "Technology Hardware, Storage & Peripherals",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "SYF",
+    "rawSymbol": "SYF",
+    "name": "Synchrony Financial",
+    "sector": "Financials",
+    "subIndustry": "Consumer Finance",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "SNPS",
+    "rawSymbol": "SNPS",
+    "name": "Synopsys",
+    "sector": "Information Technology",
+    "subIndustry": "Application Software",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "SYY",
+    "rawSymbol": "SYY",
+    "name": "Sysco",
+    "sector": "Consumer Staples",
+    "subIndustry": "Food Distributors",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "TMUS",
+    "rawSymbol": "TMUS",
+    "name": "T-Mobile US",
+    "sector": "Communication Services",
+    "subIndustry": "Wireless Telecommunication Services",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "TROW",
+    "rawSymbol": "TROW",
+    "name": "T. Rowe Price",
+    "sector": "Financials",
+    "subIndustry": "Asset Management & Custody Banks",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "TTWO",
+    "rawSymbol": "TTWO",
+    "name": "Take-Two Interactive",
+    "sector": "Communication Services",
+    "subIndustry": "Interactive Home Entertainment",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "TPR",
+    "rawSymbol": "TPR",
+    "name": "Tapestry, Inc.",
+    "sector": "Consumer Discretionary",
+    "subIndustry": "Apparel, Accessories & Luxury Goods",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "TRGP",
+    "rawSymbol": "TRGP",
+    "name": "Targa Resources",
+    "sector": "Energy",
+    "subIndustry": "Oil & Gas Storage & Transportation",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "TGT",
+    "rawSymbol": "TGT",
+    "name": "Target Corporation",
+    "sector": "Consumer Staples",
+    "subIndustry": "Consumer Staples Merchandise Retail",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "TEL",
+    "rawSymbol": "TEL",
+    "name": "TE Connectivity",
+    "sector": "Information Technology",
+    "subIndustry": "Electronic Manufacturing Services",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "TDY",
+    "rawSymbol": "TDY",
+    "name": "Teledyne Technologies",
+    "sector": "Information Technology",
+    "subIndustry": "Electronic Equipment & Instruments",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "TER",
+    "rawSymbol": "TER",
+    "name": "Teradyne",
+    "sector": "Information Technology",
+    "subIndustry": "Semiconductor Materials & Equipment",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "TSLA",
+    "rawSymbol": "TSLA",
+    "name": "Tesla, Inc.",
+    "sector": "Consumer Discretionary",
+    "subIndustry": "Automobile Manufacturers",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "TXN",
+    "rawSymbol": "TXN",
+    "name": "Texas Instruments",
+    "sector": "Information Technology",
+    "subIndustry": "Semiconductors",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "TPL",
+    "rawSymbol": "TPL",
+    "name": "Texas Pacific Land Corporation",
+    "sector": "Energy",
+    "subIndustry": "Oil & Gas Exploration & Production",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "TXT",
+    "rawSymbol": "TXT",
+    "name": "Textron",
+    "sector": "Industrials",
+    "subIndustry": "Aerospace & Defense",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "TMO",
+    "rawSymbol": "TMO",
+    "name": "Thermo Fisher Scientific",
+    "sector": "Health Care",
+    "subIndustry": "Life Sciences Tools & Services",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "TJX",
+    "rawSymbol": "TJX",
+    "name": "TJX Companies",
+    "sector": "Consumer Discretionary",
+    "subIndustry": "Apparel Retail",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "TKO",
+    "rawSymbol": "TKO",
+    "name": "TKO Group Holdings",
+    "sector": "Communication Services",
+    "subIndustry": "Movies & Entertainment",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "TTD",
+    "rawSymbol": "TTD",
+    "name": "Trade Desk (The)",
+    "sector": "Communication Services",
+    "subIndustry": "Advertising",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "TSCO",
+    "rawSymbol": "TSCO",
+    "name": "Tractor Supply",
+    "sector": "Consumer Discretionary",
+    "subIndustry": "Other Specialty Retail",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "TT",
+    "rawSymbol": "TT",
+    "name": "Trane Technologies",
+    "sector": "Industrials",
+    "subIndustry": "Building Products",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "TDG",
+    "rawSymbol": "TDG",
+    "name": "TransDigm Group",
+    "sector": "Industrials",
+    "subIndustry": "Aerospace & Defense",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "TRV",
+    "rawSymbol": "TRV",
+    "name": "Travelers Companies (The)",
+    "sector": "Financials",
+    "subIndustry": "Property & Casualty Insurance",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "TRMB",
+    "rawSymbol": "TRMB",
+    "name": "Trimble Inc.",
+    "sector": "Information Technology",
+    "subIndustry": "Electronic Equipment & Instruments",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "TFC",
+    "rawSymbol": "TFC",
+    "name": "Truist Financial",
+    "sector": "Financials",
+    "subIndustry": "Diversified Banks",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "TYL",
+    "rawSymbol": "TYL",
+    "name": "Tyler Technologies",
+    "sector": "Information Technology",
+    "subIndustry": "Application Software",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "TSN",
+    "rawSymbol": "TSN",
+    "name": "Tyson Foods",
+    "sector": "Consumer Staples",
+    "subIndustry": "Packaged Foods & Meats",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "USB",
+    "rawSymbol": "USB",
+    "name": "U.S. Bancorp",
+    "sector": "Financials",
+    "subIndustry": "Diversified Banks",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "UBER",
+    "rawSymbol": "UBER",
+    "name": "Uber",
+    "sector": "Industrials",
+    "subIndustry": "Passenger Ground Transportation",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "UDR",
+    "rawSymbol": "UDR",
+    "name": "UDR, Inc.",
+    "sector": "Real Estate",
+    "subIndustry": "Multi-Family Residential REITs",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "ULTA",
+    "rawSymbol": "ULTA",
+    "name": "Ulta Beauty",
+    "sector": "Consumer Discretionary",
+    "subIndustry": "Other Specialty Retail",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "UNP",
+    "rawSymbol": "UNP",
+    "name": "Union Pacific Corporation",
+    "sector": "Industrials",
+    "subIndustry": "Rail Transportation",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "UAL",
+    "rawSymbol": "UAL",
+    "name": "United Airlines Holdings",
+    "sector": "Industrials",
+    "subIndustry": "Passenger Airlines",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "UPS",
+    "rawSymbol": "UPS",
+    "name": "United Parcel Service",
+    "sector": "Industrials",
+    "subIndustry": "Air Freight & Logistics",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "URI",
+    "rawSymbol": "URI",
+    "name": "United Rentals",
+    "sector": "Industrials",
+    "subIndustry": "Trading Companies & Distributors",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "UNH",
+    "rawSymbol": "UNH",
+    "name": "UnitedHealth Group",
+    "sector": "Health Care",
+    "subIndustry": "Managed Health Care",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "UHS",
+    "rawSymbol": "UHS",
+    "name": "Universal Health Services",
+    "sector": "Health Care",
+    "subIndustry": "Health Care Facilities",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "VLO",
+    "rawSymbol": "VLO",
+    "name": "Valero Energy",
+    "sector": "Energy",
+    "subIndustry": "Oil & Gas Refining & Marketing",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "VTR",
+    "rawSymbol": "VTR",
+    "name": "Ventas",
+    "sector": "Real Estate",
+    "subIndustry": "Health Care REITs",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "VLTO",
+    "rawSymbol": "VLTO",
+    "name": "Veralto",
+    "sector": "Industrials",
+    "subIndustry": "Environmental & Facilities Services",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "VRSN",
+    "rawSymbol": "VRSN",
+    "name": "Verisign",
+    "sector": "Information Technology",
+    "subIndustry": "Internet Services & Infrastructure",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "VRSK",
+    "rawSymbol": "VRSK",
+    "name": "Verisk Analytics",
+    "sector": "Industrials",
+    "subIndustry": "Research & Consulting Services",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "VZ",
+    "rawSymbol": "VZ",
+    "name": "Verizon",
+    "sector": "Communication Services",
+    "subIndustry": "Integrated Telecommunication Services",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "VRTX",
+    "rawSymbol": "VRTX",
+    "name": "Vertex Pharmaceuticals",
+    "sector": "Health Care",
+    "subIndustry": "Biotechnology",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "VRT",
+    "rawSymbol": "VRT",
+    "name": "Vertiv",
+    "sector": "Industrials",
+    "subIndustry": "Electrical Components & Equipment",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "VTRS",
+    "rawSymbol": "VTRS",
+    "name": "Viatris",
+    "sector": "Health Care",
+    "subIndustry": "Pharmaceuticals",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "VICI",
+    "rawSymbol": "VICI",
+    "name": "Vici Properties",
+    "sector": "Real Estate",
+    "subIndustry": "Hotel & Resort REITs",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "V",
+    "rawSymbol": "V",
+    "name": "Visa Inc.",
+    "sector": "Financials",
+    "subIndustry": "Transaction & Payment Processing Services",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "VST",
+    "rawSymbol": "VST",
+    "name": "Vistra Corp.",
+    "sector": "Utilities",
+    "subIndustry": "Electric Utilities",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "VMC",
+    "rawSymbol": "VMC",
+    "name": "Vulcan Materials Company",
+    "sector": "Materials",
+    "subIndustry": "Construction Materials",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "WRB",
+    "rawSymbol": "WRB",
+    "name": "W. R. Berkley Corporation",
+    "sector": "Financials",
+    "subIndustry": "Property & Casualty Insurance",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "GWW",
+    "rawSymbol": "GWW",
+    "name": "W. W. Grainger",
+    "sector": "Industrials",
+    "subIndustry": "Industrial Machinery & Supplies & Components",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "WAB",
+    "rawSymbol": "WAB",
+    "name": "Wabtec",
+    "sector": "Industrials",
+    "subIndustry": "Construction Machinery & Heavy Transportation Equipment",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "WMT",
+    "rawSymbol": "WMT",
+    "name": "Walmart",
+    "sector": "Consumer Staples",
+    "subIndustry": "Consumer Staples Merchandise Retail",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "DIS",
+    "rawSymbol": "DIS",
+    "name": "Walt Disney Company (The)",
+    "sector": "Communication Services",
+    "subIndustry": "Movies & Entertainment",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "WBD",
+    "rawSymbol": "WBD",
+    "name": "Warner Bros. Discovery",
+    "sector": "Communication Services",
+    "subIndustry": "Broadcasting",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "WM",
+    "rawSymbol": "WM",
+    "name": "Waste Management",
+    "sector": "Industrials",
+    "subIndustry": "Environmental & Facilities Services",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "WAT",
+    "rawSymbol": "WAT",
+    "name": "Waters Corporation",
+    "sector": "Health Care",
+    "subIndustry": "Life Sciences Tools & Services",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "WEC",
+    "rawSymbol": "WEC",
+    "name": "WEC Energy Group",
+    "sector": "Utilities",
+    "subIndustry": "Electric Utilities",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "WFC",
+    "rawSymbol": "WFC",
+    "name": "Wells Fargo",
+    "sector": "Financials",
+    "subIndustry": "Diversified Banks",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "WELL",
+    "rawSymbol": "WELL",
+    "name": "Welltower",
+    "sector": "Real Estate",
+    "subIndustry": "Health Care REITs",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "WST",
+    "rawSymbol": "WST",
+    "name": "West Pharmaceutical Services",
+    "sector": "Health Care",
+    "subIndustry": "Health Care Supplies",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "WDC",
+    "rawSymbol": "WDC",
+    "name": "Western Digital",
+    "sector": "Information Technology",
+    "subIndustry": "Technology Hardware, Storage & Peripherals",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "WY",
+    "rawSymbol": "WY",
+    "name": "Weyerhaeuser",
+    "sector": "Real Estate",
+    "subIndustry": "Timber REITs",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "WSM",
+    "rawSymbol": "WSM",
+    "name": "Williams-Sonoma, Inc.",
+    "sector": "Consumer Discretionary",
+    "subIndustry": "Homefurnishing Retail",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "WMB",
+    "rawSymbol": "WMB",
+    "name": "Williams Companies",
+    "sector": "Energy",
+    "subIndustry": "Oil & Gas Storage & Transportation",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "WTW",
+    "rawSymbol": "WTW",
+    "name": "Willis Towers Watson",
+    "sector": "Financials",
+    "subIndustry": "Insurance Brokers",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "WDAY",
+    "rawSymbol": "WDAY",
+    "name": "Workday, Inc.",
+    "sector": "Information Technology",
+    "subIndustry": "Application Software",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "WYNN",
+    "rawSymbol": "WYNN",
+    "name": "Wynn Resorts",
+    "sector": "Consumer Discretionary",
+    "subIndustry": "Casinos & Gaming",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "XEL",
+    "rawSymbol": "XEL",
+    "name": "Xcel Energy",
+    "sector": "Utilities",
+    "subIndustry": "Multi-Utilities",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "XYL",
+    "rawSymbol": "XYL",
+    "name": "Xylem Inc.",
+    "sector": "Industrials",
+    "subIndustry": "Industrial Machinery & Supplies & Components",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "YUM",
+    "rawSymbol": "YUM",
+    "name": "Yum! Brands",
+    "sector": "Consumer Discretionary",
+    "subIndustry": "Restaurants",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "ZBRA",
+    "rawSymbol": "ZBRA",
+    "name": "Zebra Technologies",
+    "sector": "Information Technology",
+    "subIndustry": "Electronic Equipment & Instruments",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "ZBH",
+    "rawSymbol": "ZBH",
+    "name": "Zimmer Biomet",
+    "sector": "Health Care",
+    "subIndustry": "Health Care Equipment",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  },
+  {
+    "symbol": "ZTS",
+    "rawSymbol": "ZTS",
+    "name": "Zoetis",
+    "sector": "Health Care",
+    "subIndustry": "Pharmaceuticals",
+    "exchange": "S&P 500",
+    "region": "us",
+    "source": "Wikipedia S&P 500 companies"
+  }
+]

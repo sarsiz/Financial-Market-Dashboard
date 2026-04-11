@@ -1,0 +1,17 @@
+{
+  "generatedAt": "2026-04-11T09:27:51.656279+00:00",
+  "universes": {
+    "sp500": {
+      "count": 503,
+      "path": "data/universes/sp500.json"
+    },
+    "sensex30": {
+      "count": 30,
+      "path": "data/universes/sensex30.json"
+    },
+    "nasdaq_listed": {
+      "count": 5419,
+      "path": "data/universes/nasdaq_listed.json"
+    }
+  }
+}

@@ -1,0 +1,1566 @@
+{
+  "universe": "sensex30",
+  "generatedAt": "2026-04-11T09:29:35.414458+00:00",
+  "nodes": [
+    {
+      "id": "ADANIPORTS.BO",
+      "label": "ADANIPORTS.BO",
+      "name": "Adani Ports & SEZ",
+      "sector": "Ports",
+      "region": "india"
+    },
+    {
+      "id": "ASIANPAINT.BO",
+      "label": "ASIANPAINT.BO",
+      "name": "Asian Paints",
+      "sector": "Consumer Durables",
+      "region": "india"
+    },
+    {
+      "id": "AXISBANK.BO",
+      "label": "AXISBANK.BO",
+      "name": "Axis Bank",
+      "sector": "Banks",
+      "region": "india"
+    },
+    {
+      "id": "BAJFINANCE.BO",
+      "label": "BAJFINANCE.BO",
+      "name": "Bajaj Finance",
+      "sector": "Finance",
+      "region": "india"
+    },
+    {
+      "id": "BAJAJFINSV.BO",
+      "label": "BAJAJFINSV.BO",
+      "name": "Bajaj Finserv",
+      "sector": "Finance",
+      "region": "india"
+    },
+    {
+      "id": "BEL.BO",
+      "label": "BEL.BO",
+      "name": "Bharat Electronics",
+      "sector": "Aerospace & Defence",
+      "region": "india"
+    },
+    {
+      "id": "BHARTIARTL.BO",
+      "label": "BHARTIARTL.BO",
+      "name": "Bharti Airtel",
+      "sector": "Telecommunication",
+      "region": "india"
+    },
+    {
+      "id": "ETERNAL.BO",
+      "label": "ETERNAL.BO",
+      "name": "Eternal",
+      "sector": "Retailing",
+      "region": "india"
+    },
+    {
+      "id": "HCLTECH.BO",
+      "label": "HCLTECH.BO",
+      "name": "HCLTech",
+      "sector": "IT",
+      "region": "india"
+    },
+    {
+      "id": "HDFCBANK.BO",
+      "label": "HDFCBANK.BO",
+      "name": "HDFC Bank",
+      "sector": "Banks",
+      "region": "india"
+    },
+    {
+      "id": "HINDUNILVR.BO",
+      "label": "HINDUNILVR.BO",
+      "name": "Hindustan Unilever",
+      "sector": "FMCG",
+      "region": "india"
+    },
+    {
+      "id": "ICICIBANK.BO",
+      "label": "ICICIBANK.BO",
+      "name": "ICICI Bank",
+      "sector": "Banks",
+      "region": "india"
+    },
+    {
+      "id": "INDIGO.BO",
+      "label": "INDIGO.BO",
+      "name": "IndiGo",
+      "sector": "Airlines",
+      "region": "india"
+    },
+    {
+      "id": "INFY.BO",
+      "label": "INFY.BO",
+      "name": "Infosys",
+      "sector": "IT",
+      "region": "india"
+    },
+    {
+      "id": "ITC.BO",
+      "label": "ITC.BO",
+      "name": "ITC",
+      "sector": "FMCG",
+      "region": "india"
+    },
+    {
+      "id": "KOTAKBANK.BO",
+      "label": "KOTAKBANK.BO",
+      "name": "Kotak Mahindra Bank",
+      "sector": "Banks",
+      "region": "india"
+    },
+    {
+      "id": "LT.BO",
+      "label": "LT.BO",
+      "name": "Larsen & Toubro",
+      "sector": "Construction",
+      "region": "india"
+    },
+    {
+      "id": "M&M.BO",
+      "label": "M&M.BO",
+      "name": "Mahindra & Mahindra",
+      "sector": "Automobiles",
+      "region": "india"
+    },
+    {
+      "id": "MARUTI.BO",
+      "label": "MARUTI.BO",
+      "name": "Maruti Suzuki",
+      "sector": "Automobiles",
+      "region": "india"
+    },
+    {
+      "id": "NTPC.BO",
+      "label": "NTPC.BO",
+      "name": "NTPC",
+      "sector": "Power",
+      "region": "india"
+    },
+    {
+      "id": "POWERGRID.BO",
+      "label": "POWERGRID.BO",
+      "name": "Power Grid",
+      "sector": "Power",
+      "region": "india"
+    },
+    {
+      "id": "RELIANCE.BO",
+      "label": "RELIANCE.BO",
+      "name": "Reliance Industries",
+      "sector": "Petroleum",
+      "region": "india"
+    },
+    {
+      "id": "SBIN.BO",
+      "label": "SBIN.BO",
+      "name": "State Bank of India",
+      "sector": "Banks",
+      "region": "india"
+    },
+    {
+      "id": "SUNPHARMA.BO",
+      "label": "SUNPHARMA.BO",
+      "name": "Sun Pharma",
+      "sector": "Pharmaceuticals",
+      "region": "india"
+    },
+    {
+      "id": "TCS.BO",
+      "label": "TCS.BO",
+      "name": "Tata Consultancy Services",
+      "sector": "IT",
+      "region": "india"
+    },
+    {
+      "id": "TATASTEEL.BO",
+      "label": "TATASTEEL.BO",
+      "name": "Tata Steel",
+      "sector": "Metals",
+      "region": "india"
+    },
+    {
+      "id": "TECHM.BO",
+      "label": "TECHM.BO",
+      "name": "Tech Mahindra",
+      "sector": "IT",
+      "region": "india"
+    },
+    {
+      "id": "TITAN.BO",
+      "label": "TITAN.BO",
+      "name": "Titan Company",
+      "sector": "Consumer Durables",
+      "region": "india"
+    },
+    {
+      "id": "TRENT.BO",
+      "label": "TRENT.BO",
+      "name": "Trent",
+      "sector": "Retailing",
+      "region": "india"
+    },
+    {
+      "id": "ULTRACEMCO.BO",
+      "label": "ULTRACEMCO.BO",
+      "name": "UltraTech Cement",
+      "sector": "Cement",
+      "region": "india"
+    }
+  ],
+  "links": [
+    {
+      "source": "BAJFINANCE.BO",
+      "target": "BAJAJFINSV.BO",
+      "value": 0.9586,
+      "direction": "positive",
+      "relation": "sector+correlation"
+    },
+    {
+      "source": "AXISBANK.BO",
+      "target": "BAJAJFINSV.BO",
+      "value": 0.9494,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "ADANIPORTS.BO",
+      "target": "INDIGO.BO",
+      "value": 0.9352,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "BAJAJFINSV.BO",
+      "target": "ICICIBANK.BO",
+      "value": 0.9285,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "BAJAJFINSV.BO",
+      "target": "HDFCBANK.BO",
+      "value": 0.9259,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "AXISBANK.BO",
+      "target": "INDIGO.BO",
+      "value": 0.9215,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "ICICIBANK.BO",
+      "target": "KOTAKBANK.BO",
+      "value": 0.919,
+      "direction": "positive",
+      "relation": "sector+correlation"
+    },
+    {
+      "source": "M&M.BO",
+      "target": "MARUTI.BO",
+      "value": 0.9176,
+      "direction": "positive",
+      "relation": "sector+correlation"
+    },
+    {
+      "source": "AXISBANK.BO",
+      "target": "KOTAKBANK.BO",
+      "value": 0.9106,
+      "direction": "positive",
+      "relation": "sector+correlation"
+    },
+    {
+      "source": "HDFCBANK.BO",
+      "target": "INDIGO.BO",
+      "value": 0.9081,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "INDIGO.BO",
+      "target": "KOTAKBANK.BO",
+      "value": 0.9072,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "BAJAJFINSV.BO",
+      "target": "M&M.BO",
+      "value": 0.9066,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "BAJFINANCE.BO",
+      "target": "INDIGO.BO",
+      "value": 0.9065,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "AXISBANK.BO",
+      "target": "HDFCBANK.BO",
+      "value": 0.9053,
+      "direction": "positive",
+      "relation": "sector+correlation"
+    },
+    {
+      "source": "AXISBANK.BO",
+      "target": "BAJFINANCE.BO",
+      "value": 0.904,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "BAJFINANCE.BO",
+      "target": "HDFCBANK.BO",
+      "value": 0.9028,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "AXISBANK.BO",
+      "target": "M&M.BO",
+      "value": 0.9004,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "BAJFINANCE.BO",
+      "target": "ICICIBANK.BO",
+      "value": 0.8984,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "INFY.BO",
+      "target": "TCS.BO",
+      "value": 0.8984,
+      "direction": "positive",
+      "relation": "sector+correlation"
+    },
+    {
+      "source": "ETERNAL.BO",
+      "target": "M&M.BO",
+      "value": 0.8969,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "INDIGO.BO",
+      "target": "M&M.BO",
+      "value": 0.896,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "BAJAJFINSV.BO",
+      "target": "INDIGO.BO",
+      "value": 0.8959,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "ASIANPAINT.BO",
+      "target": "INDIGO.BO",
+      "value": 0.8955,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "ADANIPORTS.BO",
+      "target": "ASIANPAINT.BO",
+      "value": 0.8948,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "BAJAJFINSV.BO",
+      "target": "KOTAKBANK.BO",
+      "value": 0.8925,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "AXISBANK.BO",
+      "target": "ICICIBANK.BO",
+      "value": 0.89,
+      "direction": "positive",
+      "relation": "sector+correlation"
+    },
+    {
+      "source": "HDFCBANK.BO",
+      "target": "ICICIBANK.BO",
+      "value": 0.8883,
+      "direction": "positive",
+      "relation": "sector+correlation"
+    },
+    {
+      "source": "ICICIBANK.BO",
+      "target": "M&M.BO",
+      "value": 0.886,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "BAJFINANCE.BO",
+      "target": "KOTAKBANK.BO",
+      "value": 0.8826,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "KOTAKBANK.BO",
+      "target": "M&M.BO",
+      "value": 0.8797,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "HDFCBANK.BO",
+      "target": "KOTAKBANK.BO",
+      "value": 0.8791,
+      "direction": "positive",
+      "relation": "sector+correlation"
+    },
+    {
+      "source": "ICICIBANK.BO",
+      "target": "INDIGO.BO",
+      "value": 0.8779,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "LT.BO",
+      "target": "ULTRACEMCO.BO",
+      "value": 0.8744,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "BAJFINANCE.BO",
+      "target": "M&M.BO",
+      "value": 0.8696,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "ADANIPORTS.BO",
+      "target": "TITAN.BO",
+      "value": 0.8677,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "INDIGO.BO",
+      "target": "TITAN.BO",
+      "value": 0.8673,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "AXISBANK.BO",
+      "target": "MARUTI.BO",
+      "value": 0.8666,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "BAJAJFINSV.BO",
+      "target": "MARUTI.BO",
+      "value": 0.8645,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "AXISBANK.BO",
+      "target": "TITAN.BO",
+      "value": 0.8641,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "ADANIPORTS.BO",
+      "target": "AXISBANK.BO",
+      "value": 0.8598,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "ADANIPORTS.BO",
+      "target": "M&M.BO",
+      "value": 0.8595,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "ASIANPAINT.BO",
+      "target": "BAJAJFINSV.BO",
+      "value": 0.8586,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "INDIGO.BO",
+      "target": "SBIN.BO",
+      "value": 0.8564,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "ASIANPAINT.BO",
+      "target": "M&M.BO",
+      "value": 0.8558,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "ICICIBANK.BO",
+      "target": "MARUTI.BO",
+      "value": 0.8506,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "AXISBANK.BO",
+      "target": "SBIN.BO",
+      "value": 0.8504,
+      "direction": "positive",
+      "relation": "sector+correlation"
+    },
+    {
+      "source": "KOTAKBANK.BO",
+      "target": "MARUTI.BO",
+      "value": 0.8487,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "ETERNAL.BO",
+      "target": "INDIGO.BO",
+      "value": 0.8484,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "BAJFINANCE.BO",
+      "target": "HINDUNILVR.BO",
+      "value": 0.8444,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "ASIANPAINT.BO",
+      "target": "ICICIBANK.BO",
+      "value": 0.8415,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "ADANIPORTS.BO",
+      "target": "SBIN.BO",
+      "value": 0.839,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "BAJAJFINSV.BO",
+      "target": "SBIN.BO",
+      "value": 0.839,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "HDFCBANK.BO",
+      "target": "M&M.BO",
+      "value": 0.8384,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "HDFCBANK.BO",
+      "target": "TITAN.BO",
+      "value": 0.837,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "ASIANPAINT.BO",
+      "target": "ETERNAL.BO",
+      "value": 0.8361,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "INDIGO.BO",
+      "target": "MARUTI.BO",
+      "value": 0.8308,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "ASIANPAINT.BO",
+      "target": "BAJFINANCE.BO",
+      "value": 0.829,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "ADANIPORTS.BO",
+      "target": "BAJFINANCE.BO",
+      "value": 0.8289,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "ADANIPORTS.BO",
+      "target": "BAJAJFINSV.BO",
+      "value": 0.8286,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "BAJFINANCE.BO",
+      "target": "MARUTI.BO",
+      "value": 0.8269,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "ASIANPAINT.BO",
+      "target": "AXISBANK.BO",
+      "value": 0.8193,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "ASIANPAINT.BO",
+      "target": "HDFCBANK.BO",
+      "value": 0.8191,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "ADANIPORTS.BO",
+      "target": "HDFCBANK.BO",
+      "value": 0.8065,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "TITAN.BO",
+      "target": "TRENT.BO",
+      "value": 0.805,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "BAJAJFINSV.BO",
+      "target": "TITAN.BO",
+      "value": 0.803,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "M&M.BO",
+      "target": "SBIN.BO",
+      "value": 0.8018,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "ASIANPAINT.BO",
+      "target": "KOTAKBANK.BO",
+      "value": 0.8017,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "BAJFINANCE.BO",
+      "target": "SBIN.BO",
+      "value": 0.7998,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "HDFCBANK.BO",
+      "target": "MARUTI.BO",
+      "value": 0.7989,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "SBIN.BO",
+      "target": "TRENT.BO",
+      "value": 0.7983,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "ADANIPORTS.BO",
+      "target": "KOTAKBANK.BO",
+      "value": 0.7975,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "HDFCBANK.BO",
+      "target": "SBIN.BO",
+      "value": 0.7907,
+      "direction": "positive",
+      "relation": "sector+correlation"
+    },
+    {
+      "source": "ADANIPORTS.BO",
+      "target": "MARUTI.BO",
+      "value": 0.7897,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "ETERNAL.BO",
+      "target": "KOTAKBANK.BO",
+      "value": 0.7896,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "ADANIPORTS.BO",
+      "target": "ETERNAL.BO",
+      "value": 0.7847,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "AXISBANK.BO",
+      "target": "TRENT.BO",
+      "value": 0.7825,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "BAJAJFINSV.BO",
+      "target": "ETERNAL.BO",
+      "value": 0.7818,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "ITC.BO",
+      "target": "TRENT.BO",
+      "value": 0.7801,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "BAJAJFINSV.BO",
+      "target": "HINDUNILVR.BO",
+      "value": 0.7797,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "KOTAKBANK.BO",
+      "target": "TITAN.BO",
+      "value": 0.7784,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "ETERNAL.BO",
+      "target": "ICICIBANK.BO",
+      "value": 0.7781,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "SBIN.BO",
+      "target": "TITAN.BO",
+      "value": 0.7762,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "M&M.BO",
+      "target": "TATASTEEL.BO",
+      "value": 0.7761,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "INDIGO.BO",
+      "target": "TRENT.BO",
+      "value": 0.7755,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "M&M.BO",
+      "target": "TITAN.BO",
+      "value": 0.7746,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "HDFCBANK.BO",
+      "target": "HINDUNILVR.BO",
+      "value": 0.7707,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "ETERNAL.BO",
+      "target": "MARUTI.BO",
+      "value": 0.7705,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "ASIANPAINT.BO",
+      "target": "SBIN.BO",
+      "value": 0.7696,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "AXISBANK.BO",
+      "target": "ETERNAL.BO",
+      "value": 0.7688,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "BAJFINANCE.BO",
+      "target": "TITAN.BO",
+      "value": 0.7684,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "ETERNAL.BO",
+      "target": "TATASTEEL.BO",
+      "value": 0.768,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "ASIANPAINT.BO",
+      "target": "TITAN.BO",
+      "value": 0.7679,
+      "direction": "positive",
+      "relation": "sector+correlation"
+    },
+    {
+      "source": "BAJFINANCE.BO",
+      "target": "ITC.BO",
+      "value": 0.7614,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "ETERNAL.BO",
+      "target": "HDFCBANK.BO",
+      "value": 0.7606,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "MARUTI.BO",
+      "target": "TITAN.BO",
+      "value": 0.7597,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "KOTAKBANK.BO",
+      "target": "SBIN.BO",
+      "value": 0.756,
+      "direction": "positive",
+      "relation": "sector+correlation"
+    },
+    {
+      "source": "ADANIPORTS.BO",
+      "target": "ICICIBANK.BO",
+      "value": 0.7547,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "BAJAJFINSV.BO",
+      "target": "ITC.BO",
+      "value": 0.7537,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "ADANIPORTS.BO",
+      "target": "BEL.BO",
+      "value": 0.7526,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "MARUTI.BO",
+      "target": "TATASTEEL.BO",
+      "value": 0.7502,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "HDFCBANK.BO",
+      "target": "ITC.BO",
+      "value": 0.7474,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "HINDUNILVR.BO",
+      "target": "ICICIBANK.BO",
+      "value": 0.7452,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "ADANIPORTS.BO",
+      "target": "TRENT.BO",
+      "value": 0.7436,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "BAJFINANCE.BO",
+      "target": "ETERNAL.BO",
+      "value": 0.7415,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "AXISBANK.BO",
+      "target": "ITC.BO",
+      "value": 0.7413,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "ITC.BO",
+      "target": "SBIN.BO",
+      "value": 0.7413,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "HCLTECH.BO",
+      "target": "TECHM.BO",
+      "value": 0.741,
+      "direction": "positive",
+      "relation": "sector+correlation"
+    },
+    {
+      "source": "ITC.BO",
+      "target": "TITAN.BO",
+      "value": 0.7406,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "ASIANPAINT.BO",
+      "target": "HINDUNILVR.BO",
+      "value": 0.7395,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "ICICIBANK.BO",
+      "target": "SBIN.BO",
+      "value": 0.7368,
+      "direction": "positive",
+      "relation": "sector+correlation"
+    },
+    {
+      "source": "HDFCBANK.BO",
+      "target": "TRENT.BO",
+      "value": 0.7338,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "ADANIPORTS.BO",
+      "target": "ITC.BO",
+      "value": 0.7327,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "ICICIBANK.BO",
+      "target": "TITAN.BO",
+      "value": 0.732,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "MARUTI.BO",
+      "target": "SBIN.BO",
+      "value": 0.7298,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "HINDUNILVR.BO",
+      "target": "INDIGO.BO",
+      "value": 0.7279,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "ITC.BO",
+      "target": "M&M.BO",
+      "value": 0.7238,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "TATASTEEL.BO",
+      "target": "TITAN.BO",
+      "value": 0.723,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "ASIANPAINT.BO",
+      "target": "MARUTI.BO",
+      "value": 0.7226,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "KOTAKBANK.BO",
+      "target": "TATASTEEL.BO",
+      "value": 0.7079,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "ITC.BO",
+      "target": "KOTAKBANK.BO",
+      "value": 0.7066,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "BAJFINANCE.BO",
+      "target": "TRENT.BO",
+      "value": 0.7004,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "AXISBANK.BO",
+      "target": "TATASTEEL.BO",
+      "value": 0.6948,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "ETERNAL.BO",
+      "target": "SBIN.BO",
+      "value": 0.6925,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "HINDUNILVR.BO",
+      "target": "ITC.BO",
+      "value": 0.6925,
+      "direction": "positive",
+      "relation": "sector+correlation"
+    },
+    {
+      "source": "INDIGO.BO",
+      "target": "ITC.BO",
+      "value": 0.6922,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "BEL.BO",
+      "target": "INDIGO.BO",
+      "value": 0.6913,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "BAJAJFINSV.BO",
+      "target": "TRENT.BO",
+      "value": 0.689,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "SBIN.BO",
+      "target": "TATASTEEL.BO",
+      "value": 0.6884,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "M&M.BO",
+      "target": "TRENT.BO",
+      "value": 0.6834,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "INDIGO.BO",
+      "target": "TATASTEEL.BO",
+      "value": 0.6826,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "ASIANPAINT.BO",
+      "target": "TATASTEEL.BO",
+      "value": 0.6816,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "BHARTIARTL.BO",
+      "target": "KOTAKBANK.BO",
+      "value": 0.6809,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "BEL.BO",
+      "target": "TATASTEEL.BO",
+      "value": 0.6785,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "ADANIPORTS.BO",
+      "target": "TATASTEEL.BO",
+      "value": 0.6739,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "ITC.BO",
+      "target": "MARUTI.BO",
+      "value": 0.6662,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "ETERNAL.BO",
+      "target": "RELIANCE.BO",
+      "value": 0.6657,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "BEL.BO",
+      "target": "TITAN.BO",
+      "value": 0.662,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "HDFCBANK.BO",
+      "target": "TATASTEEL.BO",
+      "value": 0.6619,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "HINDUNILVR.BO",
+      "target": "TITAN.BO",
+      "value": 0.661,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "ICICIBANK.BO",
+      "target": "ITC.BO",
+      "value": 0.6578,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "ADANIPORTS.BO",
+      "target": "HINDUNILVR.BO",
+      "value": 0.6576,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "BAJAJFINSV.BO",
+      "target": "TATASTEEL.BO",
+      "value": 0.6541,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "ASIANPAINT.BO",
+      "target": "BEL.BO",
+      "value": 0.654,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "HINDUNILVR.BO",
+      "target": "M&M.BO",
+      "value": 0.652,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "ETERNAL.BO",
+      "target": "TITAN.BO",
+      "value": 0.6464,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "ASIANPAINT.BO",
+      "target": "RELIANCE.BO",
+      "value": 0.6435,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "AXISBANK.BO",
+      "target": "HINDUNILVR.BO",
+      "value": 0.6432,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "ITC.BO",
+      "target": "TATASTEEL.BO",
+      "value": 0.6423,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "AXISBANK.BO",
+      "target": "BEL.BO",
+      "value": 0.6412,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "HINDUNILVR.BO",
+      "target": "KOTAKBANK.BO",
+      "value": 0.6401,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "ASIANPAINT.BO",
+      "target": "ITC.BO",
+      "value": 0.638,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "ASIANPAINT.BO",
+      "target": "TRENT.BO",
+      "value": 0.6378,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "BEL.BO",
+      "target": "TRENT.BO",
+      "value": 0.6378,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "HINDUNILVR.BO",
+      "target": "SBIN.BO",
+      "value": 0.6371,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "HINDUNILVR.BO",
+      "target": "MARUTI.BO",
+      "value": 0.6364,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "TATASTEEL.BO",
+      "target": "TRENT.BO",
+      "value": 0.6363,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "ADANIPORTS.BO",
+      "target": "RELIANCE.BO",
+      "value": 0.6324,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "HINDUNILVR.BO",
+      "target": "TRENT.BO",
+      "value": 0.6307,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "AXISBANK.BO",
+      "target": "BHARTIARTL.BO",
+      "value": 0.6306,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "KOTAKBANK.BO",
+      "target": "TRENT.BO",
+      "value": 0.6207,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "M&M.BO",
+      "target": "RELIANCE.BO",
+      "value": 0.6202,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "BHARTIARTL.BO",
+      "target": "ITC.BO",
+      "value": 0.619,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "ICICIBANK.BO",
+      "target": "TRENT.BO",
+      "value": 0.6159,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "RELIANCE.BO",
+      "target": "SBIN.BO",
+      "value": 0.6142,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "ICICIBANK.BO",
+      "target": "TATASTEEL.BO",
+      "value": 0.6141,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "BEL.BO",
+      "target": "ETERNAL.BO",
+      "value": 0.612,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "BAJAJFINSV.BO",
+      "target": "BHARTIARTL.BO",
+      "value": 0.6093,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "BHARTIARTL.BO",
+      "target": "TATASTEEL.BO",
+      "value": 0.6087,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "MARUTI.BO",
+      "target": "TRENT.BO",
+      "value": 0.607,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "BEL.BO",
+      "target": "HDFCBANK.BO",
+      "value": 0.6069,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "BHARTIARTL.BO",
+      "target": "M&M.BO",
+      "value": 0.6012,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "BHARTIARTL.BO",
+      "target": "TITAN.BO",
+      "value": 0.5946,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "ETERNAL.BO",
+      "target": "TRENT.BO",
+      "value": 0.5921,
+      "direction": "positive",
+      "relation": "sector+correlation"
+    },
+    {
+      "source": "INDIGO.BO",
+      "target": "RELIANCE.BO",
+      "value": 0.5852,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "BEL.BO",
+      "target": "SBIN.BO",
+      "value": 0.5837,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "BEL.BO",
+      "target": "MARUTI.BO",
+      "value": 0.5833,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "MARUTI.BO",
+      "target": "RELIANCE.BO",
+      "value": 0.5796,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "BEL.BO",
+      "target": "M&M.BO",
+      "value": 0.5765,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "BHARTIARTL.BO",
+      "target": "ICICIBANK.BO",
+      "value": 0.5757,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "BEL.BO",
+      "target": "KOTAKBANK.BO",
+      "value": 0.5752,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "ETERNAL.BO",
+      "target": "HINDUNILVR.BO",
+      "value": 0.5717,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "BAJAJFINSV.BO",
+      "target": "RELIANCE.BO",
+      "value": 0.5683,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "BAJFINANCE.BO",
+      "target": "TATASTEEL.BO",
+      "value": 0.5673,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "BHARTIARTL.BO",
+      "target": "HDFCBANK.BO",
+      "value": 0.5546,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "ICICIBANK.BO",
+      "target": "RELIANCE.BO",
+      "value": 0.5532,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "BAJFINANCE.BO",
+      "target": "BHARTIARTL.BO",
+      "value": 0.5513,
+      "direction": "positive",
+      "relation": "correlation"
+    },
+    {
+      "source": "HCLTECH.BO",
+      "target": "INFY.BO",
+      "value": 0.35,
+      "direction": "positive",
+      "relation": "sector"
+    },
+    {
+      "source": "HCLTECH.BO",
+      "target": "TCS.BO",
+      "value": 0.35,
+      "direction": "positive",
+      "relation": "sector"
+    },
+    {
+      "source": "INFY.BO",
+      "target": "TECHM.BO",
+      "value": 0.35,
+      "direction": "positive",
+      "relation": "sector"
+    },
+    {
+      "source": "TCS.BO",
+      "target": "TECHM.BO",
+      "value": 0.35,
+      "direction": "positive",
+      "relation": "sector"
+    },
+    {
+      "source": "NTPC.BO",
+      "target": "POWERGRID.BO",
+      "value": 0.35,
+      "direction": "positive",
+      "relation": "sector"
+    }
+  ],
+  "source": "Historical correlation + shared sector structure",
+  "paperInspiredBy": [
+    {
+      "title": "Temporal Relational Ranking for Stock Prediction",
+      "url": "https://arxiv.org/abs/1809.09441"
+    },
+    {
+      "title": "HIST: A Graph-based Framework for Stock Trend Forecasting via Mining Concept-Oriented Shared Information",
+      "url": "https://arxiv.org/abs/2110.13716"
+    }
+  ]
+}

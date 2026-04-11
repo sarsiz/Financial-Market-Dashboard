@@ -1,0 +1,31 @@
+---
+symbol: IVA
+name: Inventiva S.A. - American Depository Shares
+region: us
+exchange: NASDAQ
+sector: 
+---
+
+# IVA
+
+Inventiva S.A. - American Depository Shares sits inside the local market graph as a market exposure for us analysis.
+
+## Core context
+
+- Name: Inventiva S.A. - American Depository Shares
+- Exchange: NASDAQ
+- Region: us
+- Sector: 
+
+## Graph neighbors
+
+- No strong cached links yet.
+
+## Entity map
+
+- No local entity map yet.
+
+## Analyst note
+
+- This note is generated from local universes, cached history, relation graphs, and repo KB notes.
+- Use it as a durable context layer, not as a direct recommendation.

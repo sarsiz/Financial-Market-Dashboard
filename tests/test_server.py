@@ -95,6 +95,15 @@ class HistoryCacheTests(TempDatabaseTestCase):
     self.assertIsNotNone(cached)
     self.assertEqual(cached[0], [1200.0, 1210.5, 1222.0])
 
+  def test_build_history_can_map_bse_symbol_to_nse_candidate(self):
+    with mock.patch.object(server, "fetch_yahoo_chart", side_effect=[None, {"meta": {}, "timestamp": [1, 2], "indicators": {"quote": [{"close": [100.0, 101.5]}]}}]), mock.patch.object(
+      server, "fetch_google_finance_history", return_value=([], {})
+    ):
+      history, meta = server.build_history("ICICIBANK.BO", "1M")
+
+    self.assertEqual(history, [100.0, 101.5])
+    self.assertEqual(meta["historyMappedSymbol"], "ICICIBANK.NS")
+
   def test_build_history_uses_stale_cache_when_live_sources_fail(self):
     server.save_history_cache(
       "ICICIBANK.NS",
@@ -120,6 +129,110 @@ class HistoryCacheTests(TempDatabaseTestCase):
     self.assertEqual(history, [900.0, 905.0, 910.0])
     self.assertEqual(meta["historySource"], "Google Finance Page")
     self.assertEqual(meta["historyCacheState"], "stale")
+
+  def test_save_and_load_generic_payload_cache_round_trip(self):
+    server.save_payload_cache("region_events::us", {"items": [{"title": "Fed event"}], "source": "RSS"}, "RSS")
+
+    payload = server.load_cached_payload("region_events::us")
+
+    self.assertIsNotNone(payload)
+    cached_payload, source, updated_at = payload
+    self.assertEqual(cached_payload["items"][0]["title"], "Fed event")
+    self.assertEqual(source, "RSS")
+    self.assertTrue(updated_at)
+
+  def test_get_or_refresh_cached_payload_prefers_fresh_cache(self):
+    server.save_payload_cache("region_calendar::india", {"items": [{"title": "RBI event"}], "source": "RBI"}, "RBI")
+
+    with mock.patch.object(server, "fetch_rbi_calendar_items") as rbi_mock:
+      payload = server.build_region_calendar("india")
+
+    self.assertEqual(payload["items"][0]["title"], "RBI event")
+    self.assertEqual(payload["cacheState"], "fresh")
+    rbi_mock.assert_not_called()
+
+  def test_get_or_refresh_cached_payload_uses_stale_cache_when_builder_fails(self):
+    server.save_payload_cache("region_events::us", {"items": [{"title": "Old Fed event"}], "source": "RSS"}, "RSS")
+    stale_time = (datetime.now(timezone.utc) - timedelta(hours=2)).isoformat()
+    with sqlite3.connect(self.db_path) as connection:
+      connection.execute(
+        "UPDATE payload_cache SET updated_at = ? WHERE cache_key = ?",
+        (stale_time, "region_events::us"),
+      )
+      connection.commit()
+
+    with mock.patch.object(server, "build_event_feed", side_effect=RuntimeError("boom")):
+      payload = server.build_region_event_context("us")
+
+    self.assertEqual(payload["items"][0]["title"], "Old Fed event")
+    self.assertEqual(payload["cacheState"], "stale")
+
+  def test_save_and_load_historical_records_round_trip(self):
+    server.save_historical_records(
+      "AAPL",
+      "1d",
+      [
+        {"timestamp": "2026-04-01T00:00:00+00:00", "value": 201.1, "volume": 1000},
+        {"timestamp": "2026-04-02T00:00:00+00:00", "value": 203.4, "volume": 1200},
+      ],
+      "Yahoo Chart",
+    )
+
+    rows = server.load_historical_records("AAPL", "1d")
+
+    self.assertEqual(len(rows), 2)
+    self.assertEqual(rows[0]["value"], 201.1)
+    self.assertEqual(rows[1]["volume"], 1200.0)
+
+  def test_relation_links_for_watchlist_prefers_precomputed_graph(self):
+    relations_dir = Path(self.tempdir.name) / "relations"
+    relations_dir.mkdir(parents=True, exist_ok=True)
+    with mock.patch.object(server, "RELATIONS_DIR", relations_dir):
+      (relations_dir / "sp500.json").write_text(
+        json.dumps(
+          {
+            "universe": "sp500",
+            "generatedAt": "2026-04-11T00:00:00+00:00",
+            "source": "Precomputed relation graph",
+            "links": [
+              {"source": "AAPL", "target": "MSFT", "value": 0.74, "direction": "positive"},
+              {"source": "AAPL", "target": "JPM", "value": 0.18, "direction": "positive"},
+            ],
+          }
+        )
+      )
+
+      links, meta = server.relation_links_for_watchlist(
+        "us",
+        [
+          {"symbol": "AAPL"},
+          {"symbol": "MSFT"},
+        ],
+      )
+
+    self.assertEqual(len(links), 1)
+    self.assertEqual(links[0]["source"], "AAPL")
+    self.assertEqual(meta["universe"], "sp500")
+
+  def test_load_market_map_note_reads_local_vault_note(self):
+    vault_dir = Path(self.tempdir.name) / "vault" / "market-map" / "companies"
+    vault_dir.mkdir(parents=True, exist_ok=True)
+    note_path = vault_dir / "AAPL.md"
+    note_path.write_text(
+      """---
+symbol: AAPL
+---
+
+# AAPL
+
+Apple sits inside the local market map as a duration-sensitive mega-cap.
+"""
+    )
+    with mock.patch.object(server, "VAULT_DIR", Path(self.tempdir.name) / "vault" / "market-map"):
+      note = server.load_market_map_note("AAPL")
+
+    self.assertEqual(note["title"], "AAPL")
+    self.assertIn("duration-sensitive", note["summary"])
 
 
 class ForecastAndLabTests(unittest.TestCase):
@@ -165,6 +278,32 @@ class ForecastAndLabTests(unittest.TestCase):
       100,
     )
     self.assertEqual(recommendation["signal"], "Buy bias")
+
+  def test_build_region_payload_contains_bonds_inflation_and_watchlist_implications(self):
+    watchlist = [
+      {"symbol": "AAPL", "name": "Apple", "exchange": "NASDAQ", "currency": "USD"},
+      {"symbol": "ICICIBANK.NS", "name": "ICICI Bank", "exchange": "NSE", "currency": "INR"},
+    ]
+    payload = server.build_region_payload("us", watchlist, {"symbol": "AAPL", "exchange": "NASDAQ", "currency": "USD"})
+
+    self.assertEqual(payload["region"], "us")
+    self.assertIn("tenors", payload["bonds"])
+    self.assertIn("headline", payload["inflation"])
+    self.assertIn("cards", payload["watchlistImplications"])
+    self.assertEqual(payload["watchlistImplications"]["cards"][0]["symbol"], "AAPL")
+    self.assertIn("factorSchedule", payload["watchlistImplications"]["graph"])
+    self.assertIn("papers", payload["watchlistImplications"]["graph"])
+
+  def test_build_region_comparison_returns_cross_region_rows(self):
+    comparison = server.build_region_comparison(
+      {
+        "us": server.build_region_payload("us", []),
+        "india": server.build_region_payload("india", []),
+      }
+    )
+
+    self.assertGreaterEqual(len(comparison["rows"]), 4)
+    self.assertIn("US", comparison["summary"])
 
   def test_build_backtest_produces_samples_with_short_real_history(self):
     history = [100 + index for index in range(20)]

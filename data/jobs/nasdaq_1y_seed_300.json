@@ -1,0 +1,611 @@
+{
+  "jobName": "nasdaq_1y_seed_300",
+  "universe": "nasdaq_listed",
+  "range": "1Y",
+  "offset": 0,
+  "members": 300,
+  "completed": 300,
+  "updatedAt": "2026-04-11T09:33:52.046820+00:00",
+  "results": [
+    {
+      "symbol": "AKTX",
+      "points": 22,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "ALAB",
+      "points": 23,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "ALAR",
+      "points": 23,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "ALBG",
+      "points": 22,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "ALBT",
+      "points": 23,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "ALCY",
+      "points": 22,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "ALDFW",
+      "points": 6,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "ALCYW",
+      "points": 11,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "ALCYU",
+      "points": 2,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "ALCO",
+      "points": 23,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "ALDF",
+      "points": 12,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "ALDFU",
+      "points": 4,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "ALGM",
+      "points": 23,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "ALF",
+      "points": 19,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "ALDX",
+      "points": 23,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "ALEC",
+      "points": 23,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "ALFUU",
+      "points": 3,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "ALFUW",
+      "points": 14,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "ALGS",
+      "points": 22,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "ALGT",
+      "points": 23,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "ALIL",
+      "points": 15,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "ALHC",
+      "points": 23,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "ALIS",
+      "points": 7,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "ALISU",
+      "points": 2,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "ALLR",
+      "points": 23,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "ALLO",
+      "points": 23,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "ALISR",
+      "points": 0,
+      "source": "Unavailable",
+      "cacheState": "miss"
+    },
+    {
+      "symbol": "ALLT",
+      "points": 23,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "ALKS",
+      "points": 23,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "ALLW",
+      "points": 23,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "ALKT",
+      "points": 23,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "ALM",
+      "points": 23,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "ALOT",
+      "points": 23,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "ALPS",
+      "points": 22,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "ALMU",
+      "points": 23,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "AMAT",
+      "points": 23,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "ALOV",
+      "points": 6,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "ALRM",
+      "points": 23,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "ALNY",
+      "points": 23,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "ALNT",
+      "points": 23,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "AMD",
+      "points": 23,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "ALMS",
+      "points": 23,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "ALOVU",
+      "points": 13,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "ALOVW",
+      "points": 9,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "AMGN",
+      "points": 23,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "ALOY",
+      "points": 23,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "ALRS",
+      "points": 23,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "ALTO",
+      "points": 23,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "ALTY",
+      "points": 22,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "ALVO",
+      "points": 23,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "ALTS",
+      "points": 23,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "ALT",
+      "points": 23,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "ALTI",
+      "points": 23,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "ALVOW",
+      "points": 10,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "ALXO",
+      "points": 23,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "AMAL",
+      "points": 23,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "ALZN",
+      "points": 23,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "AMDG",
+      "points": 23,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "AMCI",
+      "points": 23,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "AMDD",
+      "points": 22,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "AMCX",
+      "points": 23,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "AMBA",
+      "points": 23,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "AMBR",
+      "points": 23,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "AMID",
+      "points": 22,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "AMDL",
+      "points": 23,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "AMIX",
+      "points": 23,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "AMKR",
+      "points": 23,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "AMZN",
+      "points": 23,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "AMPG",
+      "points": 23,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "AMODW",
+      "points": 16,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "AMOD",
+      "points": 23,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "AMLX",
+      "points": 23,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "AMPH",
+      "points": 23,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "AMPL",
+      "points": 23,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "AMRN",
+      "points": 23,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "AMRX",
+      "points": 23,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "AMSC",
+      "points": 23,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "AMSF",
+      "points": 23,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "AMST",
+      "points": 23,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "AMTX",
+      "points": 23,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "AMPGR",
+      "points": 0,
+      "source": "Unavailable",
+      "cacheState": "miss"
+    },
+    {
+      "symbol": "AMPGZ",
+      "points": 0,
+      "source": "Unavailable",
+      "cacheState": "miss"
+    },
+    {
+      "symbol": "AMUN",
+      "points": 15,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "AMUU",
+      "points": 22,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "AMYY",
+      "points": 22,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "AMZD",
+      "points": 23,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "AMWD",
+      "points": 23,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "ANEL",
+      "points": 22,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "AMZU",
+      "points": 23,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "ANAB",
+      "points": 23,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "AMZZ",
+      "points": 23,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "ANABV",
+      "points": 4,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "ANGHW",
+      "points": 11,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "ANDE",
+      "points": 23,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "ANGH",
+      "points": 22,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "ANGI",
+      "points": 23,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "ANGL",
+      "points": 22,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "ANGO",
+      "points": 23,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "ANIK",
+      "points": 22,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    },
+    {
+      "symbol": "ANIP",
+      "points": 22,
+      "source": "Google Finance Page",
+      "cacheState": "fresh"
+    }
+  ]
+}

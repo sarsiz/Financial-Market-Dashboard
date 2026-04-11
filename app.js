@@ -6,6 +6,7 @@ const STORAGE_KEYS = {
   chartFeatures: "financial-board-chart-features",
   eventCategory: "financial-board-event-category",
   boardHidden: "financial-board-market-board-hidden",
+  region: "financial-board-region",
 };
 
 const RESEARCH_REFERENCES = [
@@ -116,9 +117,15 @@ const GLOSSARY = [
   },
 ];
 
+const REGION_LABELS = {
+  us: "United States",
+  india: "India",
+};
+
 const state = {
   watchlist: loadStoredWatchlist(),
   activeTicker: localStorage.getItem(STORAGE_KEYS.activeTicker) || "BHARTIARTL.NS",
+  selectedRegion: localStorage.getItem(STORAGE_KEYS.region) || "india",
   recentTickers: loadStoredRecentTickers(),
   chartRange: localStorage.getItem(STORAGE_KEYS.chartRange) || "1M",
   chartFeatures: loadStoredChartFeatures(),
@@ -163,6 +170,8 @@ const state = {
   recentAddTimer: null,
   radarFreshFloatIds: [],
   visualValueMemory: {},
+  impactGraphPositions: {},
+  revealObserver: null,
 };
 
 if (state.watchlist.length === 0) {
@@ -206,6 +215,7 @@ function persistWatchlist() {
   localStorage.setItem(STORAGE_KEYS.chartFeatures, JSON.stringify(state.chartFeatures));
   localStorage.setItem(STORAGE_KEYS.eventCategory, state.eventCategory);
   localStorage.setItem(STORAGE_KEYS.boardHidden, state.boardHidden ? "1" : "0");
+  localStorage.setItem(STORAGE_KEYS.region, state.selectedRegion);
 }
 
 function pushRecentTicker(symbol, name = "") {
@@ -224,6 +234,37 @@ function movingAverage(values, period) {
     const window = values.slice(index + 1 - period, index + 1);
     return window.reduce((sum, value) => sum + value, 0) / window.length;
   });
+}
+
+function liveBadgeMarkup(label = "Live update") {
+  return `<span class="live-badge-inline" aria-label="${label}" title="${label}"></span>`;
+}
+
+function setupScrollReveal() {
+  if (state.revealObserver) {
+    state.revealObserver.disconnect();
+  }
+  state.revealObserver = new IntersectionObserver(
+    (entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add("revealed");
+        }
+      });
+    },
+    { threshold: 0.12 },
+  );
+  document.querySelectorAll(".glass-panel, .macro-panel, .event-card, .factor-card, .catalyst-card, .pulse-card").forEach((node) => {
+    node.classList.add("reveal-on-scroll");
+    state.revealObserver.observe(node);
+  });
+}
+
+function isFreshUpdate(timestamp, minutes = 30) {
+  if (!timestamp) return false;
+  const parsed = new Date(timestamp);
+  if (Number.isNaN(parsed.getTime())) return false;
+  return Date.now() - parsed.getTime() <= minutes * 60 * 1000;
 }
 
 function rollingStd(values, period) {
@@ -294,6 +335,41 @@ function formatCompactNumber(value) {
 function formatSignedCurrency(value, currency = "USD") {
   const numeric = Number(value || 0);
   return `${numeric >= 0 ? "+" : ""}${formatCurrency(numeric, currency)}`;
+}
+
+function selectedRegionPayload() {
+  return state.dashboard?.regions?.[state.selectedRegion] || null;
+}
+
+function renderRegionSelector() {
+  const node = document.getElementById("region-selector");
+  if (!node) return;
+  const options = state.dashboard?.regionOptions || Object.entries(REGION_LABELS).map(([key, label]) => ({ key, label }));
+  node.innerHTML = options
+    .map(
+      (item) => `
+        <button class="region-chip ${item.key === state.selectedRegion ? "active" : ""}" type="button" data-region="${item.key}">
+          ${item.label}
+        </button>
+      `,
+    )
+    .join("");
+  node.querySelectorAll("[data-region]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const nextRegion = button.dataset.region;
+      if (!nextRegion || nextRegion === state.selectedRegion) return;
+      state.selectedRegion = nextRegion;
+      persistWatchlist();
+      renderTopbar();
+      renderOverview();
+      renderBondMarket();
+      renderInflationView();
+      renderEquityContext();
+      renderMacroEvents();
+      renderWatchlistImplications();
+      renderComparison();
+    });
+  });
 }
 
 function liveValueClass(key, value) {
@@ -756,6 +832,7 @@ async function loadOverviewFast({ silent = false } = {}) {
   const params = new URLSearchParams({
     symbols: state.watchlist.join(","),
     active: state.activeTicker || "",
+    region: state.selectedRegion || "",
   });
   const result = await api(`/api/overview?${params.toString()}`);
   if (requestId !== state.overviewRequestId) return;
@@ -1276,7 +1353,7 @@ function renderRecentTickers() {
         const freshClass = item.symbol === state.recentLastAdded ? "is-new" : "";
         return `
         <button class="recent-pill ${moveClass} ${freshClass} ${liveClass} ${item.symbol === state.activeTicker ? "active" : ""}" type="button" data-symbol="${item.symbol}" title="${item.name || item.symbol}">
-          <strong>${item.symbol}</strong>
+          <strong>${item.symbol}${quote ? liveBadgeMarkup() : ""}</strong>
           <span>${item.name || "Recent ticker"}</span>
           <em class="live-number">${priceLabel}</em>
         </button>
@@ -1641,7 +1718,7 @@ function renderPulse() {
         const pulseClass = liveValueClass(`pulse:${item.label || index}`, parseFloat(String(item.value).replace(/[^\d.+-]/g, "")));
         return `
         <div class="pulse-card ${pulseClass}">
-          <span>${item.label}</span>
+          <span>${item.label}${liveBadgeMarkup()}</span>
           <strong class="live-number">${item.value}</strong>
           <div class="metric-trend ${typeof item.positive === "boolean" ? (item.positive ? "positive" : "negative") : "neutral"}">${item.trend}</div>
         </div>
@@ -1720,8 +1797,8 @@ function renderOverview() {
   document.getElementById("model-error").className = liveValueClass(`hero:${active.symbol}:mae`, forecast.mae);
   document.getElementById("forecast-range").textContent = `10D projection ${formatPercent(forecast.expectedReturn)}`;
   document.getElementById("forecast-range").className = `forecast-range live-number ${liveValueClass(`hero:${active.symbol}:projection`, forecast.expectedReturn)}`;
-  document.getElementById("buy-sell-signal").textContent = recommendation.signal || "Balanced";
-  document.getElementById("buy-sell-breakdown").textContent = `Buy ${recommendation.buy ?? 0}% · Hold ${recommendation.hold ?? 100}% · Sell ${recommendation.sell ?? 0}%`;
+  document.getElementById("buy-sell-signal").textContent = recommendation.signal ? recommendation.signal.replace("bias", "scenario") : "Balanced scenario";
+  document.getElementById("buy-sell-breakdown").textContent = `Upside ${recommendation.buy ?? 0}% · Base ${recommendation.hold ?? 100}% · Downside ${recommendation.sell ?? 0}%`;
   document.getElementById("model-agreement-note").textContent = `${agreement.summary} Score ${Number(agreement.score || 0).toFixed(0)}/100.`;
   const overviewMetaItems = [
     {
@@ -1733,15 +1810,15 @@ function renderOverview() {
       help: "Home-market trading currency.",
     },
     {
-      label: active.marketState || "Live",
+      label: `${active.marketState || "Live"} ${liveBadgeMarkup()}`,
       help: "Current session state.",
     },
     {
-      label: `Vol ${formatCompactNumber(active.volume)}`,
+      label: `Vol ${formatCompactNumber(active.volume)} ${liveBadgeMarkup()}`,
       help: "Current traded volume.",
     },
     {
-      label: active.asOf ? new Date(active.asOf).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "Delayed",
+      label: `${active.asOf ? new Date(active.asOf).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "Delayed"} ${liveBadgeMarkup()}`,
       help: "Last quote update time.",
     },
   ];
@@ -1840,6 +1917,9 @@ function renderOverview() {
     })
     .slice(0, 4);
   const relationshipCards = active.relationshipCards || forecast.factors || [];
+  const factorSchedule = state.dashboard?.selectedRegion
+    ? (selectedRegionPayload()?.watchlistImplications?.graph?.factorSchedule || []).slice(0, 3)
+    : [];
   document.getElementById("factor-map").innerHTML = `
     ${macroMicroContext.length ? `
       <div class="analysis-context-grid">
@@ -1850,6 +1930,21 @@ function renderOverview() {
                 <span>${item.label}</span>
                 <strong>${item.value || "Live"}</strong>
                 <p>${item.trend || "Current live context."}</p>
+              </div>
+            `,
+          )
+          .join("")}
+      </div>
+    ` : ""}
+    ${factorSchedule.length ? `
+      <div class="analysis-context-grid factor-cadence-grid">
+        ${factorSchedule
+          .map(
+            (item) => `
+              <div class="factor-context-card cadence-card">
+                <span>${item.label}</span>
+                <strong>${item.cadence}</strong>
+                <p>${item.significance} significance • ${item.use}</p>
               </div>
             `,
           )
@@ -1883,6 +1978,7 @@ function renderOverview() {
       body: item.description || item.summary || item.title || "Latest event context is being refreshed.",
     }));
   const signalDrivers = (active.driverCards || forecast.triggers || []).slice(0, 5);
+  const paperNotes = (selectedRegionPayload()?.watchlistImplications?.graph?.papers || []).slice(0, 2);
   document.getElementById("catalyst-list").innerHTML = `
     ${latestDriverEvents.length ? `
       <div class="driver-event-strip">
@@ -1896,6 +1992,24 @@ function renderOverview() {
                 </div>
                 <small>${item.meta}</small>
                 <p>${item.body}</p>
+              </div>
+            `,
+          )
+          .join("")}
+      </div>
+    ` : ""}
+    ${paperNotes.length ? `
+      <div class="driver-event-strip paper-strip">
+        ${paperNotes
+          .map(
+            (item) => `
+              <div class="catalyst-card paper-led">
+                <div class="catalyst-header">
+                  <strong>${item.title}</strong>
+                  <span>PAPER</span>
+                </div>
+                <small>${item.year || ""} • ${item.type || "research"}</small>
+                <p>${item.whyItMatters}</p>
               </div>
             `,
           )
@@ -1920,7 +2034,339 @@ function renderOverview() {
   `;
 }
 
+function renderBondMarket() {
+  const region = selectedRegionPayload();
+  const summaryNode = document.getElementById("bond-summary");
+  const curveNode = document.getElementById("bond-curve");
+  const analysisNode = document.getElementById("bond-analysis");
+  if (!summaryNode || !curveNode || !analysisNode) return;
+  if (!region?.bonds) {
+    summaryNode.innerHTML = `<div class="metric-card"><span>Bond market</span><strong>Loading</strong></div>`;
+    curveNode.innerHTML = "";
+    analysisNode.innerHTML = "";
+    return;
+  }
+  const bonds = region.bonds;
+  summaryNode.innerHTML = `
+    <div class="metric-card"><span>10Y</span><strong>${bonds.tenors[2].yield.toFixed(2)}%</strong><small>${bonds.tenors[2].change1D >= 0 ? "+" : ""}${bonds.tenors[2].change1D.toFixed(1)} bp today</small></div>
+    <div class="metric-card"><span>2s10s</span><strong>${bonds.curve.slope2s10s.toFixed(2)}%</strong><small>${bonds.curve.shape}</small></div>
+    <div class="metric-card"><span>Real yield</span><strong>${Number(bonds.realYield || 0).toFixed(2)}%</strong><small>Rates anchor</small></div>
+    <div class="metric-card"><span>Source</span><strong>${bonds.source}</strong><small>${formatEventDateTime(bonds.asOf)}</small></div>
+  `;
+  curveNode.innerHTML = bonds.tenors
+    .map(
+      (item) => `
+        <div class="curve-point-card">
+          <span>${item.tenor}</span>
+          <strong>${item.yield.toFixed(2)}%</strong>
+          <small>${item.change1D >= 0 ? "+" : ""}${item.change1D.toFixed(1)} bp</small>
+        </div>
+      `,
+    )
+    .join("");
+  const analysis = region.analysis || {};
+  analysisNode.innerHTML = `
+    <div class="reason-card"><span class="analysis-tag fact">Fact</span><strong>What changed?</strong><p>${analysis.whatChanged || bonds.narrative}</p></div>
+    <div class="reason-card"><span class="analysis-tag interpretation">Interpretation</span><strong>Why it changed</strong><p>${analysis.whyChanged || bonds.narrative}</p></div>
+    <div class="reason-card"><span class="analysis-tag implication">Implication</span><strong>What it implies</strong><p>${analysis.marketImplication || "Rates are shaping cross-asset leadership."}</p></div>
+    ${(analysis.kbNotes || [])
+      .map((note) => `<div class="reason-card"><span class="analysis-tag note">Note</span><strong>Regime note</strong><p>${note}</p></div>`)
+      .join("")}
+  `;
+}
+
+function renderInflationView() {
+  const region = selectedRegionPayload();
+  const inflationNode = document.getElementById("inflation-cards");
+  const policyNode = document.getElementById("policy-cards");
+  if (!inflationNode || !policyNode) return;
+  if (!region?.inflation || !region?.policy) {
+    inflationNode.innerHTML = "";
+    policyNode.innerHTML = "";
+    return;
+  }
+  const inflation = region.inflation;
+  const policy = region.policy;
+  inflationNode.innerHTML = `
+    <div class="metric-card"><span>Headline CPI</span><strong>${Number(inflation.headline).toFixed(2)}%</strong><small>${inflation.source}</small></div>
+    <div class="metric-card"><span>Core CPI</span><strong>${Number(inflation.core).toFixed(2)}%</strong><small>${inflation.impulse}</small></div>
+    <div class="metric-card"><span>Breakeven</span><strong>${Number(inflation.breakeven || 0).toFixed(2)}%</strong><small>Inflation expectations</small></div>
+    <div class="metric-card"><span>Real policy gap</span><strong>${Number(inflation.realPolicyGap || 0).toFixed(2)}%</strong><small>Policy minus headline CPI</small></div>
+  `;
+  policyNode.innerHTML = `
+    <div class="reason-card"><span class="analysis-tag fact">Fact</span><strong>${policy.centralBank}</strong><p>${policy.policyRateLabel}: ${Number(policy.policyRate || 0).toFixed(2)}% • ${policy.stance}. ${policy.bias}.</p></div>
+    <div class="reason-card"><span class="analysis-tag interpretation">Interpretation</span><strong>Inflation narrative</strong><p>${inflation.narrative}${inflation.officialLabel ? ` (${inflation.officialLabel})` : ""}</p></div>
+  `;
+}
+
+function renderEquityContext() {
+  const region = selectedRegionPayload();
+  const summaryNode = document.getElementById("equity-summary");
+  const sectorNode = document.getElementById("sector-grid");
+  if (!summaryNode || !sectorNode) return;
+  if (!region?.equity) {
+    summaryNode.innerHTML = "";
+    sectorNode.innerHTML = "";
+    return;
+  }
+  const equity = region.equity;
+  summaryNode.innerHTML = `
+    <div class="reason-card"><span class="analysis-tag interpretation">Interpretation</span><strong>Rates to equities</strong><p>${equity.summary}</p></div>
+    <div class="reason-card"><span class="analysis-tag implication">Implication</span><strong>Likely leadership</strong><p>${equity.styleBias}</p></div>
+    ${equity.kbNote ? `<div class="reason-card"><span class="analysis-tag note">Note</span><strong>Sensitivity note</strong><p>${equity.kbNote}</p></div>` : ""}
+  `;
+  sectorNode.innerHTML = (equity.sectors || [])
+    .map(
+      (item) => `
+        <div class="factor-card">
+          <div class="factor-card-header">
+            <strong>${item.sector}</strong>
+            <span>${item.effect}</span>
+          </div>
+          <p>${item.why}</p>
+        </div>
+      `,
+    )
+    .join("");
+}
+
+function renderMacroEvents() {
+  const region = selectedRegionPayload();
+  const eventsNode = document.getElementById("macro-events-list");
+  const watchNode = document.getElementById("macro-watch-next");
+  if (!eventsNode || !watchNode) return;
+  if (!region?.events) {
+    eventsNode.innerHTML = "";
+    watchNode.innerHTML = "";
+    return;
+  }
+  eventsNode.innerHTML = (region.events.items || [])
+    .slice(0, 6)
+    .map(
+      (item) => `
+        <div class="event-card">
+          <div class="event-card-header">
+            <strong>${item.title}</strong>
+            <span class="event-tag">${String(item.category || "event").toUpperCase()}</span>
+          </div>
+          <p>${item.source ? `Source: ${item.source} • ` : ""}${formatEventDateTime(item.publishedAt)}${isFreshUpdate(item.publishedAt) ? ` • ${liveBadgeMarkup()}` : ""}</p>
+        </div>
+      `,
+    )
+    .join("");
+  const monitorCards = (region.analysis?.monitorNext || [])
+    .map((item) => `<div class="reason-card"><span class="analysis-tag monitor">Monitor</span><strong>Monitor</strong><p>${item}</p></div>`);
+  const calendarCards = (region.calendar?.items || [])
+    .slice(0, 4)
+    .map(
+      (item) => `
+        <div class="reason-card">
+          <span class="analysis-tag fact">Fact</span>
+          <strong>Calendar</strong>
+          <p>${item.title}${item.date ? ` • ${item.date}` : ""}${item.source ? ` • ${item.source}` : ""}</p>
+        </div>
+      `,
+    );
+  watchNode.innerHTML = monitorCards
+    .concat(calendarCards)
+    .join("");
+}
+
+function drawImpactGraph(svg, graph) {
+  if (!svg) return;
+  const nodes = graph?.nodes || [];
+  const links = graph?.links || [];
+  if (!nodes.length) {
+    svg.innerHTML = "";
+    return;
+  }
+  const positions = {};
+  const columns = {
+    macro: { x: 104, yStart: 78, gap: 92 },
+    market: { x: 300, yStart: 130, gap: 92 },
+    stock: { x: 508, yStart: 68, gap: 64 },
+    entity: { x: 640, yStart: 54, gap: 50 },
+  };
+  const counts = { macro: 0, market: 0, stock: 0, entity: 0 };
+  nodes.forEach((node) => {
+    const cached = state.impactGraphPositions[node.id];
+    if (cached) {
+      positions[node.id] = cached;
+      return;
+    }
+    const column = columns[node.group] || columns.stock;
+    const idx = counts[node.group] || 0;
+    positions[node.id] = { x: column.x, y: column.yStart + idx * column.gap };
+    counts[node.group] = idx + 1;
+  });
+  const paletteByGroup = {
+    macro: "rgba(255,176,0,0.18)",
+    market: "rgba(115,210,255,0.18)",
+    stock: "rgba(125,255,196,0.18)",
+    entity: "rgba(255,255,255,0.12)",
+  };
+  svg.innerHTML = `
+    <defs>
+      <filter id="impact-glow"><feGaussianBlur stdDeviation="2.6" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    </defs>
+    <g data-impact-links>
+    ${links
+      .map((link, index) => {
+        const source = positions[link.source];
+        const target = positions[link.target];
+        if (!source || !target) return "";
+        const color = link.direction === "positive" ? "#4dd889" : link.direction === "negative" ? "#ff6d6d" : "#f2c572";
+        const width = Math.max(2, Number(link.value || 1) * 2);
+        const d = `M ${source.x + 64} ${source.y} C ${source.x + 144} ${source.y}, ${target.x - 90} ${target.y}, ${target.x - 16} ${target.y}`;
+        return `
+          <path data-impact-link="${index}" d="${d}" fill="none" stroke="${color}" stroke-width="${width + 3}" opacity="0.18" filter="url(#impact-glow)" />
+          <path data-impact-link-core="${index}" d="${d}" fill="none" stroke="${color}" stroke-width="${width}" opacity="0.82" stroke-linecap="round" />
+          <circle r="${Math.max(2, width - 1)}" fill="${color}" opacity="0.72">
+            <animateMotion dur="${4 + index}s" repeatCount="indefinite" path="${d}" />
+          </circle>
+        `;
+      })
+      .join("")}
+    </g>
+    <g data-impact-nodes>
+    ${nodes
+      .map((node) => {
+        const pos = positions[node.id];
+        const groupTone = paletteByGroup[node.group] || paletteByGroup.entity;
+        const width = node.group === "entity" ? 118 : 124;
+        const height = node.group === "entity" ? 34 : 38;
+        return `
+          <g class="impact-node-group" data-node-id="${node.id}" data-node-group="${node.group}" transform="translate(${pos.x}, ${pos.y})">
+            <rect class="impact-node-plate" x="-${width / 2}" y="-${height / 2}" width="${width}" height="${height}" rx="${node.group === "entity" ? 14 : 18}" fill="rgba(10,10,10,0.88)" stroke="${groupTone}" />
+            <text x="0" y="-2" text-anchor="middle" fill="#f7f0dd" font-size="${node.group === "entity" ? 11 : 12}" font-family="Manrope, sans-serif">${node.label}</text>
+            <text x="0" y="12" text-anchor="middle" fill="rgba(220,210,188,0.78)" font-size="9" font-family="Azeret Mono, monospace">${String(node.entityType || node.group || "").toUpperCase()}</text>
+          </g>
+        `;
+      })
+      .join("")}
+    </g>
+  `;
+  bindImpactGraphInteractions(svg, graph, positions);
+}
+
+function bindImpactGraphInteractions(svg, graph, positions) {
+  const nodeElements = [...svg.querySelectorAll("[data-node-id]")];
+  if (!nodeElements.length) return;
+  const updateLinkPaths = () => {
+    [...svg.querySelectorAll("[data-impact-link]")].forEach((glowPath, index) => {
+      const link = (graph?.links || [])[index];
+      if (!link) return;
+      const source = positions[link.source];
+      const target = positions[link.target];
+      if (!source || !target) return;
+      const d = `M ${source.x + 64} ${source.y} C ${source.x + 144} ${source.y}, ${target.x - 90} ${target.y}, ${target.x - 16} ${target.y}`;
+      glowPath.setAttribute("d", d);
+      const core = svg.querySelector(`[data-impact-link-core="${index}"]`);
+      if (core) core.setAttribute("d", d);
+    });
+  };
+  nodeElements.forEach((element) => {
+    element.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      const nodeId = element.dataset.nodeId;
+      const start = positions[nodeId];
+      if (!start) return;
+      const svgRect = svg.getBoundingClientRect();
+      const startX = event.clientX;
+      const startY = event.clientY;
+      const handleMove = (moveEvent) => {
+        const next = {
+          x: Math.max(70, Math.min(650, start.x + (moveEvent.clientX - startX))),
+          y: Math.max(42, Math.min(320, start.y + (moveEvent.clientY - startY))),
+        };
+        positions[nodeId] = next;
+        state.impactGraphPositions[nodeId] = next;
+        element.setAttribute("transform", `translate(${next.x}, ${next.y})`);
+        updateLinkPaths();
+      };
+      const cleanup = () => {
+        window.removeEventListener("pointermove", handleMove);
+        window.removeEventListener("pointerup", cleanup);
+      };
+      window.addEventListener("pointermove", handleMove);
+      window.addEventListener("pointerup", cleanup);
+    });
+  });
+}
+
+function renderWatchlistImplications() {
+  const region = selectedRegionPayload();
+  const cardsNode = document.getElementById("watchlist-implication-cards");
+  const graphNode = document.getElementById("impact-graph");
+  const graphNoteNode = document.getElementById("impact-graph-note");
+  if (!cardsNode || !graphNode) return;
+  if (!region?.watchlistImplications) {
+    cardsNode.innerHTML = "";
+    graphNode.innerHTML = "";
+    if (graphNoteNode) graphNoteNode.textContent = "Graph source pending.";
+    return;
+  }
+  cardsNode.innerHTML = (region.watchlistImplications.cards || [])
+    .map(
+      (item) => `
+        <div class="factor-card">
+          <div class="factor-card-header">
+            <strong>${item.symbol}</strong>
+            <span>${item.confidence}</span>
+          </div>
+          <p><strong>Scenario:</strong> ${item.scenario}</p>
+          <p><strong>Impact:</strong> ${item.impact}</p>
+          <p><strong>Why:</strong> ${item.why}</p>
+          ${item.marketMapNote?.summary ? `<p><strong>Map:</strong> ${item.marketMapNote.summary}</p>` : ""}
+        </div>
+      `,
+    )
+    .join("");
+  drawImpactGraph(graphNode, region.watchlistImplications.graph);
+  if (graphNoteNode) {
+    const relationMeta = region.watchlistImplications.graph?.relationMeta || {};
+    const source = relationMeta.source || "Dynamic relation graph";
+    const generatedAt = relationMeta.generatedAt ? new Date(relationMeta.generatedAt).toLocaleString() : "";
+    const vaultMode = region.watchlistImplications.graph?.vault?.mode || "";
+    const suffix = vaultMode ? ` • ${vaultMode}` : "";
+    graphNoteNode.textContent = generatedAt ? `${source} • ${generatedAt}${suffix}` : `${source}${suffix}`;
+  }
+}
+
+function renderComparison() {
+  const comparison = state.dashboard?.comparison;
+  const summaryNode = document.getElementById("comparison-summary");
+  const tableNode = document.getElementById("comparison-table");
+  if (!summaryNode || !tableNode) return;
+  if (!comparison) {
+    summaryNode.textContent = "Comparison is loading.";
+    tableNode.innerHTML = "";
+    return;
+  }
+  summaryNode.textContent = comparison.summary;
+  tableNode.innerHTML = `
+    <div class="comparison-header">
+      <span>Metric</span>
+      <span>US</span>
+      <span>India</span>
+    </div>
+    ${(comparison.rows || [])
+      .map(
+        (row) => `
+          <div class="comparison-row">
+            <strong>${row.metric}</strong>
+            <span>${row.us}</span>
+            <span>${row.india}</span>
+          </div>
+        `,
+      )
+      .join("")}
+  `;
+}
+
 function renderLab() {
+  if (!document.getElementById("lab-chart")) return;
   const active = state.dashboard?.active;
   const result = state.labResult?.symbol === active?.symbol ? state.labResult : active?.lab;
   const sourceNode = document.getElementById("lab-source-note");
@@ -1987,6 +2433,7 @@ function renderLab() {
 }
 
 function renderAcademy() {
+  if (!document.getElementById("academy-cards")) return;
   const active = state.dashboard?.active;
   const academyDetail = state.academyDetail;
   const agreement = active?.forecast?.models?.agreement || { label: "Pending", summary: "Agreement refreshing.", score: 0 };
@@ -2100,6 +2547,7 @@ function renderAcademy() {
 }
 
 function renderResearch() {
+  if (!document.getElementById("research-summary")) return;
   const summary = document.getElementById("research-summary");
   const sources = document.getElementById("research-sources");
   if (state.researchLoading) {
@@ -2161,6 +2609,14 @@ function renderTopbar() {
   setStatus(state.dashboard?.updatedAt ? "Live now" : "Loading data");
   document.body.classList.toggle("app-ready", state.bootReady);
   document.body.classList.toggle("app-booting", !state.bootReady);
+  const heading = document.querySelector(".topbar-copy h2");
+  if (heading) {
+    const region = selectedRegionPayload();
+    heading.textContent = region
+      ? `${region.label} macro, bonds, inflation, equities, and watchlist context`
+      : "US and India macro, bond, inflation, and market context";
+  }
+  renderRegionSelector();
 }
 
 function renderCorePanels() {
@@ -2174,7 +2630,14 @@ function renderCorePanels() {
   renderBoard();
   renderPulse();
   renderOverview();
+  renderBondMarket();
+  renderInflationView();
+  renderEquityContext();
+  renderMacroEvents();
+  renderWatchlistImplications();
+  renderComparison();
   renderTopbar();
+  setupScrollReveal();
 }
 
 function renderDeferredPanels() {
@@ -2182,6 +2645,7 @@ function renderDeferredPanels() {
   renderAcademy();
   renderResearch();
   renderEventFeed();
+  setupScrollReveal();
 }
 
 function applyLiveQuoteUpdate(payload) {
@@ -2260,7 +2724,10 @@ function startQuoteStream() {
 function render() {
   renderCorePanels();
   renderDeferredPanels();
-  document.getElementById("lab-ticker").value = state.activeTicker;
+  const labTicker = document.getElementById("lab-ticker");
+  if (labTicker) {
+    labTicker.value = state.activeTicker;
+  }
 }
 
 function popAllRadarClouds() {
@@ -2427,11 +2894,13 @@ async function refreshDashboard() {
       symbols: state.watchlist,
       active: state.activeTicker,
       chartRange: state.chartRange,
+      region: state.selectedRegion,
     }),
   });
   if (requestId !== state.dashboardRequestId) return;
 
   state.dashboard = payload;
+  state.selectedRegion = payload.selectedRegion || state.selectedRegion;
   state.watchlist = payload.watchlist.map((item) => item.symbol);
   state.activeTicker = payload.active.symbol;
   if (!state.eventCategoryPinned) {
@@ -2467,16 +2936,18 @@ async function refreshDashboard() {
     .catch((error) => {
       console.error(error);
     });
-  loadAcademyDetail(state.activeTicker, { silent: true })
-    .then(() => {
-      deferWork(() => {
-        if (requestId !== state.dashboardRequestId) return;
-        renderAcademy();
+  if (document.getElementById("academy-cards")) {
+    loadAcademyDetail(state.activeTicker, { silent: true })
+      .then(() => {
+        deferWork(() => {
+          if (requestId !== state.dashboardRequestId) return;
+          renderAcademy();
+        });
+      })
+      .catch((error) => {
+        console.error(error);
       });
-    })
-    .catch((error) => {
-      console.error(error);
-    });
+  }
   loadRadar({ silent: true }).catch((error) => {
     console.error(error);
   });
@@ -2651,65 +3122,71 @@ function bindEvents() {
     refreshDashboard();
   });
 
-  document.getElementById("lab-form").addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const symbolInput = document.getElementById("lab-ticker").value.trim().toUpperCase() || state.activeTicker;
-    setStatus("Running lab");
-    const payload = await api("/api/lab", {
-      method: "POST",
-      body: JSON.stringify({
-        symbol: symbolInput,
-        horizon: Number(document.getElementById("lab-horizon").value),
-        stress: document.getElementById("lab-stress").value,
-        chartRange: state.chartRange,
-      }),
-    });
-    if (!state.watchlist.includes(payload.symbol)) {
-      state.watchlist.unshift(payload.symbol);
-    }
-    state.activeTicker = payload.symbol;
-    state.labResult = payload;
-    pushRecentTicker(payload.symbol);
-    persistWatchlist();
-    document.querySelector('[data-tab="lab"]').click();
-    renderLab();
-    primeActiveTickerSelection(payload.symbol);
-    renderOverview();
-    refreshDashboard().catch((error) => {
-      console.error(error);
-    });
-    flashStatus("Lab ready", 1200);
-  });
-
-  document.getElementById("research-form").addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const query = document.getElementById("research-query").value.trim();
-    if (!query) return;
-    setStatus("Thinking");
-    state.researchLoading = true;
-    state.researchError = "";
-    document.querySelector('[data-tab="research"]').click();
-    renderResearch();
-    try {
-      const payload = await api("/api/research", {
+  const labForm = document.getElementById("lab-form");
+  if (labForm) {
+    labForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const symbolInput = document.getElementById("lab-ticker").value.trim().toUpperCase() || state.activeTicker;
+      setStatus("Running lab");
+      const payload = await api("/api/lab", {
         method: "POST",
-        timeoutMs: 12000,
         body: JSON.stringify({
-          query,
-          symbol: state.activeTicker,
-          useWeb: document.getElementById("research-use-web").checked,
-          useLlm: document.getElementById("research-use-llm").checked,
+          symbol: symbolInput,
+          horizon: Number(document.getElementById("lab-horizon").value),
+          stress: document.getElementById("lab-stress").value,
+          chartRange: state.chartRange,
         }),
       });
-      state.researchResult = payload;
-      flashStatus("Answer ready", 1600);
-    } catch (error) {
-      state.researchError = "The research workspace took too long. Try again, or disable local LLM for a faster web-grounded answer.";
-    } finally {
-      state.researchLoading = false;
+      if (!state.watchlist.includes(payload.symbol)) {
+        state.watchlist.unshift(payload.symbol);
+      }
+      state.activeTicker = payload.symbol;
+      state.labResult = payload;
+      pushRecentTicker(payload.symbol);
+      persistWatchlist();
+      document.querySelector('[data-tab="lab"]')?.click();
+      renderLab();
+      primeActiveTickerSelection(payload.symbol);
+      renderOverview();
+      refreshDashboard().catch((error) => {
+        console.error(error);
+      });
+      flashStatus("Lab ready", 1200);
+    });
+  }
+
+  const researchForm = document.getElementById("research-form");
+  if (researchForm) {
+    researchForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const query = document.getElementById("research-query").value.trim();
+      if (!query) return;
+      setStatus("Thinking");
+      state.researchLoading = true;
+      state.researchError = "";
+      document.querySelector('[data-tab="research"]')?.click();
       renderResearch();
-    }
-  });
+      try {
+        const payload = await api("/api/research", {
+          method: "POST",
+          timeoutMs: 12000,
+          body: JSON.stringify({
+            query,
+            symbol: state.activeTicker,
+            useWeb: document.getElementById("research-use-web").checked,
+            useLlm: document.getElementById("research-use-llm").checked,
+          }),
+        });
+        state.researchResult = payload;
+        flashStatus("Answer ready", 1600);
+      } catch (error) {
+        state.researchError = "The research workspace took too long. Try again, or disable local LLM for a faster web-grounded answer.";
+      } finally {
+        state.researchLoading = false;
+        renderResearch();
+      }
+    });
+  }
 }
 
 async function init() {

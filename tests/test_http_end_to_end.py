@@ -41,11 +41,15 @@ class HttpRouteTests(unittest.TestCase):
     dashboard_payload = {
       "provider": "yahoo",
       "updatedAt": "2026-04-01T00:00:00+00:00",
+      "selectedRegion": "india",
+      "regionOptions": [{"key": "us", "label": "United States"}, {"key": "india", "label": "India"}],
       "watchlist": [{"symbol": "ICICIBANK.NS", "price": 100.0, "changePercent": 1.2, "currency": "INR", "exchange": "NSE", "volume": 1000}],
       "active": {"symbol": "ICICIBANK.NS", "name": "ICICI Bank", "forecast": {"direction": "Bullish", "confidence": 70, "fairValueGap": 2.1, "eventPressureLabel": "Low", "mae": 1.1, "expectedReturn": 3.2, "projected": [101, 102], "models": {"agreement": {"label": "Aligned", "score": 80, "summary": "Classic and modern overlays both lean bullish."}}}, "recommendation": {"buy": 54, "hold": 31, "sell": 15, "signal": "Buy bias"}, "history": [99, 100], "stats": [], "relationshipCards": [], "driverCards": [], "lab": {"symbol": "ICICIBANK.NS", "history": [99, 100], "projected": [101], "expectedReturn": 3.2, "direction": "Bullish", "confidence": 70, "triggers": [], "backtest": {"mae": 1.1, "medianApe": 1.0, "hitRate": 60.0, "sampleCount": 4}}, "marketSession": {"status": "Open", "nextTransitionAt": "2026-04-01T09:00:00+00:00", "transitionLabel": "close", "hoursLabel": "09:15-15:30 IST", "timezone": "Asia/Kolkata"}, "regime": "Balanced regime", "currency": "INR", "price": 100.0, "changePercent": 1.2, "volume": 1000, "exchange": "NSE", "marketState": "REGULAR", "dataSource": "Yahoo Chart", "asOf": None},
       "macroPulse": [],
       "radar": {"summary": "Radar", "headlines": [], "hotspots": [], "items": []},
       "headlines": [],
+      "regions": {"us": {"region": "us"}, "india": {"region": "india"}},
+      "comparison": {"rows": [], "summary": "Comparison"},
     }
     academy_payload = {
       "research": server.RESEARCH_REFERENCES,
@@ -63,6 +67,7 @@ class HttpRouteTests(unittest.TestCase):
       academy = self.json_get("/api/academy?symbol=ICICIBANK.NS")
 
     self.assertEqual(dashboard["active"]["symbol"], "ICICIBANK.NS")
+    self.assertEqual(dashboard["selectedRegion"], "india")
     self.assertEqual(dashboard["active"]["forecast"]["models"]["agreement"]["label"], "Aligned")
     self.assertEqual(academy["symbol"], "ICICIBANK.NS")
     self.assertEqual(academy["sources"][0]["url"], "https://example.com/1")
@@ -109,6 +114,7 @@ class HttpRouteTests(unittest.TestCase):
   def test_overview_route_returns_fast_payload(self):
     overview_payload = {
       "updatedAt": "2026-04-02T00:00:00+00:00",
+      "selectedRegion": "us",
       "watchlist": [{"symbol": "AAPL", "price": 210.12, "changePercent": 0.5, "currency": "USD", "exchange": "NASDAQ", "volume": 1000}],
       "active": {
         "symbol": "AAPL",

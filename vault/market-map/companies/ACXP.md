@@ -1,0 +1,32 @@
+---
+symbol: ACXP
+name: Acurx Pharmaceuticals, Inc. - Common Stock
+region: us
+exchange: NASDAQ
+sector: 
+---
+
+# ACXP
+
+Acurx Pharmaceuticals, Inc. - Common Stock sits inside the local market graph as a market exposure for us analysis.
+
+## Core context
+
+- Name: Acurx Pharmaceuticals, Inc. - Common Stock
+- Exchange: NASDAQ
+- Region: us
+- Sector: 
+
+## Graph neighbors
+
+- [[AMCI]] · `positive` · strength 0.6334
+- [[AMPH]] · `positive` · strength 0.6038
+
+## Entity map
+
+- No local entity map yet.
+
+## Analyst note
+
+- This note is generated from local universes, cached history, relation graphs, and repo KB notes.
+- Use it as a durable context layer, not as a direct recommendation.
