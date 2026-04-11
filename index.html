@@ -87,6 +87,7 @@
           <div class="topbar-copy">
             <p class="eyebrow">Live Markets</p>
             <h2>NASDAQ, S&amp;P 500, NSE, and global market coverage</h2>
+            <div id="region-selector" class="region-selector" aria-label="Region selector"></div>
           </div>
           <div class="live-cluster">
             <div class="live-dot"></div>
@@ -143,9 +144,12 @@
 
         <nav class="tabbar">
           <button class="tab active" data-tab="overview">Overview</button>
-          <button class="tab" data-tab="lab">Model Lab</button>
-          <button class="tab" data-tab="academy">Academy</button>
-          <button class="tab" data-tab="research">Research</button>
+          <button class="tab" data-tab="bond-market">Bond Market</button>
+          <button class="tab" data-tab="inflation">Inflation</button>
+          <button class="tab" data-tab="equity-context">Equity Context</button>
+          <button class="tab" data-tab="events-calendar">Events &amp; Calendar</button>
+          <button class="tab" data-tab="watchlist-implications">Watchlist Implications</button>
+          <button class="tab" data-tab="comparison">Compare</button>
         </nav>
 
         <section id="overview" class="tab-panel active">
@@ -280,120 +284,113 @@
           </div>
         </section>
 
-        <section id="lab" class="tab-panel">
-          <div class="lab-grid">
-            <article class="glass-panel lab-panel">
+        <section id="bond-market" class="tab-panel">
+          <div class="macro-grid">
+            <article class="glass-panel macro-panel">
               <div class="section-heading">
-                <h3>Scenario Tester</h3>
-                <span>Walk-forward replay and stress testing</span>
+                <h3>Yield Curve</h3>
+                <span>Bond market first</span>
               </div>
-              <form id="lab-form" class="lab-form">
-                <label>
-                  <span>Ticker</span>
-                  <input id="lab-ticker" type="text" maxlength="24" />
-                </label>
-                <label>
-                  <span>Forecast horizon</span>
-                  <select id="lab-horizon">
-                    <option value="5">5 sessions</option>
-                    <option value="10">10 sessions</option>
-                    <option value="20">20 sessions</option>
-                  </select>
-                </label>
-                <label>
-                  <span>Regime stress</span>
-                  <select id="lab-stress">
-                    <option value="base">Base case</option>
-                    <option value="riskoff">Risk-off shock</option>
-                    <option value="growth">Growth acceleration</option>
-                    <option value="inflation">Inflation surprise</option>
-                  </select>
-                </label>
-                <button type="submit">Run Analysis</button>
-              </form>
-              <div id="lab-source-note" class="micro-note">History source loading.</div>
-              <div class="lab-chart-card">
-                <svg id="lab-chart" viewBox="0 0 640 240" preserveAspectRatio="none"></svg>
-              </div>
+              <div id="bond-summary" class="macro-summary-grid"></div>
+              <div id="bond-curve" class="bond-curve"></div>
             </article>
 
-            <article class="glass-panel lab-panel">
+            <article class="glass-panel macro-panel">
               <div class="section-heading">
-                <h3>Validation Panel</h3>
-                <span>Deviation, error rate, and trigger attribution</span>
+                <h3>Rates Interpretation</h3>
+                <span>Facts, interpretation, watch next</span>
               </div>
-              <div id="validation-metrics" class="validation-metrics"></div>
-              <div id="trigger-reasons" class="trigger-reasons"></div>
+              <div id="bond-analysis" class="macro-analysis-list"></div>
             </article>
           </div>
         </section>
 
-        <section id="academy" class="tab-panel">
-          <div class="academy-grid">
-            <article class="glass-panel academy-panel">
+        <section id="inflation" class="tab-panel">
+          <div class="macro-grid">
+            <article class="glass-panel macro-panel">
               <div class="section-heading">
-                <h3>What You Are Seeing</h3>
-                <span>On-screen guide</span>
+                <h3>Inflation Context</h3>
+                <span>Headline, core, breakeven, policy gap</span>
               </div>
-              <div id="academy-cards" class="academy-cards"></div>
-              <div id="academy-ticker-brief" class="academy-brief-list"></div>
-              <div id="academy-source-list" class="academy-source-list"></div>
+              <div id="inflation-cards" class="macro-summary-grid"></div>
             </article>
-
-            <article class="glass-panel academy-panel">
+            <article class="glass-panel macro-panel">
               <div class="section-heading">
-                <h3>Classic Quant</h3>
-                <span>Formulas, live readings, and failure modes</span>
+                <h3>Policy Context</h3>
+                <span>Central bank lens</span>
               </div>
-              <div id="glossary-list" class="glossary-list"></div>
-            </article>
-
-            <article class="glass-panel academy-panel">
-              <div class="section-heading">
-                <h3>Research Backbone</h3>
-                <span>Classic foundations and modern overlays</span>
-              </div>
-              <div id="research-list" class="research-list"></div>
+              <div id="policy-cards" class="macro-analysis-list"></div>
             </article>
           </div>
         </section>
 
-        <section id="research" class="tab-panel">
-          <div class="research-workspace">
-            <article class="glass-panel research-panel">
+        <section id="equity-context" class="tab-panel">
+          <div class="macro-grid">
+            <article class="glass-panel macro-panel">
               <div class="section-heading">
-                <h3>Ask Board</h3>
-                <span>Local LLM + web</span>
+                <h3>Equity Context</h3>
+                <span>Rates to sectors to stocks</span>
               </div>
-              <form id="research-form" class="research-form">
-                <textarea
-                  id="research-query"
-                  rows="4"
-                  placeholder="Ask about a company, ratio, catalyst, trade idea, macro event, or what you are seeing on screen"
-                ></textarea>
-                <div class="research-controls">
-                  <label class="check-row">
-                    <input id="research-use-web" type="checkbox" checked />
-                    <span>Use web search</span>
-                  </label>
-                  <label class="check-row">
-                    <input id="research-use-llm" type="checkbox" checked />
-                    <span>Use local LLM</span>
-                  </label>
-                  <button type="submit">Ask</button>
-                </div>
-              </form>
-              <div id="research-summary" class="research-summary">
-                <p class="muted">Ask anything about the active ticker, the dashboard signals, or the broader market.</p>
-              </div>
+              <div id="equity-summary" class="macro-analysis-list"></div>
             </article>
-
-            <article class="glass-panel research-panel">
+            <article class="glass-panel macro-panel">
               <div class="section-heading">
-                <h3>Search Results</h3>
-                <span>Grounding</span>
+                <h3>Sector Sensitivity</h3>
+                <span>Derived from bonds and inflation</span>
               </div>
-              <div id="research-sources" class="research-sources"></div>
+              <div id="sector-grid" class="macro-summary-grid"></div>
+            </article>
+          </div>
+        </section>
+
+        <section id="events-calendar" class="tab-panel">
+          <div class="macro-grid">
+            <article class="glass-panel macro-panel">
+              <div class="section-heading">
+                <h3>Macro Events</h3>
+                <span>What moved, why, and what matters next</span>
+              </div>
+              <div id="macro-events-list" class="event-list"></div>
+            </article>
+            <article class="glass-panel macro-panel">
+              <div class="section-heading">
+                <h3>Watch Next</h3>
+                <span>Upcoming catalysts to monitor</span>
+              </div>
+              <div id="macro-watch-next" class="macro-analysis-list"></div>
+            </article>
+          </div>
+        </section>
+
+        <section id="watchlist-implications" class="tab-panel">
+          <div class="macro-grid">
+            <article class="glass-panel macro-panel">
+              <div class="section-heading">
+                <h3>Stock Watchlist Implications</h3>
+                <span>Scenario, risk, confidence, unknowns</span>
+              </div>
+              <div id="watchlist-implication-cards" class="macro-summary-grid"></div>
+            </article>
+            <article class="glass-panel macro-panel">
+              <div class="section-heading">
+                <h3>Impact Graph</h3>
+                <span>Bond and inflation transmission into stocks</span>
+              </div>
+              <svg id="impact-graph" class="impact-graph" viewBox="0 0 720 360" preserveAspectRatio="none"></svg>
+              <div id="impact-graph-note" class="micro-note">Graph source is loading.</div>
+            </article>
+          </div>
+        </section>
+
+        <section id="comparison" class="tab-panel">
+          <div class="macro-grid">
+            <article class="glass-panel macro-panel">
+              <div class="section-heading">
+                <h3>US vs India</h3>
+                <span>Bond, inflation, policy, and market comparison</span>
+              </div>
+              <div id="comparison-summary" class="micro-note">Comparison is loading.</div>
+              <div id="comparison-table" class="comparison-table"></div>
             </article>
           </div>
         </section>
@@ -423,7 +420,7 @@
         </label>
         <label>
           <span>Local LLM model</span>
-          <input id="llm-model" type="text" placeholder="llama3.1:8b" />
+          <input id="llm-model" type="text" placeholder="Bonsai-8B-1bit" />
         </label>
         <p class="muted">
           Yahoo-style endpoints are used as the no-key default for broad market coverage.

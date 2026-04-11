@@ -19,24 +19,29 @@ class HtmlContractTests(unittest.TestCase):
       "radar-hotspots",
       "radar-source-note",
       "overview-board",
+      "region-selector",
+      "bond-summary",
+      "bond-curve",
+      "inflation-cards",
+      "policy-cards",
+      "equity-summary",
+      "sector-grid",
+      "macro-events-list",
+      "macro-watch-next",
+      "watchlist-implication-cards",
+      "impact-graph",
+      "comparison-table",
       "recent-tickers",
       "quote-source-note",
       "market-session-strip",
       "model-agreement-note",
-      "lab-form",
-      "lab-chart",
-      "academy-cards",
-      "academy-ticker-brief",
-      "academy-source-list",
-      "glossary-list",
-      "research-list",
     ]
     for target in required_ids:
       self.assertIn(f'id="{target}"', self.index_html)
 
   def test_index_contains_expected_top_level_tabs(self):
     tabs = re.findall(r'data-tab="([^"]+)"', self.index_html)
-    self.assertEqual(tabs, ["overview", "lab", "academy", "research"])
+    self.assertEqual(tabs, ["overview", "bond-market", "inflation", "equity-context", "events-calendar", "watchlist-implications", "comparison"])
 
   def test_frontend_contains_key_renderers_and_handlers(self):
     expected_snippets = [
@@ -44,17 +49,21 @@ class HtmlContractTests(unittest.TestCase):
       "function deferWork(",
       "function renderBanner()",
       "function renderOverview()",
-      "function renderLab()",
+      "function renderBondMarket()",
+      "function renderInflationView()",
+      "function renderEquityContext()",
+      "function renderMacroEvents()",
+      "function renderWatchlistImplications()",
+      "function renderComparison()",
+      "function renderRegionSelector()",
       "function renderCorePanels()",
       "function renderDeferredPanels()",
-      "function loadAcademyDetail(",
       "function loadEventFeed(",
       "eventCache",
       "event-card-header",
       "dashboardRequestId",
-      "academyRequestId",
+      "selectedRegion",
       "function buildRadarFloatItems",
-      'document.getElementById("lab-form").addEventListener("submit"',
       "state.radarFloatOpenId",
     ]
     for snippet in expected_snippets:

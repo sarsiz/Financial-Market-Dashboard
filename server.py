@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import html
 import math
+import os
 import re
 import sqlite3
 import statistics
@@ -24,10 +25,18 @@ from zoneinfo import ZoneInfo
 BASE_DIR = Path(__file__).resolve().parent
 DB_PATH = BASE_DIR / "financial_board.db"
 CONFIG_PATH = BASE_DIR / "config.json"
+KB_DIR = BASE_DIR / "kb"
+DATA_DIR = BASE_DIR / "data"
+UNIVERSE_DIR = DATA_DIR / "universes"
+RELATIONS_DIR = DATA_DIR / "relations"
+FACTOR_DIR = DATA_DIR / "factors"
+PAPER_DIR = DATA_DIR / "papers"
+VAULT_DIR = BASE_DIR / "vault" / "market-map"
 
 DEFAULT_CONFIG = {
   "provider": "yahoo",
   "alphaVantageApiKey": "",
+  "fredApiKey": "",
   "localLlmBaseUrl": "http://127.0.0.1:11434",
   "localLlmModel": "Bonsai-8B-1bit",
 }
@@ -96,6 +105,85 @@ MARKET_PRESETS = [
     "symbols": ["^GSPC", "^IXIC", "^NSEI", "CL=F", "GC=F", "DX-Y.NYB"],
   },
 ]
+
+REGION_CONFIGS = {
+  "us": {
+    "key": "us",
+    "label": "United States",
+    "currency": "USD",
+    "timezone": "America/New_York",
+    "equityBenchmarks": ["S&P 500", "NASDAQ 100"],
+    "bondLabel": "UST",
+    "centralBank": "Federal Reserve",
+    "policyRateLabel": "Fed funds",
+    "inflationLabel": "CPI",
+    "eventKeywords": ["fed", "treasury", "cpi", "payrolls", "tariff", "consumer", "growth"],
+    "symbols": {
+      "equity": ["^GSPC", "^NDX"],
+      "rates": ["^TNX"],
+    },
+  },
+  "india": {
+    "key": "india",
+    "label": "India",
+    "currency": "INR",
+    "timezone": "Asia/Kolkata",
+    "equityBenchmarks": ["NIFTY 50", "SENSEX"],
+    "bondLabel": "G-Sec",
+    "centralBank": "Reserve Bank of India",
+    "policyRateLabel": "Repo rate",
+    "inflationLabel": "CPI",
+    "eventKeywords": ["rbi", "inflation", "food", "crude", "rupee", "fiscal", "credit"],
+    "symbols": {
+      "equity": ["^NSEI"],
+      "rates": [],
+    },
+  },
+}
+
+REGION_BOND_FALLBACKS = {
+  "us": {
+    "tenors": [
+      {"tenor": "2Y", "yield": 4.62, "change1D": 4.0},
+      {"tenor": "5Y", "yield": 4.23, "change1D": 3.0},
+      {"tenor": "10Y", "yield": 4.31, "change1D": 2.0},
+      {"tenor": "30Y", "yield": 4.48, "change1D": 1.0},
+    ],
+    "policyRate": 5.25,
+    "breakeven": 2.34,
+    "realYield": 1.97,
+    "curveNarrative": "Front-end is anchored by policy, while the long end is absorbing growth and term-premium repricing.",
+    "source": "Curated fallback",
+  },
+  "india": {
+    "tenors": [
+      {"tenor": "2Y", "yield": 6.92, "change1D": -1.0},
+      {"tenor": "5Y", "yield": 7.01, "change1D": 1.0},
+      {"tenor": "10Y", "yield": 7.09, "change1D": 2.0},
+      {"tenor": "30Y", "yield": 7.23, "change1D": 2.0},
+    ],
+    "policyRate": 6.50,
+    "breakeven": 5.10,
+    "realYield": 1.99,
+    "curveNarrative": "India rates remain sensitive to RBI liquidity stance, food inflation, and imported energy pressure.",
+    "source": "Curated fallback",
+  },
+}
+
+REGION_INFLATION_FALLBACKS = {
+  "us": {
+    "headline": 3.1,
+    "core": 3.4,
+    "trend": "Sticky services inflation keeps the front-end cautious.",
+    "source": "Curated fallback",
+  },
+  "india": {
+    "headline": 5.1,
+    "core": 3.4,
+    "trend": "Food-led inflation remains the key swing factor for RBI expectations.",
+    "source": "Curated fallback",
+  },
+}
 
 MARKET_SESSION_RULES = [
   {
@@ -312,6 +400,7 @@ def save_config(config: dict) -> dict:
   payload = {
     "provider": config.get("provider", "yahoo"),
     "alphaVantageApiKey": config.get("alphaVantageApiKey", "").strip(),
+    "fredApiKey": config.get("fredApiKey", "").strip(),
     "localLlmBaseUrl": config.get("localLlmBaseUrl", DEFAULT_CONFIG["localLlmBaseUrl"]).strip() or DEFAULT_CONFIG["localLlmBaseUrl"],
     "localLlmModel": resolve_local_llm_model(config),
   }
@@ -342,6 +431,30 @@ def init_db() -> None:
           source TEXT NOT NULL,
           updated_at TEXT NOT NULL,
           PRIMARY KEY(symbol, chart_range)
+        )
+        """
+      )
+      connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS payload_cache (
+          cache_key TEXT PRIMARY KEY,
+          payload_json TEXT NOT NULL,
+          source TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        )
+        """
+      )
+      connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS historical_records (
+          symbol TEXT NOT NULL,
+          interval TEXT NOT NULL,
+          timestamp TEXT NOT NULL,
+          close REAL NOT NULL,
+          volume REAL,
+          source TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          PRIMARY KEY(symbol, interval, timestamp)
         )
         """
       )
@@ -403,12 +516,24 @@ HISTORY_CACHE_MAX_AGE = {
   "1Y": 21600,
 }
 
+PAYLOAD_CACHE_MAX_AGE = {
+  "region_bonds": 1800,
+  "region_inflation": 21600,
+  "region_events": 1800,
+  "region_calendar": 21600,
+}
+
 
 def history_cache_ttl(chart_range: str) -> int:
   return HISTORY_CACHE_MAX_AGE.get((chart_range or "1M").upper(), HISTORY_CACHE_MAX_AGE["1M"])
 
 
+def payload_cache_ttl(cache_kind: str) -> int:
+  return PAYLOAD_CACHE_MAX_AGE.get(cache_kind, 1800)
+
+
 def load_cached_history(symbol: str, chart_range: str) -> tuple[list[float], dict, str, str] | None:
+  init_db()
   with DB_LOCK:
     connection = sqlite3.connect(DB_PATH)
     try:
@@ -433,7 +558,35 @@ def load_cached_history(symbol: str, chart_range: str) -> tuple[list[float], dic
   return closes, meta if isinstance(meta, dict) else {}, source, updated_at
 
 
+def load_cached_payload(cache_key: str) -> tuple[dict, str, str] | None:
+  init_db()
+  with DB_LOCK:
+    connection = sqlite3.connect(DB_PATH)
+    try:
+      row = connection.execute(
+        """
+        SELECT payload_json, source, updated_at
+        FROM payload_cache
+        WHERE cache_key = ?
+        """,
+        (cache_key,),
+      ).fetchone()
+    finally:
+      connection.close()
+  if not row:
+    return None
+  payload_json, source, updated_at = row
+  try:
+    payload = json.loads(payload_json)
+  except json.JSONDecodeError:
+    return None
+  if not isinstance(payload, dict):
+    return None
+  return payload, source, updated_at
+
+
 def save_history_cache(symbol: str, chart_range: str, closes: list[float], meta: dict, source: str) -> None:
+  init_db()
   payload = json.dumps([round(float(value), 6) for value in closes])
   meta_payload = json.dumps(meta or {})
   updated_at = datetime.now(timezone.utc).isoformat()
@@ -457,12 +610,159 @@ def save_history_cache(symbol: str, chart_range: str, closes: list[float], meta:
       connection.close()
 
 
+def save_historical_records(symbol: str, interval: str, points: list[dict], source: str) -> None:
+  init_db()
+  cleaned_rows = []
+  updated_at = datetime.now(timezone.utc).isoformat()
+  for point in points or []:
+    timestamp = point.get("timestamp")
+    close = point.get("value")
+    if not timestamp or not isinstance(close, (int, float)):
+      continue
+    volume = point.get("volume")
+    cleaned_rows.append(
+      (
+        symbol.upper(),
+        interval,
+        timestamp,
+        float(close),
+        float(volume) if isinstance(volume, (int, float)) else None,
+        source,
+        updated_at,
+      )
+    )
+  if not cleaned_rows:
+    return
+  with DB_LOCK:
+    connection = sqlite3.connect(DB_PATH)
+    try:
+      connection.executemany(
+        """
+        INSERT INTO historical_records(symbol, interval, timestamp, close, volume, source, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(symbol, interval, timestamp) DO UPDATE SET
+          close = excluded.close,
+          volume = excluded.volume,
+          source = excluded.source,
+          updated_at = excluded.updated_at
+        """,
+        cleaned_rows,
+      )
+      connection.commit()
+    finally:
+      connection.close()
+
+
+def load_historical_records(symbol: str, interval: str, limit: int = 0) -> list[dict]:
+  init_db()
+  query = """
+    SELECT timestamp, close, volume
+    FROM historical_records
+    WHERE symbol = ? AND interval = ?
+    ORDER BY timestamp DESC
+  """
+  params: list[object] = [symbol.upper(), interval]
+  if limit > 0:
+    query += " LIMIT ?"
+    params.append(limit)
+  with DB_LOCK:
+    connection = sqlite3.connect(DB_PATH)
+    try:
+      rows = connection.execute(query, params).fetchall()
+    finally:
+      connection.close()
+  points = [
+    {
+      "timestamp": timestamp,
+      "value": float(close),
+      **({"volume": float(volume)} if volume is not None else {}),
+    }
+    for timestamp, close, volume in reversed(rows)
+  ]
+  return points
+
+
+def save_payload_cache(cache_key: str, payload: dict, source: str) -> None:
+  init_db()
+  updated_at = datetime.now(timezone.utc).isoformat()
+  payload_json = json.dumps(payload or {})
+  with DB_LOCK:
+    connection = sqlite3.connect(DB_PATH)
+    try:
+      connection.execute(
+        """
+        INSERT INTO payload_cache(cache_key, payload_json, source, updated_at)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(cache_key) DO UPDATE SET
+          payload_json = excluded.payload_json,
+          source = excluded.source,
+          updated_at = excluded.updated_at
+        """,
+        (cache_key, payload_json, source, updated_at),
+      )
+      connection.commit()
+    finally:
+      connection.close()
+
+
 def build_cached_meta(meta: dict, source: str, updated_at: str, stale: bool = False) -> dict:
   payload = dict(meta or {})
   payload["historySource"] = source
   payload["historyCachedAt"] = updated_at
   payload["historyCacheState"] = "stale" if stale else "fresh"
   return payload
+
+
+def payload_cache_state(updated_at: str, ttl_seconds: int) -> tuple[bool, bool]:
+  try:
+    age_seconds = max(0, (datetime.now(timezone.utc) - datetime.fromisoformat(updated_at)).total_seconds())
+  except ValueError:
+    return False, True
+  return age_seconds <= ttl_seconds, age_seconds > ttl_seconds
+
+
+def get_or_refresh_cached_payload(cache_kind: str, cache_key: str, builder) -> dict:
+  ttl_seconds = payload_cache_ttl(cache_kind)
+  cached = load_cached_payload(cache_key)
+  if cached:
+    payload, source, updated_at = cached
+    fresh, _ = payload_cache_state(updated_at, ttl_seconds)
+    if fresh:
+      cached_payload = dict(payload)
+      cached_payload["cacheSource"] = source
+      cached_payload["cacheUpdatedAt"] = updated_at
+      cached_payload["cacheState"] = "fresh"
+      return cached_payload
+
+  try:
+    payload = builder()
+  except Exception:
+    payload = None
+
+  if payload:
+    source = payload.get("source", "Computed")
+    save_payload_cache(cache_key, payload, source)
+    cached_after_save = load_cached_payload(cache_key)
+    if cached_after_save:
+      cached_payload, cached_source, updated_at = cached_after_save
+      cached_payload["cacheSource"] = cached_source
+      cached_payload["cacheUpdatedAt"] = updated_at
+      cached_payload["cacheState"] = "fresh"
+      return cached_payload
+    payload["cacheSource"] = source
+    payload["cacheUpdatedAt"] = datetime.now(timezone.utc).isoformat()
+    payload["cacheState"] = "fresh"
+    return payload
+
+  if cached:
+    payload, source, updated_at = cached
+    stale_payload = dict(payload)
+    stale_payload["cacheSource"] = source
+    stale_payload["cacheUpdatedAt"] = updated_at
+    stale_payload["cacheState"] = "stale"
+    return stale_payload
+
+  return {"source": "Unavailable", "cacheSource": "Unavailable", "cacheState": "miss", "cacheUpdatedAt": datetime.now(timezone.utc).isoformat()}
 
 
 def resolve_market_session_rule(exchange: str, region: str = "") -> dict | None:
@@ -574,6 +874,48 @@ def text_get(url: str) -> str | None:
       return response.read().decode("utf-8", errors="replace")
   except Exception:
     return None
+
+
+def first_kb_paragraph(path: Path) -> str:
+  if not path.exists():
+    return ""
+  text = path.read_text(encoding="utf-8").strip()
+  if not text:
+    return ""
+  paragraphs = [part.strip() for part in re.split(r"\n\s*\n", text) if part.strip()]
+  for paragraph in paragraphs:
+    if not paragraph.startswith("#"):
+      return re.sub(r"\s+", " ", paragraph).strip()
+  return re.sub(r"\s+", " ", paragraphs[0].lstrip("# ").strip()) if paragraphs else ""
+
+
+def kb_notes_bundle(region_key: str) -> dict:
+  return {
+    "bond": first_kb_paragraph(KB_DIR / "macro" / "bond-regimes.md"),
+    "inflation": first_kb_paragraph(KB_DIR / "macro" / "inflation-regimes.md"),
+    "playbook": first_kb_paragraph(KB_DIR / "playbooks" / "event-interpretation.md"),
+    "regionBonds": first_kb_paragraph(KB_DIR / "regions" / region_key / "bonds.md"),
+    "regionCentralBank": first_kb_paragraph(KB_DIR / "regions" / region_key / "central-bank.md"),
+    "sector": first_kb_paragraph(KB_DIR / "sectors" / "rate-sensitivity.md"),
+    "company": first_kb_paragraph(KB_DIR / "companies" / "watchlist-sensitivity.md"),
+  }
+
+
+COMPANY_NOTE_MAP = {
+  "AAPL": "apple.md",
+  "MSFT": "microsoft.md",
+  "NVDA": "nvidia.md",
+  "BHARTIARTL.NS": "bharti-airtel.md",
+  "ICICIBANK.NS": "icici-bank.md",
+  "GLENMARK.NS": "glenmark.md",
+}
+
+
+def company_note_for_symbol(symbol: str) -> str:
+  filename = COMPANY_NOTE_MAP.get((symbol or "").upper())
+  if not filename:
+    return ""
+  return first_kb_paragraph(KB_DIR / "companies" / filename)
 
 
 def visible_text_lines(html_text: str) -> list[str]:
@@ -930,6 +1272,19 @@ def fallback_meta(symbol: str) -> dict:
   return {"name": symbol, "basePrice": 120.0 + (symbol_seed(symbol) % 180), "currency": "USD", "exchange": "US", "beta": 1.0, "pe": 22.0}
 
 
+def infer_region_key(symbol: str | None = None, exchange: str | None = None, currency: str | None = None) -> str:
+  symbol = (symbol or "").upper()
+  exchange_label = (exchange or "").upper()
+  currency_label = (currency or "").upper()
+  if symbol.endswith(".NS") or symbol.endswith(".BO") or exchange_label in {"NSE", "BSE", "INDIA"} or currency_label == "INR":
+    return "india"
+  return "us"
+
+
+def region_config(region_key: str | None) -> dict:
+  return REGION_CONFIGS.get((region_key or "us").lower(), REGION_CONFIGS["us"])
+
+
 def fallback_series(symbol: str, points: int = 180) -> list[float]:
   meta = fallback_meta(symbol)
   base_price = meta["basePrice"]
@@ -1221,6 +1576,152 @@ def fetch_popular_rss_items(category: str) -> list[dict]:
     except Exception:
       continue
   return results
+
+
+def fetch_bls_cpi_snapshot() -> dict | None:
+  payload = post_json(
+    "https://api.bls.gov/publicAPI/v2/timeseries/data/",
+    {
+      "seriesid": ["CUUR0000SA0", "CUSR0000SA0"],
+      "latest": "true",
+    },
+    timeout=12,
+  )
+  series = ((payload or {}).get("Results") or {}).get("series") or []
+  if not series:
+    return None
+  values = {}
+  for item in series:
+    data = (item.get("data") or [{}])[0] or {}
+    raw_value = data.get("value")
+    if raw_value is None:
+      continue
+    try:
+      values[item.get("seriesID")] = {
+        "value": float(raw_value),
+        "periodName": data.get("periodName", ""),
+        "year": data.get("year", ""),
+      }
+    except (TypeError, ValueError):
+      continue
+  headline = values.get("CUUR0000SA0")
+  core = values.get("CUSR0000SA0")
+  if not headline:
+    return None
+  return {
+    "headlineIndex": headline["value"],
+    "coreIndex": core["value"] if core else None,
+    "label": f"{headline.get('periodName', '')} {headline.get('year', '')}".strip(),
+    "source": "BLS Public API",
+  }
+
+
+def fetch_fred_series_latest(series_id: str, api_key: str | None = None) -> dict | None:
+  key = api_key or os.environ.get("FRED_API_KEY", "").strip()
+  if not key:
+    return None
+  query = urllib.parse.urlencode(
+    {
+      "series_id": series_id,
+      "api_key": key,
+      "file_type": "json",
+      "sort_order": "desc",
+      "limit": "1",
+    }
+  )
+  payload = json_get(f"https://api.stlouisfed.org/fred/series/observations?{query}")
+  observations = (payload or {}).get("observations") or []
+  if not observations:
+    return None
+  latest = observations[0]
+  try:
+    value = float(latest.get("value"))
+  except (TypeError, ValueError):
+    return None
+  return {
+    "value": value,
+    "date": latest.get("date", ""),
+    "source": "FRED",
+  }
+
+
+def fetch_us_fred_curve() -> dict | None:
+  config = load_config()
+  api_key = config.get("fredApiKey") or os.environ.get("FRED_API_KEY", "").strip()
+  if not api_key:
+    return None
+  series_map = {
+    "2Y": "DGS2",
+    "5Y": "DGS5",
+    "10Y": "DGS10",
+    "30Y": "DGS30",
+    "breakeven": "T10YIE",
+  }
+  results = {}
+  with ThreadPoolExecutor(max_workers=5) as executor:
+    futures = {label: executor.submit(fetch_fred_series_latest, series_id, api_key) for label, series_id in series_map.items()}
+    for label, future in futures.items():
+      try:
+        results[label] = future.result()
+      except Exception:
+        results[label] = None
+  if not all(results.get(label) for label in ["2Y", "5Y", "10Y", "30Y"]):
+    return None
+  return results
+
+
+def fetch_fed_calendar_items(limit: int = 6) -> list[dict]:
+  html_text = text_get("https://www.federalreserve.gov/newsevents/calendar.htm")
+  if not html_text:
+    return []
+  matches = re.findall(
+    r'<a href="(?P<url>/newsevents/[^"]+)".*?>(?P<title>.*?)</a>.*?<p class="date">(?P<date>.*?)</p>',
+    html_text,
+    flags=re.IGNORECASE | re.DOTALL,
+  )
+  items = []
+  for url, title, date_text in matches[:limit]:
+    clean_title = html.unescape(re.sub(r"<.*?>", "", title)).strip()
+    clean_date = html.unescape(re.sub(r"<.*?>", "", date_text)).strip()
+    if clean_title:
+      items.append(
+        {
+          "title": clean_title,
+          "date": clean_date,
+          "url": urllib.parse.urljoin("https://www.federalreserve.gov", url),
+          "source": "Federal Reserve",
+          "category": "calendar",
+        }
+      )
+  return items
+
+
+def fetch_rbi_calendar_items(limit: int = 6) -> list[dict]:
+  html_text = text_get("https://www.rbi.org.in/Scripts/NotificationUser.aspx")
+  if not html_text:
+    return []
+  matches = re.findall(
+    r'href="(?P<url>[^"]*NotificationUser\.aspx[^"]*)".*?>(?P<title>.*?)</a>',
+    html_text,
+    flags=re.IGNORECASE | re.DOTALL,
+  )
+  items = []
+  for url, title in matches:
+    clean_title = html.unescape(re.sub(r"<.*?>", "", title)).strip()
+    if not clean_title:
+      continue
+    items.append(
+      {
+        "title": clean_title,
+        "date": "",
+        "url": urllib.parse.urljoin("https://www.rbi.org.in/", url),
+        "source": "RBI",
+        "category": "calendar",
+      }
+    )
+    if len(items) >= limit:
+      break
+  return items
 
 
 MARKET_RELEVANT_TERMS = {
@@ -1969,18 +2470,24 @@ def history_points_from_meta(closes: list[float], meta: dict) -> list[dict]:
 def extract_yahoo_history_payload(chart: dict) -> tuple[list[float], dict]:
   quote_indicator = (((chart.get("indicators") or {}).get("quote") or [{}])[0] or {})
   raw_closes = quote_indicator.get("close") or []
+  raw_volumes = quote_indicator.get("volume") or []
   raw_timestamps = chart.get("timestamp") or []
   closes = []
   timestamps = []
+  volumes = []
   for index, raw_close in enumerate(raw_closes):
     if not isinstance(raw_close, (int, float)):
       continue
     closes.append(float(raw_close))
     if index < len(raw_timestamps) and isinstance(raw_timestamps[index], (int, float)):
       timestamps.append(datetime.fromtimestamp(raw_timestamps[index], tz=timezone.utc).isoformat())
+    if index < len(raw_volumes) and isinstance(raw_volumes[index], (int, float)):
+      volumes.append(float(raw_volumes[index]))
   meta = dict(chart.get("meta") or {})
   if timestamps:
     meta["timestamps"] = timestamps
+  if volumes and len(volumes) == len(closes):
+    meta["volumes"] = volumes
   return closes, meta
 
 
@@ -2002,6 +2509,18 @@ def timestamp_from_google_block(block: list) -> str | None:
     return None
 
 
+def history_symbol_candidates(symbol: str) -> list[str]:
+  symbol = (symbol or "").upper()
+  candidates = [symbol]
+  if symbol.endswith(".BO"):
+    root = symbol[:-3]
+    candidates.append(f"{root}.NS")
+  elif symbol.endswith(".NS"):
+    root = symbol[:-3]
+    candidates.append(f"{root}.BO")
+  return dedupe_list([candidate for candidate in candidates if candidate])
+
+
 def build_history(symbol: str, chart_range: str = "1M") -> tuple[list[float], dict]:
   normalized_range = chart_range.upper()
   cached = load_cached_history(symbol, normalized_range)
@@ -2018,27 +2537,235 @@ def build_history(symbol: str, chart_range: str = "1M") -> tuple[list[float], di
       return closes, build_cached_meta(meta, source or "Local cache", updated_at)
 
   range_value, interval = CHART_RANGE_CONFIG.get(normalized_range, CHART_RANGE_CONFIG["1M"])
-  chart = fetch_yahoo_chart(symbol, range_value=range_value, interval=interval)
-  if chart:
-    closes, meta = extract_yahoo_history_payload(chart)
-    if len(closes) >= 2:
-      save_history_cache(symbol, normalized_range, closes, meta, "Yahoo Chart")
-      return closes, build_cached_meta(meta, "Yahoo Chart", datetime.now(timezone.utc).isoformat())
+  for candidate_symbol in history_symbol_candidates(symbol):
+    chart = fetch_yahoo_chart(candidate_symbol, range_value=range_value, interval=interval)
+    if chart:
+      closes, meta = extract_yahoo_history_payload(chart)
+      if len(closes) >= 2:
+        if candidate_symbol != symbol:
+          meta["historyMappedSymbol"] = candidate_symbol
+        save_historical_records(symbol, interval, history_points_from_meta(closes, meta), "Yahoo Chart")
+        save_history_cache(symbol, normalized_range, closes, meta, "Yahoo Chart")
+        return closes, build_cached_meta(meta, "Yahoo Chart", datetime.now(timezone.utc).isoformat())
 
-  google_closes, google_meta = fetch_google_finance_history(symbol, fallback_meta(symbol).get("exchange", ""), normalized_range)
-  if len(google_closes) >= 2:
-    save_history_cache(symbol, normalized_range, google_closes, google_meta, google_meta.get("historySource", "Google Finance Page"))
-    return google_closes, build_cached_meta(
-      google_meta,
-      google_meta.get("historySource", "Google Finance Page"),
-      datetime.now(timezone.utc).isoformat(),
-    )
+    google_closes, google_meta = fetch_google_finance_history(candidate_symbol, fallback_meta(candidate_symbol).get("exchange", ""), normalized_range)
+    if len(google_closes) >= 2:
+      if candidate_symbol != symbol:
+        google_meta["historyMappedSymbol"] = candidate_symbol
+      google_interval = interval
+      save_historical_records(symbol, google_interval, history_points_from_meta(google_closes, google_meta), google_meta.get("historySource", "Google Finance Page"))
+      save_history_cache(symbol, normalized_range, google_closes, google_meta, google_meta.get("historySource", "Google Finance Page"))
+      return google_closes, build_cached_meta(
+        google_meta,
+        google_meta.get("historySource", "Google Finance Page"),
+        datetime.now(timezone.utc).isoformat(),
+      )
 
   if cached:
     closes, meta, source, updated_at = cached
     if len(closes) >= 2:
       return closes, build_cached_meta(meta, source or "Local cache", updated_at, stale=True)
   return [], {}
+
+
+def load_universe_manifest() -> dict:
+  path = UNIVERSE_DIR / "manifest.json"
+  if not path.exists():
+    return {}
+  try:
+    payload = json.loads(path.read_text())
+  except json.JSONDecodeError:
+    return {}
+  return payload if isinstance(payload, dict) else {}
+
+
+def load_universe_members(universe_name: str) -> list[dict]:
+  path = UNIVERSE_DIR / f"{universe_name}.json"
+  if not path.exists():
+    return []
+  try:
+    payload = json.loads(path.read_text())
+  except json.JSONDecodeError:
+    return []
+  return payload if isinstance(payload, list) else []
+
+
+def load_relation_graph(universe_name: str) -> dict:
+  path = RELATIONS_DIR / f"{universe_name}.json"
+  if not path.exists():
+    return {}
+  try:
+    payload = json.loads(path.read_text())
+  except json.JSONDecodeError:
+    return {}
+  return payload if isinstance(payload, dict) else {}
+
+
+def load_json_file(path: Path, fallback):
+  if not path.exists():
+    return fallback
+  try:
+    payload = json.loads(path.read_text())
+  except json.JSONDecodeError:
+    return fallback
+  return payload
+
+
+def load_company_networks() -> dict:
+  manual = load_json_file(DATA_DIR / "company_networks.json", {})
+  generated = load_json_file(DATA_DIR / "company_networks.generated.json", {})
+  if not isinstance(manual, dict):
+    manual = {}
+  if not isinstance(generated, dict):
+    generated = {}
+  merged = {}
+  for symbol in set(generated) | set(manual):
+    base = generated.get(symbol, {}) if isinstance(generated.get(symbol), dict) else {}
+    overlay = manual.get(symbol, {}) if isinstance(manual.get(symbol), dict) else {}
+    merged[symbol] = {
+      "entities": (base.get("entities") or []) + (overlay.get("entities") or []),
+      "links": (base.get("links") or []) + (overlay.get("links") or []),
+      "profile": {**(base.get("profile") or {}), **(overlay.get("profile") or {})},
+    }
+  return merged
+
+
+def load_factor_schedule() -> list[dict]:
+  payload = load_json_file(FACTOR_DIR / "factor_update_schedule.json", [])
+  return payload if isinstance(payload, list) else []
+
+
+def load_trading_papers() -> list[dict]:
+  payload = load_json_file(PAPER_DIR / "trading_papers.json", [])
+  return payload if isinstance(payload, list) else []
+
+
+def slugify_note_name(value: str) -> str:
+  cleaned = re.sub(r"[^a-zA-Z0-9]+", "-", (value or "").strip().lower()).strip("-")
+  return cleaned or "note"
+
+
+def load_market_map_note(symbol: str) -> dict:
+  symbol = (symbol or "").upper()
+  company_dir = VAULT_DIR / "companies"
+  candidates = [
+    company_dir / f"{symbol}.md",
+    company_dir / f"{slugify_note_name(symbol)}.md",
+    company_dir / f"{slugify_note_name(fallback_meta(symbol).get('name', symbol))}.md",
+  ]
+  for path in candidates:
+    if not path.exists():
+      continue
+    text = path.read_text()
+    summary = ""
+    for line in text.splitlines():
+      stripped = line.strip()
+      if stripped and not stripped.startswith("---") and not stripped.startswith("#") and not stripped.startswith("symbol:") and not stripped.startswith("region:") and not stripped.startswith("exchange:") and not stripped.startswith("sector:"):
+        summary = stripped
+        break
+    return {
+      "path": str(path.relative_to(BASE_DIR)) if str(path).startswith(str(BASE_DIR)) else str(path),
+      "summary": summary,
+      "title": path.stem,
+    }
+  return {}
+
+
+def universe_name_for_region(region_key: str) -> str:
+  return "sensex30" if region_key == "india" else "sp500"
+
+
+def correlation_from_prices(left: list[float], right: list[float]) -> float:
+  size = min(len(left), len(right))
+  if size < 10:
+    return 0.0
+  left = left[-size:]
+  right = right[-size:]
+  left_returns = []
+  right_returns = []
+  for index in range(1, size):
+    prev_left, prev_right = left[index - 1], right[index - 1]
+    curr_left, curr_right = left[index], right[index]
+    if prev_left and prev_right:
+      left_returns.append((curr_left - prev_left) / prev_left)
+      right_returns.append((curr_right - prev_right) / prev_right)
+  size = min(len(left_returns), len(right_returns))
+  if size < 10:
+    return 0.0
+  left_returns = left_returns[-size:]
+  right_returns = right_returns[-size:]
+  left_mean = sum(left_returns) / size
+  right_mean = sum(right_returns) / size
+  numerator = sum((a - left_mean) * (b - right_mean) for a, b in zip(left_returns, right_returns))
+  left_var = sum((a - left_mean) ** 2 for a in left_returns)
+  right_var = sum((b - right_mean) ** 2 for b in right_returns)
+  denominator = math.sqrt(left_var * right_var)
+  return numerator / denominator if denominator else 0.0
+
+
+def relation_links_for_watchlist(region_key: str, watchlist: list[dict]) -> tuple[list[dict], dict]:
+  universe_name = universe_name_for_region(region_key)
+  relation_graph = load_relation_graph(universe_name)
+  tracked = {item["symbol"] for item in watchlist if item.get("symbol")}
+  if relation_graph:
+    filtered_links = [
+      {
+        "source": link.get("source"),
+        "target": link.get("target"),
+        "value": clamp(float(link.get("value") or 0), 0.8, 4.0),
+        "direction": link.get("direction") or "neutral",
+      }
+      for link in relation_graph.get("links", [])
+      if link.get("source") in tracked and link.get("target") in tracked
+    ][:16]
+    if filtered_links:
+      return filtered_links, {
+        "source": relation_graph.get("source", "Precomputed relation graph"),
+        "generatedAt": relation_graph.get("generatedAt"),
+        "universe": relation_graph.get("universe", universe_name),
+      }
+
+  histories = {}
+  for item in watchlist:
+    cached = load_cached_history(item["symbol"], "1Y")
+    if cached and len(cached[0]) >= 20:
+      histories[item["symbol"]] = cached[0]
+  links = []
+  symbols = list(histories.keys())
+  for index, left_symbol in enumerate(symbols):
+    for right_symbol in symbols[index + 1 :]:
+      corr = correlation_from_prices(histories[left_symbol], histories[right_symbol])
+      if abs(corr) < 0.4:
+        continue
+      links.append(
+        {
+          "source": left_symbol,
+          "target": right_symbol,
+          "value": round(clamp(abs(corr) * 3.2, 0.8, 4.0), 4),
+          "direction": "positive" if corr >= 0 else "negative",
+        }
+      )
+  return links[:16], {
+    "source": "Dynamic cached-history correlation",
+    "generatedAt": datetime.now(timezone.utc).isoformat(),
+    "universe": universe_name,
+  }
+
+
+def company_network_for_symbol(symbol: str) -> dict:
+  networks = load_company_networks()
+  network = networks.get((symbol or "").upper()) or {}
+  return network if isinstance(network, dict) else {}
+
+
+def dedupe_graph_nodes(nodes: list[dict]) -> list[dict]:
+  seen = {}
+  for node in nodes:
+    node_id = node.get("id")
+    if not node_id:
+      continue
+    seen[node_id] = {**seen.get(node_id, {}), **node}
+  return list(seen.values())
 
 
 def build_forecast_inputs(symbol: str, quote: dict, summary: dict, history: list[float], news_count: int) -> dict:
@@ -2778,7 +3505,364 @@ def build_macro_pulse() -> list[dict]:
   return items or FALLBACK_MACRO_PULSE
 
 
-def build_dashboard(symbols: list[str], active: str | None, chart_range: str = "1M") -> dict:
+def build_region_bond_snapshot(region_key: str) -> dict:
+  config = region_config(region_key)
+
+  def builder() -> dict:
+    fallback = REGION_BOND_FALLBACKS[config["key"]]
+    tenors = [dict(item) for item in fallback["tenors"]]
+    source = fallback["source"]
+    fred_curve = None
+    if config["key"] == "us":
+      fred_curve = fetch_us_fred_curve()
+      if fred_curve:
+        tenors = [
+          {"tenor": "2Y", "yield": fred_curve["2Y"]["value"], "change1D": fallback["tenors"][0]["change1D"]},
+          {"tenor": "5Y", "yield": fred_curve["5Y"]["value"], "change1D": fallback["tenors"][1]["change1D"]},
+          {"tenor": "10Y", "yield": fred_curve["10Y"]["value"], "change1D": fallback["tenors"][2]["change1D"]},
+          {"tenor": "30Y", "yield": fred_curve["30Y"]["value"], "change1D": fallback["tenors"][3]["change1D"]},
+        ]
+        source = "FRED"
+    slope_2s10s = tenors[2]["yield"] - tenors[0]["yield"]
+    slope_5s30s = tenors[3]["yield"] - tenors[1]["yield"]
+    curve_shape = "Steepening" if slope_2s10s > 0.18 else "Flat" if abs(slope_2s10s) <= 0.18 else "Inverted"
+    direction = "Higher yields" if sum(item["change1D"] for item in tenors) > 0 else "Lower yields"
+    return {
+      "region": config["key"],
+      "label": f"{config['label']} bond market",
+      "tenors": tenors,
+      "curve": {
+        "slope2s10s": round(slope_2s10s, 2),
+        "slope5s30s": round(slope_5s30s, 2),
+        "shape": curve_shape,
+        "direction": direction,
+      },
+      "policyRate": fallback["policyRate"],
+      "breakeven": fred_curve["breakeven"]["value"] if config["key"] == "us" and fred_curve and fred_curve.get("breakeven") else fallback["breakeven"],
+      "realYield": fallback["realYield"],
+      "narrative": fallback["curveNarrative"],
+      "asOf": datetime.now(timezone.utc).isoformat(),
+      "source": source,
+    }
+
+  return get_or_refresh_cached_payload("region_bonds", f"region_bonds::{config['key']}", builder)
+
+
+def build_region_inflation_snapshot(region_key: str, bonds: dict) -> dict:
+  config = region_config(region_key)
+
+  def builder() -> dict:
+    fallback = REGION_INFLATION_FALLBACKS[config["key"]]
+    headline = fallback["headline"]
+    core = fallback["core"]
+    source = fallback["source"]
+    official_label = ""
+    if config["key"] == "us":
+      bls = fetch_bls_cpi_snapshot()
+      if bls:
+        source = bls["source"]
+        official_label = bls.get("label", "")
+    policy_rate = float(bonds.get("policyRate") or 0)
+    real_policy_gap = round(policy_rate - headline, 2)
+    impulse = "Inflation-driven" if headline > core + 0.6 else "Sticky core" if core >= headline else "Cooling impulse"
+    return {
+      "region": config["key"],
+      "headline": headline,
+      "core": core,
+      "breakeven": bonds.get("breakeven"),
+      "realPolicyGap": real_policy_gap,
+      "impulse": impulse,
+      "narrative": fallback["trend"],
+      "asOf": datetime.now(timezone.utc).isoformat(),
+      "source": source,
+      "officialLabel": official_label,
+    }
+
+  return get_or_refresh_cached_payload("region_inflation", f"region_inflation::{config['key']}", builder)
+
+
+def build_region_policy_snapshot(region_key: str, bonds: dict, inflation: dict) -> dict:
+  config = region_config(region_key)
+  stance = "Restrictive" if bonds.get("realYield", 0) > 1.5 else "Neutral"
+  bias = "Data dependent"
+  if config["key"] == "us":
+    bias = "Watching inflation persistence and labor-market resilience"
+  elif config["key"] == "india":
+    bias = "Watching food inflation, liquidity, and crude pass-through"
+  return {
+    "centralBank": config["centralBank"],
+    "policyRateLabel": config["policyRateLabel"],
+    "policyRate": bonds.get("policyRate"),
+    "stance": stance,
+    "bias": bias,
+    "inflationAnchor": inflation.get("headline"),
+  }
+
+
+def build_region_event_context(region_key: str) -> dict:
+  config = region_config(region_key)
+  def builder() -> dict:
+    query = f"{config['label']} inflation rates central bank bond market latest"
+    feed = build_event_feed("all", None, query)
+    items = list(feed.get("items") or [])[:6]
+    return {
+      "query": query,
+      "items": items,
+      "asOf": feed.get("asOf"),
+      "source": "RSS + search aggregation",
+    }
+  return get_or_refresh_cached_payload("region_events", f"region_events::{config['key']}", builder)
+
+
+def build_region_calendar(region_key: str) -> dict:
+  config = region_config(region_key)
+  def builder() -> dict:
+    items = fetch_fed_calendar_items() if config["key"] == "us" else fetch_rbi_calendar_items()
+    if not items:
+      items = [
+        {
+          "title": f"Next {config['centralBank']} communication",
+          "date": "Schedule pending",
+          "url": "",
+          "source": config["centralBank"],
+          "category": "calendar",
+        }
+      ]
+    return {
+      "items": items,
+      "source": items[0]["source"] if items else config["centralBank"],
+    }
+  return get_or_refresh_cached_payload("region_calendar", f"region_calendar::{config['key']}", builder)
+
+
+def build_region_equity_context(region_key: str, active_snapshot: dict | None, bonds: dict, inflation: dict) -> dict:
+  config = region_config(region_key)
+  notes = kb_notes_bundle(config["key"])
+  slope = float((bonds.get("curve") or {}).get("slope2s10s") or 0)
+  real_yield = float(bonds.get("realYield") or 0)
+  impulse = inflation.get("impulse") or "Mixed"
+  style_bias = "Defensives and banks" if real_yield > 1.8 else "Duration and growth"
+  if config["key"] == "india" and inflation.get("headline", 0) > 5:
+    style_bias = "Banks, domestic cyclicals, and pricing-power names"
+  sectors = [
+    {
+      "sector": "Banks",
+      "effect": "Positive" if slope >= 0 else "Mixed",
+      "why": "Steeper curves and stable credit conditions usually support bank earnings leverage.",
+    },
+    {
+      "sector": "Technology",
+      "effect": "Negative" if real_yield > 1.8 else "Positive",
+      "why": "Higher discount rates pressure long-duration valuation multiples first.",
+    },
+    {
+      "sector": "Consumer",
+      "effect": "Mixed" if inflation.get("headline", 0) > 4 else "Positive",
+      "why": "Inflation pressure shifts focus to pricing power and input-cost pass-through.",
+    },
+    {
+      "sector": "Energy",
+      "effect": "Positive" if "inflation" in impulse.lower() or config["key"] == "india" else "Mixed",
+      "why": "Commodity and geopolitical shocks can hold up energy cash flows while pressuring the rest of the market.",
+    },
+  ]
+  return {
+    "styleBias": style_bias,
+    "summary": f"{config['label']} equities are currently reading through the bond market via {impulse.lower()}, {real_yield:.2f}% real yields, and a {((bonds.get('curve') or {}).get('shape') or 'mixed').lower()} curve.",
+    "sectors": sectors,
+    "activeRelevance": active_snapshot.get("symbol") if active_snapshot and infer_region_key(active_snapshot.get('symbol'), active_snapshot.get('exchange'), active_snapshot.get('currency')) == config["key"] else "",
+    "kbNote": notes["sector"],
+  }
+
+
+def build_region_analysis(region_key: str, bonds: dict, inflation: dict, policy: dict, events: dict, equity: dict) -> dict:
+  notes = kb_notes_bundle(region_key)
+  slope = float((bonds.get("curve") or {}).get("slope2s10s") or 0)
+  headline = float(inflation.get("headline") or 0)
+  real_yield = float(bonds.get("realYield") or 0)
+  driver = "policy expectations"
+  if headline > 4.0 and real_yield > 1.5:
+    driver = "inflation expectations"
+  elif slope < 0:
+    driver = "growth concerns"
+  elif events.get("items"):
+    top_titles = " ".join(item.get("title", "").lower() for item in events["items"][:3])
+    if any(word in top_titles for word in {"war", "attack", "tariff", "sanction"}):
+      driver = "event risk"
+  implications = [
+    f"{equity['styleBias']} lead the equity read-through.",
+    f"{policy['centralBank']} stance is {policy['stance'].lower()} with {policy['bias'].lower()}.",
+    f"Curve is {((bonds.get('curve') or {}).get('shape') or 'mixed').lower()}, which matters most for banks and duration-heavy sectors.",
+  ]
+  monitor = [
+    f"Next {policy['centralBank']} communication and rates pricing.",
+    f"{region_config(region_key)['inflationLabel']} releases and breakeven direction.",
+    "Whether the bond move spills into index leadership or stays sector-specific.",
+  ]
+  return {
+    "whatChanged": f"{bonds['label']} is seeing {((bonds.get('curve') or {}).get('direction') or 'mixed moves').lower()} with {((bonds.get('curve') or {}).get('shape') or 'mixed').lower()} curve signals.",
+    "whyChanged": f"The dominant read is {driver}, reinforced by {inflation['impulse'].lower()} and {policy['centralBank']} expectations.",
+    "marketImplication": " ".join(implications),
+    "monitorNext": monitor,
+    "driver": driver,
+    "confidence": "Medium" if events.get("items") else "Low to medium",
+    "unknowns": [
+      "How much of the move is data-driven versus position unwinds.",
+      "Whether event headlines evolve into policy action or fade quickly.",
+    ],
+    "kbNotes": [note for note in [notes["bond"], notes["inflation"], notes["playbook"], notes["regionCentralBank"]] if note][:3],
+  }
+
+
+def build_watchlist_implications(region_key: str, watchlist: list[dict], bonds: dict, inflation: dict) -> dict:
+  notes = kb_notes_bundle(region_key)
+  relevant = [
+    item for item in watchlist
+    if infer_region_key(item.get("symbol"), item.get("exchange"), item.get("currency")) == region_key
+  ][:6]
+  slope = float((bonds.get("curve") or {}).get("slope2s10s") or 0)
+  real_yield = float(bonds.get("realYield") or 0)
+  cards = []
+  graph_nodes = [{"id": "bonds", "label": "Bond yields", "group": "macro"}]
+  graph_links = []
+  graph_nodes.append({"id": "inflation", "label": "Inflation", "group": "macro"})
+  graph_nodes.append({"id": "policy", "label": "Policy", "group": "macro"})
+  graph_nodes.append({"id": "equities", "label": "Equities", "group": "market"})
+  for item in relevant:
+    meta = fallback_meta(item["symbol"])
+    label = meta.get("name", item["symbol"])
+    symbol_upper = item["symbol"].upper()
+    is_bank = "BANK" in label.upper() or "BANK" in symbol_upper or symbol_upper.startswith("SBIN")
+    is_duration = any(token in symbol_upper for token in {"AAPL", "MSFT", "NVDA", "TCS", "INFY"})
+    direction_score = (-1 if real_yield > 1.8 and is_duration else 1 if slope > 0 and is_bank else 0)
+    cards.append(
+      {
+        "symbol": item["symbol"],
+        "name": item.get("name") or item["symbol"],
+        "scenario": "Rates-sensitive" if direction_score < 0 else "Curve beneficiary" if direction_score > 0 else "Wait for clearer macro confirmation",
+        "impact": "Negative duration pressure" if direction_score < 0 else "Positive earnings sensitivity" if direction_score > 0 else "Mixed macro transmission",
+        "confidence": "Medium",
+        "why": company_note_for_symbol(item["symbol"]) or notes["company"] or notes["sector"],
+        "marketMapNote": load_market_map_note(item["symbol"]),
+      }
+    )
+    graph_nodes.append({"id": item["symbol"], "label": item["symbol"], "group": "stock"})
+    graph_links.append(
+      {
+        "source": "bonds",
+        "target": item["symbol"],
+        "value": abs(direction_score) + 1,
+        "direction": "negative" if direction_score < 0 else "positive" if direction_score > 0 else "neutral",
+      }
+    )
+    company_network = company_network_for_symbol(item["symbol"])
+    for entity in company_network.get("entities", [])[:5]:
+      graph_nodes.append(
+        {
+          "id": entity.get("id"),
+          "label": entity.get("label", entity.get("id", "Entity")),
+          "group": "entity",
+          "entityType": entity.get("type", "entity"),
+        }
+      )
+    for link in company_network.get("links", [])[:6]:
+      graph_links.append(
+        {
+          "source": link.get("source"),
+          "target": link.get("target"),
+          "value": float(link.get("value") or 1.0),
+          "direction": link.get("direction") or "neutral",
+          "relation": link.get("relation") or "entity",
+        }
+      )
+  graph_links.extend(
+    [
+      {"source": "inflation", "target": "bonds", "value": 3, "direction": "negative" if inflation.get("headline", 0) > 4 else "neutral"},
+      {"source": "policy", "target": "bonds", "value": 2, "direction": "neutral"},
+      {"source": "bonds", "target": "equities", "value": 3, "direction": "negative" if real_yield > 1.8 else "positive"},
+    ]
+  )
+  relation_links, relation_meta = relation_links_for_watchlist(region_key, relevant)
+  graph_links.extend(relation_links)
+  factor_schedule = load_factor_schedule()[:5]
+  paper_set = load_trading_papers()[:4]
+  return {
+    "cards": cards,
+    "graph": {
+      "nodes": dedupe_graph_nodes(graph_nodes),
+      "links": graph_links,
+      "relationMeta": relation_meta,
+      "factorSchedule": factor_schedule,
+      "papers": paper_set,
+      "vault": {
+        "path": "vault/market-map",
+        "mode": "Obsidian-friendly markdown",
+      },
+    },
+  }
+
+
+def build_region_payload(region_key: str, watchlist: list[dict], active_snapshot: dict | None = None) -> dict:
+  config = region_config(region_key)
+  notes = kb_notes_bundle(config["key"])
+  bonds = build_region_bond_snapshot(config["key"])
+  inflation = build_region_inflation_snapshot(config["key"], bonds)
+  policy = build_region_policy_snapshot(config["key"], bonds, inflation)
+  with ThreadPoolExecutor(max_workers=2) as executor:
+    events_future = executor.submit(build_region_event_context, config["key"])
+    equity_future = executor.submit(build_region_equity_context, config["key"], active_snapshot or {}, bonds, inflation)
+    events = events_future.result()
+    equity = equity_future.result()
+  calendar = build_region_calendar(config["key"])
+  analysis = build_region_analysis(config["key"], bonds, inflation, policy, events, equity)
+  watchlist_implications = build_watchlist_implications(config["key"], watchlist, bonds, inflation)
+  return {
+    "region": config["key"],
+    "label": config["label"],
+    "currency": config["currency"],
+    "bonds": bonds,
+    "inflation": inflation,
+    "policy": policy,
+    "events": events,
+    "calendar": calendar,
+    "equity": equity,
+    "analysis": analysis,
+    "watchlistImplications": watchlist_implications,
+    "notes": notes,
+  }
+
+
+def build_region_comparison(regions: dict[str, dict]) -> dict:
+  us = regions.get("us") or build_region_payload("us", [])
+  india = regions.get("india") or build_region_payload("india", [])
+  return {
+    "rows": [
+      {
+        "metric": "10Y yield",
+        "us": f"{us['bonds']['tenors'][2]['yield']:.2f}%",
+        "india": f"{india['bonds']['tenors'][2]['yield']:.2f}%",
+      },
+      {
+        "metric": "2s10s slope",
+        "us": f"{us['bonds']['curve']['slope2s10s']:.2f}%",
+        "india": f"{india['bonds']['curve']['slope2s10s']:.2f}%",
+      },
+      {
+        "metric": "Headline inflation",
+        "us": f"{us['inflation']['headline']:.2f}%",
+        "india": f"{india['inflation']['headline']:.2f}%",
+      },
+      {
+        "metric": "Policy rate",
+        "us": f"{us['policy']['policyRate']:.2f}%",
+        "india": f"{india['policy']['policyRate']:.2f}%",
+      },
+    ],
+    "summary": f"US is currently led by {us['analysis']['driver']}, while India is led by {india['analysis']['driver']}.",
+  }
+
+
+def build_dashboard(symbols: list[str], active: str | None, chart_range: str = "1M", region_key: str | None = None) -> dict:
   cleaned = [symbol.upper() for symbol in symbols if symbol]
   if not cleaned:
     cleaned = DEFAULT_WATCHLIST.copy()
@@ -2829,15 +3913,27 @@ def build_dashboard(symbols: list[str], active: str | None, chart_range: str = "
     radar = enrich_market_radar(radar_future.result(), macro_pulse, active_snapshot)
 
   banner = radar["headlines"] or active_snapshot["headlines"][:4]
+  selected_region = region_config(region_key or infer_region_key(active_snapshot.get("symbol"), active_snapshot.get("exchange"), active_snapshot.get("currency")))
+  with ThreadPoolExecutor(max_workers=2) as executor:
+    us_future = executor.submit(build_region_payload, "us", watchlist, active_snapshot)
+    india_future = executor.submit(build_region_payload, "india", watchlist, active_snapshot)
+    regions = {
+      "us": us_future.result(),
+      "india": india_future.result(),
+    }
 
   return {
     "provider": load_config().get("provider", "yahoo"),
     "updatedAt": datetime.now(timezone.utc).isoformat(),
+    "selectedRegion": selected_region["key"],
+    "regionOptions": [{"key": item["key"], "label": item["label"]} for item in REGION_CONFIGS.values()],
     "watchlist": watchlist,
     "active": active_snapshot,
     "macroPulse": macro_pulse,
     "radar": radar,
     "headlines": list(dict.fromkeys(banner))[:6],
+    "regions": regions,
+    "comparison": build_region_comparison(regions),
   }
 
 
@@ -2907,7 +4003,7 @@ def build_live_quotes(symbols: list[str], active: str | None) -> dict:
   }
 
 
-def build_overview_payload(symbols: list[str], active: str | None) -> dict:
+def build_overview_payload(symbols: list[str], active: str | None, region_key: str | None = None) -> dict:
   payload = build_live_quotes(symbols, active)
   active_item = payload.get("active") or {}
   exchange = active_item.get("exchange") or active_item.get("symbol") or "GLOBAL"
@@ -2917,6 +4013,7 @@ def build_overview_payload(symbols: list[str], active: str | None) -> dict:
     "marketSession": build_market_session(exchange, exchange, market_state),
     "regime": "Refreshing active view",
   }
+  payload["selectedRegion"] = region_config(region_key or infer_region_key(active_item.get("symbol"), exchange, active_item.get("currency")))["key"]
   return payload
 
 
@@ -2971,7 +4068,8 @@ class FinancialBoardHandler(BaseHTTPRequestHandler):
       params = urllib.parse.parse_qs(parsed.query)
       symbols = [item.upper() for item in ((params.get("symbols") or [""])[0].split(",")) if item]
       active = ((params.get("active") or [""])[0] or "").upper() or None
-      return self.send_json(build_overview_payload(symbols, active))
+      region = ((params.get("region") or [""])[0] or "").strip().lower() or None
+      return self.send_json(build_overview_payload(symbols, active, region))
     if parsed.path == "/api/stream":
       params = urllib.parse.parse_qs(parsed.query)
       symbols = [item for item in ((params.get("symbols") or [""])[0].split(",")) if item]
@@ -2998,7 +4096,8 @@ class FinancialBoardHandler(BaseHTTPRequestHandler):
       symbols = [symbol.upper() for symbol in (body or {}).get("symbols", []) if symbol]
       active = ((body or {}).get("active") or "").upper() or None
       chart_range = ((body or {}).get("chartRange") or "1M").upper()
-      return self.send_json(build_dashboard(symbols, active, chart_range))
+      region = ((body or {}).get("region") or "").strip().lower() or None
+      return self.send_json(build_dashboard(symbols, active, chart_range, region))
 
     if parsed.path == "/api/lab":
       symbol = ((body or {}).get("symbol") or "").strip().upper()
