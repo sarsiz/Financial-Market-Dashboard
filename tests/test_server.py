@@ -418,16 +418,31 @@ class ForecastAndLabTests(unittest.TestCase):
     self.assertIn("US", comparison["summary"])
 
   def test_build_methodology_payload_contains_concepts_and_flow(self):
-    snapshot = server.build_ticker_snapshot("AAPL")
-    region = server.build_region_payload("us", [{"symbol": "AAPL", "name": "Apple", "exchange": "NASDAQ", "currency": "USD"}], snapshot)
-    snapshot["researchOverview"] = server.build_active_research_overview(snapshot, region)
-    snapshot["decisionInputs"] = server.build_market_decision_overview(snapshot, region)
+    # Use minimal stubs — no DB, no network needed for methodology payload
+    snapshot = {
+      "forecast": {"movingAverageSignal": {"state": "bullish"}, "direction": "up"},
+      "decisionCockpit": {"stance": "Trend-following", "edgeScore": 72, "riskLevel": "Medium"},
+      "eventFocus": {"label": "CPI release"},
+      "decisionInputs": {"inputs": []},
+      "researchOverview": {"cards": []},
+    }
+    region = {
+      "analysis": {"driver": "bonds"},
+      "researchProtocol": {},
+      "watchlistImplications": {"graph": {"nodes": [], "links": []}},
+    }
 
     payload = server.build_methodology_payload(snapshot, region)
 
     self.assertTrue(payload["concepts"])
     self.assertTrue(payload["flow"]["nodes"])
-    self.assertTrue(payload["liveInputs"])
+    self.assertTrue(payload["liveInputs"] is not None)
+    # tradingPapers added — must be present and non-empty
+    self.assertIn("tradingPapers", payload)
+    self.assertGreater(len(payload["tradingPapers"]), 0)
+    for paper in payload["tradingPapers"]:
+      self.assertIn("title", paper)
+      self.assertIn("year", paper)
 
   def test_build_backtest_produces_samples_with_short_real_history(self):
     history = [100 + index for index in range(20)]
