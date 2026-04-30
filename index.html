@@ -83,21 +83,31 @@
       </aside>
 
       <main class="dashboard">
+        <nav id="compact-section-menu" class="compact-section-menu" aria-label="Dashboard sections">
+          <button id="compact-menu-toggle" class="compact-menu-toggle" type="button" aria-expanded="false">
+            Sections
+          </button>
+          <div id="compact-menu-list" class="compact-menu-list"></div>
+        </nav>
+
         <header class="topbar">
           <div class="topbar-copy">
             <p class="eyebrow">Live Markets</p>
             <h2>NASDAQ, S&amp;P 500, NSE, and global market coverage</h2>
             <div id="region-selector" class="region-selector" aria-label="Region selector"></div>
           </div>
-          <div class="live-cluster">
-            <div class="live-dot"></div>
-            <span id="status-updated" class="status-pill loading" aria-live="polite">
-              <span class="status-token" aria-hidden="true">
-                <span class="status-token-fill"></span>
-                <span class="status-token-code">USD</span>
+          <div class="topbar-side">
+            <div class="live-cluster">
+              <div class="live-dot"></div>
+              <span id="status-updated" class="status-pill loading" aria-live="polite">
+                <span class="status-token" aria-hidden="true">
+                  <span class="status-token-fill"></span>
+                  <span class="status-token-code">USD</span>
+                </span>
+                <span class="status-label">Loading data</span>
               </span>
-              <span class="status-label">Loading data</span>
-            </span>
+            </div>
+            <section id="global-market-overview" class="global-market-overview glass-panel" aria-live="polite"></section>
           </div>
         </header>
 

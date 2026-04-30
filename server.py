@@ -8,6 +8,7 @@ import re
 import socket
 import sqlite3
 import statistics
+import sys
 import time
 import threading
 import urllib.error
@@ -63,6 +64,18 @@ FALLBACK_TICKERS = {
   "INFY.NS": {"name": "Infosys", "basePrice": 1518.0, "currency": "INR", "exchange": "NSE", "beta": 0.88, "pe": 24.6},
   "HDFCBANK.NS": {"name": "HDFC Bank", "basePrice": 1528.0, "currency": "INR", "exchange": "NSE", "beta": 0.77, "pe": 19.4},
   "SBIN.NS": {"name": "State Bank of India", "basePrice": 818.0, "currency": "INR", "exchange": "NSE", "beta": 0.92, "pe": 10.9, "aliases": ["SBI", "STATE BANK OF INDIA"]},
+  "^NSEI": {"name": "NIFTY 50", "basePrice": 22431.65, "currency": "INR", "exchange": "NSE", "beta": 1.0, "pe": 0.0},
+  "^BSESN": {"name": "SENSEX", "basePrice": 73895.54, "currency": "INR", "exchange": "BSE", "beta": 1.0, "pe": 0.0},
+  "^N225": {"name": "Nikkei 225", "basePrice": 38405.12, "currency": "JPY", "exchange": "JPX", "beta": 1.0, "pe": 0.0},
+  "^TOPX": {"name": "TOPIX", "basePrice": 2721.45, "currency": "JPY", "exchange": "JPX", "beta": 1.0, "pe": 0.0},
+  "^AXJO": {"name": "S&P/ASX 200", "basePrice": 7774.80, "currency": "AUD", "exchange": "ASX", "beta": 1.0, "pe": 0.0},
+  "^AORD": {"name": "All Ordinaries", "basePrice": 8014.37, "currency": "AUD", "exchange": "ASX", "beta": 1.0, "pe": 0.0},
+  "^HSI": {"name": "Hang Seng", "basePrice": 17763.18, "currency": "HKD", "exchange": "HKEX", "beta": 1.0, "pe": 0.0},
+  "^HSTECH": {"name": "Hang Seng Tech", "basePrice": 3651.72, "currency": "HKD", "exchange": "HKEX", "beta": 1.0, "pe": 0.0},
+  "^FTSE": {"name": "FTSE 100", "basePrice": 8144.13, "currency": "GBP", "exchange": "LSE", "beta": 1.0, "pe": 0.0},
+  "^FTMC": {"name": "FTSE 250", "basePrice": 19986.41, "currency": "GBP", "exchange": "LSE", "beta": 1.0, "pe": 0.0},
+  "^GSPC": {"name": "S&P 500", "basePrice": 5148.22, "currency": "USD", "exchange": "NYSE", "beta": 1.0, "pe": 0.0},
+  "^IXIC": {"name": "NASDAQ Composite", "basePrice": 16162.37, "currency": "USD", "exchange": "NASDAQ", "beta": 1.0, "pe": 0.0},
 }
 
 MARKET_SUFFIXES = {
@@ -144,6 +157,69 @@ REGION_CONFIGS = {
   },
 }
 
+GLOBAL_MARKET_CLOCKS = [
+  {
+    "key": "india",
+    "label": "India",
+    "timezone": "Asia/Kolkata",
+    "sessionExchange": "NSE",
+    "indices": [
+      {"symbol": "^NSEI", "label": "NIFTY 50"},
+      {"symbol": "^BSESN", "label": "SENSEX"},
+    ],
+  },
+  {
+    "key": "japan",
+    "label": "Japan",
+    "timezone": "Asia/Tokyo",
+    "sessionExchange": "JPX",
+    "indices": [
+      {"symbol": "^N225", "label": "Nikkei 225"},
+      {"symbol": "^TOPX", "label": "TOPIX"},
+    ],
+  },
+  {
+    "key": "australia",
+    "label": "Australia",
+    "timezone": "Australia/Sydney",
+    "sessionExchange": "ASX",
+    "indices": [
+      {"symbol": "^AXJO", "label": "ASX 200"},
+      {"symbol": "^AORD", "label": "All Ordinaries"},
+    ],
+  },
+  {
+    "key": "hong_kong",
+    "label": "Hong Kong",
+    "timezone": "Asia/Hong_Kong",
+    "sessionExchange": "HKEX",
+    "indices": [
+      {"symbol": "^HSI", "label": "Hang Seng"},
+      {"symbol": "^HSTECH", "label": "Hang Seng Tech"},
+    ],
+  },
+  {
+    "key": "london",
+    "label": "London",
+    "timezone": "Europe/London",
+    "sessionExchange": "LSE",
+    "indices": [
+      {"symbol": "^FTSE", "label": "FTSE 100"},
+      {"symbol": "^FTMC", "label": "FTSE 250"},
+    ],
+  },
+  {
+    "key": "us",
+    "label": "United States",
+    "timezone": "America/New_York",
+    "sessionExchange": "NYSE",
+    "indices": [
+      {"symbol": "^GSPC", "label": "S&P 500"},
+      {"symbol": "^IXIC", "label": "NASDAQ"},
+    ],
+  },
+]
+
 REGION_BOND_FALLBACKS = {
   "us": {
     "tenors": [
@@ -216,6 +292,13 @@ MARKET_SESSION_RULES = [
     "open": (10, 0),
     "close": (16, 0),
     "hoursLabel": "10:00-16:00 AEST/AEDT",
+  },
+  {
+    "matches": {"HKEX", "HONG KONG", "HONGKONG"},
+    "timezone": "Asia/Hong_Kong",
+    "open": (9, 30),
+    "close": (16, 0),
+    "hoursLabel": "09:30-16:00 HKT",
   },
   {
     "matches": {"JPX", "TSE", "TOKYO"},
@@ -970,9 +1053,18 @@ def get_or_refresh_cached_payload(cache_kind: str, cache_key: str, builder) -> d
 
 
 def resolve_market_session_rule(exchange: str, region: str = "") -> dict | None:
-  haystack = f"{exchange} {region}".upper()
+  exchange_upper = (exchange or "").upper()
+  region_upper = (region or "").upper()
+  haystack_tokens = [token for token in re.split(r"[^A-Z0-9]+", f"{exchange_upper} {region_upper}") if token]
   for rule in MARKET_SESSION_RULES:
-    if any(token in haystack for token in rule["matches"]):
+    if any(
+      (
+        candidate in haystack_tokens
+        if len(candidate) <= 3
+        else candidate in exchange_upper or candidate in region_upper or candidate in haystack_tokens
+      )
+      for candidate in rule["matches"]
+    ):
       return rule
   return None
 
@@ -3973,6 +4065,30 @@ def build_decision_cockpit(snapshot: dict, region_payload: dict, radar: dict | N
   }
 
 
+def build_operator_feature_cards(snapshot: dict, region_payload: dict, radar: dict | None = None) -> list[dict]:
+  forecast = snapshot.get("forecast") or {}
+  session = snapshot.get("marketSession") or {}
+  expert = snapshot.get("expertOutlook") or {}
+  analysis = region_payload.get("analysis") or {}
+  radar = radar or {}
+  sentiment = radar.get("sentiment") or {}
+  price = float(snapshot.get("price") or 0)
+  previous = float(snapshot.get("previousClose") or price or 1)
+  day_move = pct_change(price, previous) if previous else 0.0
+  return [
+    {"label": "Session", "value": session.get("status") or "Unknown", "note": session.get("hoursLabel") or "Market hours pending"},
+    {"label": "Source", "value": snapshot.get("dataSource") or "Unknown", "note": snapshot.get("historySource") or "History source pending"},
+    {"label": "Liquidity", "value": format_large_number(snapshot.get("volume") or 0), "note": "Current traded volume"},
+    {"label": "Move", "value": f"{day_move:+.2f}%", "note": "Latest versus previous close"},
+    {"label": "Projection", "value": f"{float(forecast.get('expectedReturn') or 0):+.2f}%", "note": f"{forecast.get('direction', 'Neutral')} scenario"},
+    {"label": "Model agreement", "value": (forecast.get("models") or {}).get("agreement", {}).get("label", "Pending"), "note": (forecast.get("models") or {}).get("agreement", {}).get("summary", "Agreement pending")},
+    {"label": "External experts", "value": expert.get("label") or "Unavailable", "note": expert.get("sourceLabel") or "Web outlook pending"},
+    {"label": "Macro driver", "value": analysis.get("driver", "mixed"), "note": analysis.get("confidence", "Confidence pending")},
+    {"label": "Event pressure", "value": forecast.get("eventPressureLabel") or "Pending", "note": sentiment.get("label") or "Radar sentiment pending"},
+    {"label": "Cache", "value": snapshot.get("historyCacheState") or "live", "note": snapshot.get("historyCachedAt") or "Live edge / fallback series"},
+  ]
+
+
 def sma_value(history: list[float], period: int) -> float | None:
   values = [float(value) for value in (history or []) if value is not None]
   if len(values) < period:
@@ -4099,6 +4215,84 @@ def build_expert_consensus(summary: dict, recommendation: dict) -> dict:
     "sourceLabel": "Yahoo Finance quote summary",
     "note": "External analyst consensus only; not dashboard advice.",
     "fallbackScenario": recommendation,
+  }
+
+
+def infer_external_view(title: str) -> str:
+  lowered = title.lower()
+  if any(word in lowered for word in {"buy", "outperform", "overweight", "accumulate", "add"}):
+    return "Constructive"
+  if any(word in lowered for word in {"sell", "reduce", "underperform", "downgrade"}):
+    return "Cautious"
+  if any(word in lowered for word in {"hold", "neutral", "market perform"}):
+    return "Neutral"
+  if any(word in lowered for word in {"target", "price target", "upside", "downside"}):
+    return "Target watch"
+  return "Context"
+
+
+def extract_domain_from_url(url: str) -> str:
+  try:
+    return urllib.parse.urlparse(url).hostname.replace("www.", "")
+  except AttributeError:
+    return ""
+
+
+def extract_price_target_from_title(title: str, currency: str) -> str:
+  patterns = [
+    r"(?:target|price target|tp|fair value)[^\d]{0,24}([0-9][0-9,]*(?:\.[0-9]+)?)",
+    r"([0-9][0-9,]*(?:\.[0-9]+)?)[^\d]{0,18}(?:target|price target|tp)",
+  ]
+  for pattern in patterns:
+    match = re.search(pattern, title, flags=re.IGNORECASE)
+    if match:
+      return f"{currency} {match.group(1)}"
+  return ""
+
+
+def build_expert_outlook(symbol: str, snapshot: dict, fallback: dict) -> dict:
+  name = snapshot.get("name") or fallback.get("name") or symbol
+  exchange = snapshot.get("exchange") or fallback.get("exchange") or ""
+  currency = snapshot.get("currency") or fallback.get("currency") or ""
+  region_key = infer_region_key(symbol, exchange, currency)
+  market_terms = "India NSE BSE brokerages analyst price target" if region_key == "india" else "analyst price target rating"
+  query = f"{name} {symbol.replace('.NS', '').replace('.BO', '')} share price target analyst rating {market_terms}"
+  results = duckduckgo_search(query)
+  items = []
+  seen = set()
+  for result in results[:8]:
+    title = result.get("title") or ""
+    url = result.get("url") or ""
+    if not title or url in seen:
+      continue
+    seen.add(url)
+    items.append(
+      {
+        "title": title,
+        "url": url,
+        "source": extract_domain_from_url(url) or "Web result",
+        "view": infer_external_view(title),
+        "target": extract_price_target_from_title(title, currency),
+      }
+    )
+  constructive = sum(1 for item in items if item["view"] == "Constructive")
+  cautious = sum(1 for item in items if item["view"] == "Cautious")
+  neutral = sum(1 for item in items if item["view"] in {"Neutral", "Target watch", "Context"})
+  if constructive > cautious and constructive >= neutral:
+    consensus_label = "Constructive external tone"
+  elif cautious > constructive and cautious >= neutral:
+    consensus_label = "Cautious external tone"
+  elif items:
+    consensus_label = "Mixed external tone"
+  else:
+    consensus_label = "External outlook unavailable"
+  return {
+    "label": consensus_label,
+    "query": query,
+    "items": items[:5],
+    "sourceLabel": "Curated web results",
+    "asOf": datetime.now(timezone.utc).isoformat(),
+    "note": "External headlines and analyst-result snippets are context only; verify source pages before relying on targets.",
   }
 
 
@@ -4333,6 +4527,7 @@ def build_ticker_snapshot(symbol: str, quote: dict | None = None, stress: str = 
     "forecast": forecast,
     "recommendation": recommendation,
   }
+  expert_outlook = build_expert_outlook(symbol, snapshot_context, fallback)
 
   return {
     "symbol": symbol,
@@ -4358,6 +4553,7 @@ def build_ticker_snapshot(symbol: str, quote: dict | None = None, stress: str = 
     "regime": forecast["regime"],
     "forecast": forecast,
     "recommendation": recommendation,
+    "expertOutlook": expert_outlook,
     "chartRange": chart_range,
     "relationshipCards": relationship_cards,
     "driverCards": driver_cards,
@@ -5240,6 +5436,56 @@ def build_region_comparison(regions: dict[str, dict]) -> dict:
   }
 
 
+def build_global_market_overview() -> list[dict]:
+  symbols = [item["symbol"] for market in GLOBAL_MARKET_CLOCKS for item in market["indices"]]
+  quotes = fetch_live_quotes(symbols)
+  cards = []
+  for market in GLOBAL_MARKET_CLOCKS:
+    indices = []
+    for benchmark in market["indices"]:
+      symbol = benchmark["symbol"]
+      quote = quotes.get(symbol, {})
+      fallback = fallback_meta(symbol)
+      price = quote.get("regularMarketPrice")
+      previous_close = quote.get("regularMarketPreviousClose")
+      change_percent = float(
+        quote.get("regularMarketChangePercent")
+        or (pct_change(float(price), float(previous_close)) if price is not None and previous_close not in (None, 0) else 0.0)
+      )
+      as_of = timestamp_from_epoch(quote.get("regularMarketTime")) if quote.get("regularMarketTime") else ""
+      exchange = quote.get("fullExchangeName") or quote.get("exchange") or fallback.get("exchange") or market["label"]
+      data_source = "yahoo" if quote else "curated_fallback"
+      indices.append(
+        {
+          "symbol": symbol,
+          "label": benchmark["label"],
+          "price": float(price if price is not None else fallback.get("basePrice") or 0.0),
+          "changePercent": change_percent,
+          "currency": quote.get("currency") or fallback.get("currency") or "USD",
+          "exchange": exchange,
+          "marketState": quote.get("marketState") or ("REGULAR" if quote else "CLOSED"),
+          "asOf": as_of,
+          "dataSource": data_source,
+        }
+      )
+    session = build_market_session(
+      market.get("sessionExchange") or (indices[0].get("exchange") if indices else market["label"]),
+      market["label"],
+      indices[0].get("marketState") if indices else "CLOSED",
+      indices[0].get("asOf") if indices else "",
+    )
+    cards.append(
+      {
+        "key": market["key"],
+        "label": market["label"],
+        "timezone": market["timezone"],
+        "session": session,
+        "indices": indices,
+      }
+    )
+  return cards
+
+
 def build_dashboard(symbols: list[str], active: str | None, chart_range: str = "1M", region_key: str | None = None) -> dict:
   cleaned = [symbol.upper() for symbol in symbols if symbol]
   if not cleaned:
@@ -5286,9 +5532,11 @@ def build_dashboard(symbols: list[str], active: str | None, chart_range: str = "
     active_future = executor.submit(build_ticker_snapshot, active_symbol, quote_map.get(active_symbol), "base", 10, chart_range)
     macro_future = executor.submit(build_macro_pulse)
     radar_future = executor.submit(build_market_radar, active_symbol)
+    global_markets_future = executor.submit(build_global_market_overview)
     active_snapshot = active_future.result()
     macro_pulse = macro_future.result()
     radar = enrich_market_radar(radar_future.result(), macro_pulse, active_snapshot)
+    global_markets = global_markets_future.result()
 
   banner = radar["headlines"] or active_snapshot["headlines"][:4]
   selected_region = region_config(region_key or infer_region_key(active_snapshot.get("symbol"), active_snapshot.get("exchange"), active_snapshot.get("currency")))
@@ -5303,6 +5551,7 @@ def build_dashboard(symbols: list[str], active: str | None, chart_range: str = "
   active_snapshot["researchOverview"] = build_active_research_overview(active_snapshot, regions[active_region_key])
   active_snapshot["decisionInputs"] = build_market_decision_overview(active_snapshot, regions[active_region_key])
   active_snapshot["decisionCockpit"] = build_decision_cockpit(active_snapshot, regions[active_region_key], radar)
+  active_snapshot["featureCards"] = build_operator_feature_cards(active_snapshot, regions[active_region_key], radar)
   methodology = build_methodology_payload(active_snapshot, regions[active_region_key])
 
   return {
@@ -5313,6 +5562,7 @@ def build_dashboard(symbols: list[str], active: str | None, chart_range: str = "
     "watchlist": watchlist,
     "active": active_snapshot,
     "macroPulse": macro_pulse,
+    "globalMarkets": global_markets,
     "radar": radar,
     "headlines": list(dict.fromkeys(banner))[:6],
     "discovery": build_market_discovery(watchlist),
@@ -5407,6 +5657,9 @@ class FinancialBoardHandler(BaseHTTPRequestHandler):
     self.send_header("X-Content-Type-Options", "nosniff")
     self.send_header("X-Frame-Options", "DENY")
     self.send_header("Referrer-Policy", "same-origin")
+    self.send_header("Access-Control-Allow-Origin", "*")
+    self.send_header("Access-Control-Allow-Headers", "Content-Type")
+    self.send_header("Access-Control-Allow-Methods", "GET, POST, HEAD, OPTIONS")
     self.send_header("Cross-Origin-Opener-Policy", "same-origin")
     self.send_header("Cross-Origin-Resource-Policy", "same-origin")
     self.send_header(
@@ -5421,6 +5674,20 @@ class FinancialBoardHandler(BaseHTTPRequestHandler):
       "base-uri 'self'; "
       "form-action 'self'",
     )
+
+  def do_HEAD(self) -> None:
+    parsed = urllib.parse.urlparse(self.path)
+    if parsed.path in {"/", "/index.html", "/app.js", "/styles.css", "/api/health"}:
+      self.send_response(HTTPStatus.OK)
+      self.write_security_headers()
+      self.end_headers()
+      return
+    self.send_error(HTTPStatus.NOT_FOUND, "Not found")
+
+  def do_OPTIONS(self) -> None:
+    self.send_response(HTTPStatus.NO_CONTENT)
+    self.write_security_headers()
+    self.end_headers()
 
   def do_GET(self) -> None:
     parsed = urllib.parse.urlparse(self.path)
@@ -5561,6 +5828,7 @@ class FinancialBoardHandler(BaseHTTPRequestHandler):
     self.write_security_headers()
     self.send_header("Content-Type", content_type)
     self.send_header("Content-Length", str(len(data)))
+    self.send_header("Cache-Control", "no-store, max-age=0")
     self.end_headers()
     self.wfile.write(data)
 
@@ -5569,7 +5837,7 @@ class FinancialBoardHandler(BaseHTTPRequestHandler):
     self.send_response(HTTPStatus.OK)
     self.write_security_headers()
     self.send_header("Content-Type", "application/json; charset=utf-8")
-    self.send_header("Cache-Control", "no-store")
+    self.send_header("Cache-Control", "no-store, max-age=0")
     self.send_header("Content-Length", str(len(data)))
     self.end_headers()
     self.wfile.write(data)
@@ -5596,9 +5864,17 @@ class FinancialBoardHandler(BaseHTTPRequestHandler):
     return
 
 
+class QuietThreadingHTTPServer(ThreadingHTTPServer):
+  def handle_error(self, request, client_address) -> None:
+    error_type, _, _ = sys.exc_info()
+    if error_type in {BrokenPipeError, ConnectionResetError}:
+      return
+    super().handle_error(request, client_address)
+
+
 def run(port: int = 8000) -> None:
   init_db()
-  server = ThreadingHTTPServer(("127.0.0.1", port), FinancialBoardHandler)
+  server = QuietThreadingHTTPServer(("127.0.0.1", port), FinancialBoardHandler)
   print(f"Financial Board running on http://127.0.0.1:{port}")
   server.serve_forever()
 

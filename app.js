@@ -123,6 +123,22 @@ const REGION_LABELS = {
   india: "India",
 };
 
+const API_BASE =
+  window.location.protocol === "file:"
+    ? "http://127.0.0.1:8000"
+    : "";
+
+const COMPACT_SECTIONS = [
+  { id: "market-radar", label: "Radar" },
+  { id: "market-board-panel", label: "Board" },
+  { id: "overview", label: "Overview" },
+  { id: "stock-dossier-panel", label: "Dossier" },
+  { id: "bond-market", label: "Bonds" },
+  { id: "events-calendar", label: "Events" },
+  { id: "methodology", label: "Method" },
+  { id: "comparison", label: "Compare" },
+];
+
 const DEFAULT_DOSSIER_ORDER = [
   "day",
   "fundamentals",
@@ -150,6 +166,7 @@ const state = {
   config: null,
   labResult: null,
   statusTimer: null,
+  marketClockTimer: null,
   researchResult: null,
   researchLoading: false,
   researchError: "",
@@ -314,8 +331,9 @@ async function api(path, options = {}) {
   const timeoutMs = options.timeoutMs || 15000;
   const timer = window.setTimeout(() => controller.abort(), timeoutMs);
   let response;
+  const url = path.startsWith("http") ? path : `${API_BASE}${path}`;
   try {
-    response = await fetch(path, {
+    response = await fetch(url, {
       headers: { "Content-Type": "application/json", ...(options.headers || {}) },
       signal: controller.signal,
       ...options,
@@ -364,6 +382,16 @@ function formatCompactNumber(value) {
   }).format(numeric);
 }
 
+function formatIndexLevel(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return "n/a";
+  const fractionDigits = Math.abs(numeric) >= 1000 ? 2 : 2;
+  return new Intl.NumberFormat("en-US", {
+    minimumFractionDigits: fractionDigits,
+    maximumFractionDigits: fractionDigits,
+  }).format(numeric);
+}
+
 function formatSignedCurrency(value, currency = "USD") {
   const numeric = Number(value || 0);
   return `${numeric >= 0 ? "+" : ""}${formatCurrency(numeric, currency)}`;
@@ -371,6 +399,37 @@ function formatSignedCurrency(value, currency = "USD") {
 
 function selectedRegionPayload() {
   return state.dashboard?.regions?.[state.selectedRegion] || null;
+}
+
+function selectedRegionMeta() {
+  const payload = selectedRegionPayload();
+  if (payload) return payload;
+  const option = (state.dashboard?.regionOptions || []).find((item) => item.key === state.selectedRegion);
+  if (option) return { key: option.key, label: option.label };
+  return {
+    key: state.selectedRegion,
+    label: REGION_LABELS[state.selectedRegion] || formatRegionLabel(state.selectedRegion),
+  };
+}
+
+function renderRegionPanels() {
+  renderTopbar();
+  renderOverview();
+  renderBondMarket();
+  renderInflationView();
+  renderEquityContext();
+  renderMacroEvents();
+  renderWatchlistImplications();
+  renderComparison();
+}
+
+function setSelectedRegion(nextRegion, { persist = true } = {}) {
+  if (!nextRegion || nextRegion === state.selectedRegion) return;
+  state.selectedRegion = nextRegion;
+  if (persist) {
+    persistWatchlist();
+  }
+  renderRegionPanels();
 }
 
 function renderRegionSelector() {
@@ -388,18 +447,7 @@ function renderRegionSelector() {
     .join("");
   node.querySelectorAll("[data-region]").forEach((button) => {
     button.addEventListener("click", () => {
-      const nextRegion = button.dataset.region;
-      if (!nextRegion || nextRegion === state.selectedRegion) return;
-      state.selectedRegion = nextRegion;
-      persistWatchlist();
-      renderTopbar();
-      renderOverview();
-      renderBondMarket();
-      renderInflationView();
-      renderEquityContext();
-      renderMacroEvents();
-      renderWatchlistImplications();
-      renderComparison();
+      setSelectedRegion(button.dataset.region);
     });
   });
 }
@@ -463,6 +511,7 @@ function renderOverviewLowerPanels(active, forecast) {
   const researchOverview = active.researchOverview || {};
   const decisionInputs = active.decisionInputs || {};
   const decisionCockpit = active.decisionCockpit || {};
+  const featureCards = active.featureCards || [];
   const movingAverage = forecast.movingAverageSignal || {};
   const ma5Label = Number.isFinite(Number(movingAverage.sma5))
     ? formatCurrency(movingAverage.sma5, active.currency)
@@ -499,6 +548,17 @@ function renderOverviewLowerPanels(active, forecast) {
           ${(decisionCockpit.monitor || []).slice(0, 3).map((item) => `<span>${item}</span>`).join("")}
         </div>
         <small class="decision-source-note">${decisionCockpit.sourceNote || "Scenario support only, not direct investment advice."}</small>
+      </div>
+    ` : ""}
+    ${featureCards.length ? `
+      <div class="operator-check-grid">
+        ${featureCards.slice(0, 10).map((item) => `
+          <div class="operator-check-card">
+            <span>${item.label}</span>
+            <strong>${item.value}</strong>
+            <p>${item.note}</p>
+          </div>
+        `).join("")}
       </div>
     ` : ""}
     ${movingAverage.state ? `
@@ -792,6 +852,7 @@ function renderStockDossier(active) {
   const day = dossier.daySnapshot || {};
   const fundamentals = dossier.fundamentals || {};
   const consensus = dossier.expertConsensus || {};
+  const expertOutlook = active.expertOutlook || {};
   const unusual = dossier.unusualActivity || {};
   const influence = dossier.influenceGraph || {};
   const discoveryItems = state.dashboard?.discovery?.items || [];
@@ -862,6 +923,22 @@ function renderStockDossier(active) {
         <span style="--w:${consensus.sell || 0}" class="negative">Sell ${consensus.sell || 0}%</span>
       </div>
       <p class="dossier-note">${consensus.note || "External consensus only; not dashboard advice."}</p>
+      ${expertOutlook ? `
+        <div class="expert-outlook-list">
+          <div class="expert-outlook-head">
+            <span>${expertOutlook.sourceLabel || "Web outlook"}</span>
+            <strong>${expertOutlook.label || "External tone"}</strong>
+          </div>
+          ${(expertOutlook.items || []).slice(0, 4).map((item) => `
+            <a href="${item.url}" target="_blank" rel="noreferrer">
+              <span>${item.view}${item.target ? ` · ${item.target}` : ""}</span>
+              <strong>${item.title}</strong>
+              <em>${item.source}</em>
+            </a>
+          `).join("") || `<p class="expert-outlook-empty">Expert outlook links are unavailable right now; the dashboard keeps the prediction context visible and labels this source gap.</p>`}
+          <small>${expertOutlook.note || "External sources require verification."}</small>
+        </div>
+      ` : ""}
     </section>`,
     peers: `
     <section id="dossier-peers" class="dossier-card dossier-card-table" draggable="true" data-dossier-card="peers">
@@ -994,7 +1071,7 @@ function patchOverviewLiveSurface(active, forecast, { redrawChart = false } = {}
   if (sessionNode) {
     const session = active.marketSession?.nextTransitionAt
       ? active.marketSession
-      : buildClientMarketSession(active.exchange || active.region, active.marketState);
+      : buildClientMarketSession(active.exchange || active.region, active.marketState, active.region);
     const nextTransitionAt = session.nextTransitionAt ? new Date(session.nextTransitionAt) : null;
     const remainingSeconds = nextTransitionAt ? Math.max(0, Math.floor((nextTransitionAt.getTime() - Date.now()) / 1000)) : 0;
     const countdown = nextTransitionAt ? formatDuration(remainingSeconds) : "--:--:--";
@@ -1072,6 +1149,34 @@ function formatEventTime(value) {
   return formatEventDateTime(value);
 }
 
+function formatZonedTime(timeZone) {
+  try {
+    return new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: true,
+    }).format(new Date());
+  } catch {
+    return "--:--:--";
+  }
+}
+
+function formatZonedDate(timeZone) {
+  try {
+    return new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      weekday: "short",
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    }).format(new Date());
+  } catch {
+    return "Date unavailable";
+  }
+}
+
 function shortenHeadline(text, words = 5) {
   const clean = String(text || "").replace(/\s+/g, " ").trim();
   if (!clean) return "Live event";
@@ -1084,9 +1189,30 @@ const CLIENT_MARKET_SESSION_RULES = [
   { matches: ["NSE", "BSE", "INDIA"], timeZone: "Asia/Kolkata", open: [9, 15], close: [15, 30], hoursLabel: "09:15-15:30 IST" },
   { matches: ["NASDAQ", "NYSE", "US"], timeZone: "America/New_York", open: [9, 30], close: [16, 0], hoursLabel: "09:30-16:00 ET" },
   { matches: ["LSE", "LONDON"], timeZone: "Europe/London", open: [8, 0], close: [16, 30], hoursLabel: "08:00-16:30 UK" },
+  { matches: ["HKEX", "HONG KONG", "HONGKONG"], timeZone: "Asia/Hong_Kong", open: [9, 30], close: [16, 0], hoursLabel: "09:30-16:00 HKT" },
   { matches: ["ASX", "AUSTRALIA"], timeZone: "Australia/Sydney", open: [10, 0], close: [16, 0], hoursLabel: "10:00-16:00 AEST/AEDT" },
   { matches: ["JPX", "TSE", "TOKYO"], timeZone: "Asia/Tokyo", open: [9, 0], close: [15, 0], hoursLabel: "09:00-15:00 JST" },
 ];
+
+function sessionHaystackTokens(...values) {
+  return values
+    .filter(Boolean)
+    .flatMap((value) => String(value).toUpperCase().split(/[^A-Z0-9]+/))
+    .filter(Boolean);
+}
+
+function clientSessionRuleMatches(rule, exchange = "", region = "") {
+  const exchangeUpper = String(exchange || "").toUpperCase();
+  const regionUpper = String(region || "").toUpperCase();
+  const tokens = sessionHaystackTokens(exchangeUpper, regionUpper);
+  return rule.matches.some((label) => {
+    const candidate = String(label || "").toUpperCase();
+    if (candidate.length <= 3) {
+      return tokens.includes(candidate);
+    }
+    return exchangeUpper.includes(candidate) || regionUpper.includes(candidate) || tokens.includes(candidate);
+  });
+}
 
 function getZonedDateParts(timeZone) {
   const formatter = new Intl.DateTimeFormat("en-US", {
@@ -1106,9 +1232,8 @@ function getZonedDateParts(timeZone) {
   }, {});
 }
 
-function buildClientMarketSession(exchange, marketState = "") {
-  const exchangeLabel = String(exchange || "").toUpperCase();
-  const rule = CLIENT_MARKET_SESSION_RULES.find((item) => item.matches.some((label) => exchangeLabel.includes(label)));
+function buildClientMarketSession(exchange, marketState = "", region = "") {
+  const rule = CLIENT_MARKET_SESSION_RULES.find((item) => clientSessionRuleMatches(item, exchange, region));
   if (!rule) {
     return {
       status: marketState === "REGULAR" ? "Open" : "Closed",
@@ -1475,7 +1600,7 @@ async function loadOverviewFast({ silent = false } = {}) {
       ...result.active,
       marketSession:
         result.active.marketSession ||
-        buildClientMarketSession(result.active.exchange || result.active.region, result.active.marketState),
+        buildClientMarketSession(result.active.exchange || result.active.region, result.active.marketState, result.active.region),
     };
   }
 
@@ -1525,7 +1650,11 @@ function buildPendingActive(symbol) {
     driverCards: [],
     stats: watchItem?.symbol === previous.symbol ? previous.stats || [] : [],
     headlines: watchItem?.symbol === previous.symbol ? previous.headlines || [] : [],
-    marketSession: buildClientMarketSession(watchItem?.exchange || previous.exchange || previous.region, watchItem?.marketState || previous.marketState),
+    marketSession: buildClientMarketSession(
+      watchItem?.exchange || previous.exchange || previous.region,
+      watchItem?.marketState || previous.marketState,
+      watchItem?.region || previous.region,
+    ),
     forecast: {
       ...emptyForecastPayload(),
       ...(watchItem?.price !== undefined ? { expectedReturn: 0 } : {}),
@@ -1585,7 +1714,7 @@ function deferWork(callback, timeout = 120) {
 function logNonAbort(error) {
   if (error?.name === "AbortError") return;
   if (String(error?.message || error).includes("signal is aborted")) return;
-  logNonAbort(error);
+  console.error(error);
 }
 
 function flashStatus(message, timeout = 1600) {
@@ -1596,6 +1725,12 @@ function flashStatus(message, timeout = 1600) {
       setStatus("Live now");
     }
   }, timeout);
+}
+
+function setBootMessage(message, detail = "") {
+  const track = document.getElementById("headline-track");
+  if (!track) return;
+  track.innerHTML = `<span>${message}${detail ? ` ${detail}` : ""}</span>`;
 }
 
 function dismissAlert(id) {
@@ -3501,12 +3636,115 @@ function renderTopbar() {
   document.body.classList.toggle("app-booting", !state.bootReady);
   const heading = document.querySelector(".topbar-copy h2");
   if (heading) {
-    const region = selectedRegionPayload();
+    const region = selectedRegionMeta();
     heading.textContent = region
       ? `${region.label} macro, bonds, inflation, equities, and watchlist context`
       : "US and India macro, bond, inflation, and market context";
   }
   renderRegionSelector();
+  renderGlobalMarketOverview();
+}
+
+function renderGlobalMarketOverview() {
+  const node = document.getElementById("global-market-overview");
+  if (!node) return;
+  const markets = state.dashboard?.globalMarkets || [];
+  if (!markets.length) {
+    node.innerHTML = `
+      <div class="global-market-overview-head">
+        <div>
+          <span class="overview-panel-kicker">Global clocks</span>
+          <strong>Loading market benchmarks</strong>
+        </div>
+      </div>
+    `;
+    return;
+  }
+  node.innerHTML = `
+    <div class="global-market-overview-head">
+      <div>
+        <span class="overview-panel-kicker">Global clocks</span>
+        <strong>Major benchmark check</strong>
+      </div>
+      <span class="overview-panel-note">Local time, date, and lead indices</span>
+    </div>
+    <div class="global-market-grid">
+      ${markets.map((market) => `
+        <article class="market-clock-card">
+          <div class="market-clock-top">
+            <div>
+              <strong>${market.label}</strong>
+              <span>${formatZonedDate(market.timezone)}</span>
+            </div>
+            <div class="market-clock-status ${market.session?.isOpen ? "open" : "closed"}">
+              ${market.session?.isOpen ? "Open" : "Closed"}
+            </div>
+          </div>
+          <div class="market-clock-time">${formatZonedTime(market.timezone)}</div>
+          <div class="market-clock-zone">${market.session?.hoursLabel || market.timezone}</div>
+          <div class="market-clock-indices">
+            ${(market.indices || []).map((item) => `
+              <div class="market-index-row">
+                <span>${item.label}</span>
+                <strong>${formatIndexLevel(item.price)}</strong>
+                <em class="${Number(item.changePercent || 0) >= 0 ? "positive" : "negative"}">${formatPercent(item.changePercent || 0)}</em>
+              </div>
+            `).join("")}
+          </div>
+        </article>
+      `).join("")}
+    </div>
+  `;
+}
+
+function renderCompactMenu() {
+  const list = document.getElementById("compact-menu-list");
+  if (!list) return;
+  list.innerHTML = COMPACT_SECTIONS
+    .map((item) => {
+      const target = document.getElementById(item.id);
+      if (!target) return "";
+      return `<button type="button" data-compact-target="${item.id}">${item.label}</button>`;
+    })
+    .join("");
+  list.querySelectorAll("[data-compact-target]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const targetId = button.dataset.compactTarget;
+      const panel = document.getElementById(targetId);
+      if (!panel) return;
+      if (panel.classList.contains("tab-panel") && !panel.classList.contains("active")) {
+        activateTab(targetId);
+      }
+      document.getElementById("compact-section-menu")?.classList.remove("open");
+      document.getElementById("compact-menu-toggle")?.setAttribute("aria-expanded", "false");
+      panel.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  });
+}
+
+function activateTab(target) {
+  const run = () => {
+    document.querySelectorAll(".tab").forEach((node) => node.classList.toggle("active", node.dataset.tab === target));
+    document.querySelectorAll(".tab-panel").forEach((panel) => panel.classList.toggle("active", panel.id === target));
+    if (target === "watchlist-implications" && state.impactGraphCy) {
+      window.setTimeout(() => {
+        state.impactGraphCy.resize();
+        state.impactGraphCy.fit(undefined, 34);
+      }, 80);
+    }
+  };
+  if (document.startViewTransition) {
+    document.startViewTransition(run);
+  } else {
+    run();
+  }
+}
+
+function startMarketClockTimer() {
+  window.clearInterval(state.marketClockTimer);
+  state.marketClockTimer = window.setInterval(() => {
+    renderGlobalMarketOverview();
+  }, 1000);
 }
 
 function renderCorePanels() {
@@ -3528,6 +3766,7 @@ function renderCorePanels() {
   renderWatchlistImplications();
   renderComparison();
   renderTopbar();
+  renderCompactMenu();
   setupScrollReveal();
 }
 
@@ -3556,7 +3795,7 @@ function applyLiveQuoteUpdate(payload) {
       ...payload.active,
       marketSession:
         payload.active.marketSession ||
-        buildClientMarketSession(payload.active.exchange || payload.active.region, payload.active.marketState),
+        buildClientMarketSession(payload.active.exchange || payload.active.region, payload.active.marketState, payload.active.region),
     };
   } else if (payload.active) {
     const live = quoteMap.get(state.activeTicker);
@@ -3564,7 +3803,7 @@ function applyLiveQuoteUpdate(payload) {
       state.dashboard.active = {
         ...state.dashboard.active,
         ...live,
-        marketSession: buildClientMarketSession(live.exchange || live.region, live.marketState),
+        marketSession: buildClientMarketSession(live.exchange || live.region, live.marketState, live.region),
       };
     }
   }
@@ -3792,6 +4031,7 @@ async function refreshDashboard() {
   });
   const payload = await api("/api/dashboard", {
     method: "POST",
+    timeoutMs: 45000,
     body: JSON.stringify({
       symbols: state.watchlist,
       active: state.activeTicker,
@@ -3966,16 +4206,14 @@ function bindEvents() {
 
   document.querySelectorAll(".tab").forEach((tab) => {
     tab.addEventListener("click", () => {
-      const target = tab.dataset.tab;
-      document.querySelectorAll(".tab").forEach((node) => node.classList.toggle("active", node === tab));
-      document.querySelectorAll(".tab-panel").forEach((panel) => panel.classList.toggle("active", panel.id === target));
-      if (target === "watchlist-implications" && state.impactGraphCy) {
-        window.setTimeout(() => {
-          state.impactGraphCy.resize();
-          state.impactGraphCy.fit(undefined, 34);
-        }, 60);
-      }
+      activateTab(tab.dataset.tab);
     });
+  });
+  document.getElementById("compact-menu-toggle")?.addEventListener("click", () => {
+    const menu = document.getElementById("compact-section-menu");
+    const isOpen = !menu?.classList.contains("open");
+    menu?.classList.toggle("open", isOpen);
+    document.getElementById("compact-menu-toggle")?.setAttribute("aria-expanded", isOpen ? "true" : "false");
   });
   window.addEventListener("resize", () => {
     if (!state.impactGraphCy) return;
@@ -4137,12 +4375,19 @@ async function init() {
   setStatus("Loading data");
   bindEvents();
   render();
+  startMarketClockTimer();
   loadOverviewFast({ silent: true }).catch((error) => {
     logNonAbort(error);
   });
   const dashboardPromise = refreshDashboard();
   const backgroundLoads = Promise.allSettled([loadConfig(), loadPresets(), loadSavedWatchlists()]);
-  await dashboardPromise;
+  try {
+    await dashboardPromise;
+  } catch (error) {
+    logNonAbort(error);
+    setStatus("Backend slow");
+    setBootMessage("Dashboard API is reachable, but the first full refresh is taking longer than usual.");
+  }
   startRadarRefresh();
   backgroundLoads.then(() => {
     flashStatus("Workspace ready", 1200);
@@ -4153,5 +4398,6 @@ async function init() {
 
 init().catch((error) => {
   logNonAbort(error);
-  document.getElementById("headline-track").innerHTML = `<span>Backend unavailable. Start server.py to enable the full-stack dashboard.</span>`;
+  setStatus("Backend check failed");
+  setBootMessage("Backend check failed.", `Open ${API_BASE || window.location.origin || "http://127.0.0.1:8000"} and refresh once the server is running.`);
 });
