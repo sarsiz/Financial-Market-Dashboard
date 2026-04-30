@@ -1036,8 +1036,8 @@ function patchOverviewLiveSurface(active, forecast, { redrawChart = false } = {}
   document.getElementById("buy-sell-breakdown").textContent = `Upside ${recommendation.buy ?? 0}% · Base ${recommendation.hold ?? 100}% · Downside ${recommendation.sell ?? 0}%`;
   document.getElementById("model-agreement-note").textContent = `${agreement.summary} Score ${Number(agreement.score || 0).toFixed(0)}/100.`;
   document.getElementById("quote-source-note").textContent = active.asOf
-    ? `Quote source: ${formatSourceLabel(active.dataSource)} • Updated ${new Date(active.asOf).toLocaleString()}`
-    : `Quote source: ${formatSourceLabel(active.dataSource)}`;
+    ? `Quote source: ${formatSourceLabel(active.dataSource)} • ${quoteFreshnessText(active)} • ${new Date(active.asOf).toLocaleString()}`
+    : `Quote source: ${formatSourceLabel(active.dataSource)} • ${quoteFreshnessText(active)}`;
   const overviewMetaItems = [
     {
       label: active.exchange || active.region || "Global",
@@ -1056,7 +1056,7 @@ function patchOverviewLiveSurface(active, forecast, { redrawChart = false } = {}
       help: "Current traded volume.",
     },
     {
-      label: `${active.asOf ? new Date(active.asOf).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "Delayed"} ${liveBadgeMarkup()}`,
+      label: `${active.asOf ? new Date(active.asOf).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "Delayed"} ${freshnessBadgeMarkup(active.quoteFreshness || {})}`,
       help: "Last quote update time.",
     },
   ];
@@ -1175,6 +1175,19 @@ function formatZonedDate(timeZone) {
   } catch {
     return "Date unavailable";
   }
+}
+
+function freshnessBadgeMarkup(freshness = {}) {
+  const stateLabel = freshness.isStale ? "stale" : "fresh";
+  const label = freshness.label || (freshness.isStale ? "Stale quote" : "Fresh quote");
+  return `<span class="freshness-badge ${stateLabel}" title="${freshness.note || ""}">${label}</span>`;
+}
+
+function quoteFreshnessText(active = {}) {
+  const freshness = active.quoteFreshness || {};
+  if (freshness.label) return freshness.label;
+  if (active.asOf) return `Updated ${new Date(active.asOf).toLocaleString()}`;
+  return "No live timestamp";
 }
 
 function shortenHeadline(text, words = 5) {
@@ -2081,14 +2094,18 @@ function renderMethodology() {
   const principlesNode = document.getElementById("methodology-principles");
   const inputsNode = document.getElementById("methodology-live-inputs");
   const conceptsNode = document.getElementById("methodology-concepts");
+  const signalMapNode = document.getElementById("methodology-signal-map");
+  const formulasNode = document.getElementById("methodology-formulas");
   const flowNode = document.getElementById("methodology-flowchart");
-  if (!headlineNode || !cockpitNode || !principlesNode || !inputsNode || !conceptsNode || !flowNode) return;
+  if (!headlineNode || !cockpitNode || !principlesNode || !inputsNode || !conceptsNode || !signalMapNode || !formulasNode || !flowNode) return;
   if (!methodology) {
     headlineNode.textContent = "Methodology is loading.";
     cockpitNode.innerHTML = "";
     principlesNode.innerHTML = "";
     inputsNode.innerHTML = "";
     conceptsNode.innerHTML = "";
+    signalMapNode.innerHTML = "";
+    formulasNode.innerHTML = "";
     drawMethodologyFlow(flowNode, { nodes: [], edges: [] });
     return;
   }
@@ -2138,7 +2155,7 @@ function renderMethodology() {
     )
     .join("");
   conceptsNode.innerHTML = (methodology.concepts || [])
-    .slice(0, 4)
+    .slice(0, 3)
     .map(
       (item) => `
         <div class="research-card methodology-card">
@@ -2156,6 +2173,34 @@ function renderMethodology() {
       `,
     )
     .join("");
+  signalMapNode.innerHTML = `
+    <div class="methodology-safety-note">
+      <strong>${methodology.safetyNote?.title || "Sensitive signal handling"}</strong>
+      <p>${methodology.safetyNote?.body || "Private trading playbooks stay in ignored local vault paths. The dashboard exposes educational pattern families, not proprietary triggers."}</p>
+    </div>
+    <div class="methodology-signal-grid">
+      ${(methodology.signalLayers || []).map((item) => `
+        <article>
+          <span>${item.layer}</span>
+          <strong>${item.signal}</strong>
+          <p>${item.explanation}</p>
+          <small>${item.guardrail}</small>
+        </article>
+      `).join("")}
+    </div>
+  `;
+  formulasNode.innerHTML = `
+    ${(methodology.explainers || []).map((item) => `
+      <article class="methodology-formula-card">
+        <div>
+          <span>${item.label}</span>
+          <strong>${item.title}</strong>
+        </div>
+        <code>${item.formula}</code>
+        <p>${item.interpretation}</p>
+      </article>
+    `).join("")}
+  `;
   drawMethodologyFlow(flowNode, methodology.flow || {});
 }
 
@@ -2910,8 +2955,8 @@ function renderOverview() {
   const quoteSource = document.getElementById("quote-source-note");
   const asOf = active.asOf ? new Date(active.asOf).toLocaleString() : "";
   quoteSource.textContent = asOf
-    ? `Quote source: ${formatSourceLabel(active.dataSource)} • Updated ${asOf}`
-    : `Quote source: ${formatSourceLabel(active.dataSource)}`;
+    ? `Quote source: ${formatSourceLabel(active.dataSource)} • ${quoteFreshnessText(active)} • ${asOf}`
+    : `Quote source: ${formatSourceLabel(active.dataSource)} • ${quoteFreshnessText(active)}`;
   const majorEvent = Boolean(
     (active.eventFocus?.category && ["war", "deals", "partnerships", "layoffs"].includes(active.eventFocus.category))
       || String(forecast.eventPressureLabel || "").toLowerCase() === "high"
@@ -3664,9 +3709,9 @@ function renderGlobalMarketOverview() {
     <div class="global-market-overview-head">
       <div>
         <span class="overview-panel-kicker">Global clocks</span>
-        <strong>Major benchmark check</strong>
+        <strong>Major benchmarks</strong>
       </div>
-      <span class="overview-panel-note">Local time, date, and lead indices</span>
+      <span class="overview-panel-note">Local time, session, latest quote age</span>
     </div>
     <div class="global-market-grid">
       ${markets.map((market) => `
@@ -3680,14 +3725,17 @@ function renderGlobalMarketOverview() {
               ${market.session?.isOpen ? "Open" : "Closed"}
             </div>
           </div>
-          <div class="market-clock-time">${formatZonedTime(market.timezone)}</div>
-          <div class="market-clock-zone">${market.session?.hoursLabel || market.timezone}</div>
+          <div class="market-clock-meta">
+            <strong>${formatZonedTime(market.timezone)}</strong>
+            <span>${market.session?.hoursLabel || market.timezone}</span>
+          </div>
           <div class="market-clock-indices">
             ${(market.indices || []).map((item) => `
-              <div class="market-index-row">
+              <div class="market-index-row ${item.quoteFreshness?.isStale ? "is-stale" : ""}">
                 <span>${item.label}</span>
                 <strong>${formatIndexLevel(item.price)}</strong>
                 <em class="${Number(item.changePercent || 0) >= 0 ? "positive" : "negative"}">${formatPercent(item.changePercent || 0)}</em>
+                ${freshnessBadgeMarkup(item.quoteFreshness || {})}
               </div>
             `).join("")}
           </div>

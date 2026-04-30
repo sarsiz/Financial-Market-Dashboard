@@ -12,3 +12,20 @@ config.json
 .mypy_cache/
 
 .playwright-cli/
+
+# Local/private research memory and proprietary signal notes.
+vault/market-map/private/
+vault/market-map/secrets/
+vault/market-map/sessions/private/
+data/private/
+data/secrets/
+data/factors/*secret*.json
+data/factors/*proprietary*.json
+data/factors/prediction_formulas.json
+data/factors/market_decision_inputs.json
+data/factors/factor_registry.json
+data/factors/methodology_flow.json
+data/papers/dashboard_practices.json
+data/papers/quant_concepts.json
+data/company_projects.json
+data/macro/

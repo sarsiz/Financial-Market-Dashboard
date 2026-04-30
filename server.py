@@ -1130,6 +1130,49 @@ def build_market_session(exchange: str, region: str, market_state: str, as_of: s
   }
 
 
+def quote_freshness(as_of: str | None, session: dict | None = None, source: str = "") -> dict:
+  if not as_of:
+    return {
+      "label": "No live timestamp",
+      "state": "stale",
+      "isStale": True,
+      "ageMinutes": None,
+      "note": f"{source or 'Provider'} did not return a quote timestamp; treat price as delayed/fallback.",
+    }
+  try:
+    timestamp = datetime.fromisoformat(str(as_of).replace("Z", "+00:00"))
+  except ValueError:
+    return {
+      "label": "Timestamp unreadable",
+      "state": "stale",
+      "isStale": True,
+      "ageMinutes": None,
+      "note": "Quote timestamp could not be parsed; verify before relying on this price.",
+    }
+  if timestamp.tzinfo is None:
+    timestamp = timestamp.replace(tzinfo=timezone.utc)
+  age_minutes = max(0.0, (datetime.now(timezone.utc) - timestamp.astimezone(timezone.utc)).total_seconds() / 60)
+  is_open = bool((session or {}).get("isOpen"))
+  stale_after = 20 if is_open else 24 * 60
+  is_stale = age_minutes > stale_after
+  if age_minutes < 2:
+    label = "Live edge"
+  elif age_minutes < 20:
+    label = f"Updated {age_minutes:.0f}m ago"
+  elif age_minutes < 24 * 60:
+    label = f"Delayed {age_minutes / 60:.1f}h"
+  else:
+    label = f"Stale {age_minutes / 1440:.1f}d"
+  return {
+    "label": label,
+    "state": "stale" if is_stale else "fresh",
+    "isStale": is_stale,
+    "ageMinutes": round(age_minutes, 1),
+    "staleAfterMinutes": stale_after,
+    "note": "Market is open; stale quotes are flagged after 20 minutes." if is_open else "Market is closed; last session quote is acceptable but labeled by age.",
+  }
+
+
 def json_get(url: str) -> dict | list | None:
   candidates = [url]
   if "query1.finance.yahoo.com" in url:
@@ -4484,6 +4527,7 @@ def build_ticker_snapshot(symbol: str, quote: dict | None = None, stress: str = 
   exchange_name = quote.get("fullExchangeName") or quote.get("exchange") or chart_meta.get("exchangeName") or fallback["exchange"]
   region_name = quote.get("exchange") or fallback["exchange"]
   market_session = build_market_session(exchange_name, region_name, quote.get("marketState") or "REGULAR", as_of)
+  freshness = quote_freshness(as_of, market_session, data_source)
   classic_inputs = build_forecast_inputs(symbol, quote, summary, model_history, news_count) if model_history else {
     "latestPrice": latest_price,
     "previousPrice": previous_close,
@@ -4518,6 +4562,7 @@ def build_ticker_snapshot(symbol: str, quote: dict | None = None, stress: str = 
     "region": region_name,
     "currency": quote.get("currency") or chart_meta.get("currency") or fallback["currency"],
     "dataSource": data_source,
+    "quoteFreshness": freshness,
     "price": latest_price,
     "previousClose": previous_close,
     "changePercent": change_percent,
@@ -4542,6 +4587,7 @@ def build_ticker_snapshot(symbol: str, quote: dict | None = None, stress: str = 
     "historyCachedAt": chart_meta.get("historyCachedAt"),
     "historyCacheState": chart_meta.get("historyCacheState"),
     "asOf": as_of,
+    "quoteFreshness": freshness,
     "price": latest_price,
     "previousClose": previous_close,
     "changePercent": change_percent,
@@ -5108,6 +5154,62 @@ def build_methodology_payload(snapshot: dict, region_payload: dict) -> dict:
         {"label": "4. Monitor", "value": decision_cockpit.get("riskLevel", "risk"), "note": "Show unknowns and watch-next items."},
       ],
     },
+    "signalLayers": [
+      {
+        "layer": "Layer 1",
+        "signal": "Trend participation",
+        "explanation": "A move is treated as more reliable when short momentum, slower momentum, and participation move together instead of relying on price alone.",
+        "guardrail": "Educational pattern only; private thresholds stay in local ignored research notes.",
+      },
+      {
+        "layer": "Layer 2",
+        "signal": "Macro pressure",
+        "explanation": "Bond yields, curve slope, inflation impulse, and policy expectations are read before equity signals so duration and bank sensitivity are not confused with stock-specific strength.",
+        "guardrail": "Scenario context, not buy/sell advice.",
+      },
+      {
+        "layer": "Layer 3",
+        "signal": "Event override",
+        "explanation": "Fresh company, sector, policy, or geopolitical events can override slower technical factors when significance and recency are high.",
+        "guardrail": "Sources and timestamps must remain visible.",
+      },
+      {
+        "layer": "Layer 4",
+        "signal": "Graph transmission",
+        "explanation": "Supplier, customer, sector, and project links help explain second-order impact instead of treating every ticker as isolated.",
+        "guardrail": "Unknown links are labeled instead of inferred as facts.",
+      },
+    ],
+    "explainers": [
+      {
+        "label": "Participation",
+        "title": "Momentum with volume confirmation",
+        "formula": "TP = 0.45 * MOM_5 + 0.35 * MOM_20 + 0.20 * ln(1 + volume / avg_volume)",
+        "interpretation": "Positive values suggest trend and participation are aligned; low or negative values warn that price movement may lack breadth.",
+      },
+      {
+        "label": "Macro",
+        "title": "Duration pressure",
+        "formula": "DP = max(real_yield - neutral_real_yield, 0) * duration_flag * model_confidence",
+        "interpretation": "Higher values indicate rate-sensitive shares may need a stronger earnings or event offset before a bullish scenario deserves confidence.",
+      },
+      {
+        "label": "Event",
+        "title": "Catalyst override",
+        "formula": "EO = significance * freshness_decay * source_weight * sentiment_direction",
+        "interpretation": "Recent, material, well-sourced catalysts are allowed to change the scenario faster than slow historical factors.",
+      },
+      {
+        "label": "Risk",
+        "title": "Signal agreement",
+        "formula": "Agreement = 100 - dispersion(classic_model, modern_overlay, macro_event_read)",
+        "interpretation": "The dashboard increases confidence when independent views agree and lowers it when models conflict.",
+      },
+    ],
+    "safetyNote": {
+      "title": "Private signal protection",
+      "body": "This section teaches public research concepts and dashboard logic. Proprietary thresholds, expert secrets, and monetizable playbooks belong only in ignored local paths such as vault/market-map/private/ and are excluded from GitHub.",
+    },
     "concepts": concept_cards,
     "flow": {
       "nodes": flow_nodes,
@@ -5455,6 +5557,12 @@ def build_global_market_overview() -> list[dict]:
       as_of = timestamp_from_epoch(quote.get("regularMarketTime")) if quote.get("regularMarketTime") else ""
       exchange = quote.get("fullExchangeName") or quote.get("exchange") or fallback.get("exchange") or market["label"]
       data_source = "yahoo" if quote else "curated_fallback"
+      session_preview = build_market_session(
+        market.get("sessionExchange") or exchange,
+        market["label"],
+        quote.get("marketState") or ("REGULAR" if quote else "CLOSED"),
+        as_of,
+      )
       indices.append(
         {
           "symbol": symbol,
@@ -5466,6 +5574,7 @@ def build_global_market_overview() -> list[dict]:
           "marketState": quote.get("marketState") or ("REGULAR" if quote else "CLOSED"),
           "asOf": as_of,
           "dataSource": data_source,
+          "quoteFreshness": quote_freshness(as_of, session_preview, data_source),
         }
       )
     session = build_market_session(
@@ -5614,6 +5723,13 @@ def build_live_quotes(symbols: list[str], active: str | None) -> dict:
         price = None
         previous_close = None
     market_time = quote.get("regularMarketTime")
+    as_of = datetime.fromtimestamp(market_time, tz=timezone.utc).isoformat() if market_time else None
+    session = build_market_session(
+      quote.get("fullExchangeName") or quote.get("exchange") or fallback["exchange"],
+      quote.get("exchange") or fallback["exchange"],
+      quote.get("marketState") or "REGULAR",
+      as_of,
+    )
     item = {
       "symbol": symbol,
       "name": quote.get("shortName") or quote.get("longName") or fallback["name"],
@@ -5625,7 +5741,8 @@ def build_live_quotes(symbols: list[str], active: str | None) -> dict:
       "exchange": quote.get("fullExchangeName") or quote.get("exchange") or fallback["exchange"],
       "marketState": quote.get("marketState") or "REGULAR",
       "dataSource": data_source,
-      "asOf": datetime.fromtimestamp(market_time, tz=timezone.utc).isoformat() if market_time else None,
+      "asOf": as_of,
+      "quoteFreshness": quote_freshness(as_of, session, data_source),
     }
     items.append(item)
     if symbol == (active or cleaned[0]).upper():
