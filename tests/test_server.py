@@ -95,6 +95,15 @@ class HistoryCacheTests(TempDatabaseTestCase):
     self.assertIsNotNone(cached)
     self.assertEqual(cached[0], [1200.0, 1210.5, 1222.0])
 
+  def test_build_history_can_fall_back_to_stooq_for_us_symbols(self):
+    with mock.patch.object(server, "fetch_yahoo_chart", return_value=None), mock.patch.object(
+      server, "fetch_google_finance_history", return_value=([], {})
+    ), mock.patch.object(server, "fetch_stooq_history", return_value=([201.0, 202.4, 204.1], {"historySource": "Stooq CSV"})):
+      history, meta = server.build_history("AAPL", "1M")
+
+    self.assertEqual(history, [201.0, 202.4, 204.1])
+    self.assertEqual(meta["historySource"], "Stooq CSV")
+
   def test_build_history_can_map_bse_symbol_to_nse_candidate(self):
     with mock.patch.object(server, "fetch_yahoo_chart", side_effect=[None, {"meta": {}, "timestamp": [1, 2], "indicators": {"quote": [{"close": [100.0, 101.5]}]}}]), mock.patch.object(
       server, "fetch_google_finance_history", return_value=([], {})
@@ -141,6 +150,11 @@ class HistoryCacheTests(TempDatabaseTestCase):
     self.assertEqual(source, "RSS")
     self.assertTrue(updated_at)
 
+  def test_allowed_outbound_url_blocks_unknown_and_http_hosts(self):
+    self.assertTrue(server.is_allowed_outbound_url("https://query1.finance.yahoo.com/v7/finance/quote"))
+    self.assertFalse(server.is_allowed_outbound_url("http://query1.finance.yahoo.com/v7/finance/quote"))
+    self.assertFalse(server.is_allowed_outbound_url("https://example.com/data.json"))
+
   def test_get_or_refresh_cached_payload_prefers_fresh_cache(self):
     server.save_payload_cache("region_calendar::india", {"items": [{"title": "RBI event"}], "source": "RBI"}, "RBI")
 
@@ -183,6 +197,26 @@ class HistoryCacheTests(TempDatabaseTestCase):
     self.assertEqual(len(rows), 2)
     self.assertEqual(rows[0]["value"], 201.1)
     self.assertEqual(rows[1]["volume"], 1200.0)
+
+  def test_save_and_load_derived_insight_round_trip(self):
+    payload = {"state": "5D above 25D", "sma5": 105.0, "sma25": 100.0}
+
+    server.save_derived_insight("AAPL", "1d", "sma_5_25", payload, "Unit test")
+    loaded = server.load_derived_insight("AAPL", "1d", "sma_5_25")
+
+    self.assertIsNotNone(loaded)
+    self.assertEqual(loaded["state"], "5D above 25D")
+    self.assertEqual(loaded["source"], "Unit test")
+
+  def test_build_moving_average_insight_persists_signal(self):
+    history = [100 + index for index in range(30)]
+
+    signal = server.build_moving_average_insight("AAPL", history)
+    loaded = server.load_derived_insight("AAPL", "1d", "sma_5_25")
+
+    self.assertEqual(signal["nextRunBias"], "Continuation")
+    self.assertIsNotNone(loaded)
+    self.assertEqual(loaded["nextRunBias"], "Continuation")
 
   def test_relation_links_for_watchlist_prefers_precomputed_graph(self):
     relations_dir = Path(self.tempdir.name) / "relations"
@@ -279,6 +313,78 @@ class ForecastAndLabTests(unittest.TestCase):
     )
     self.assertEqual(recommendation["signal"], "Buy bias")
 
+  def test_build_decision_cockpit_returns_fact_based_scenarios(self):
+    snapshot = {
+      "symbol": "ICICIBANK.NS",
+      "changePercent": 1.4,
+      "volume": 1200000,
+      "sentiment": 0.1,
+      "forecast": {
+        "confidence": 72,
+        "expectedReturn": 3.1,
+        "eventPressure": 0.22,
+        "mae": 2.4,
+        "movingAverageSignal": {"state": "5D above 25D", "spreadPercent": 2.2, "why": "Short trend leads."},
+      },
+      "recommendation": {"buy": 52, "hold": 34, "sell": 14, "signal": "Buy bias"},
+    }
+    region = server.build_region_payload("india", [{"symbol": "ICICIBANK.NS", "exchange": "NSE", "currency": "INR"}], snapshot)
+    cockpit = server.build_decision_cockpit(snapshot, region, {"sentiment": {"score": 0.2, "label": "Constructive"}, "items": [{"title": "Bank credit growth improves"}]})
+
+    self.assertIn("stance", cockpit)
+    self.assertGreaterEqual(len(cockpit["facts"]), 4)
+    self.assertTrue(cockpit["monitor"])
+    self.assertIn("not direct", " ".join(cockpit["interpretation"]).lower())
+
+  def test_build_stock_dossier_returns_core_sections_and_sourced_graph(self):
+    snapshot = {
+      "symbol": "ICICIBANK.NS",
+      "exchange": "NSE",
+      "currency": "INR",
+      "dataSource": "Unit test quote",
+      "price": 120,
+      "previousClose": 116,
+      "changePercent": 3.4,
+      "volume": 1000000,
+      "sector": "Financial Services",
+      "forecast": {"mae": 2.0},
+      "recommendation": {"buy": 50, "hold": 30, "sell": 20, "signal": "Buy bias"},
+    }
+    quote = {
+      "regularMarketOpen": 118,
+      "regularMarketDayLow": 117,
+      "regularMarketDayHigh": 122,
+      "fiftyTwoWeekLow": 90,
+      "fiftyTwoWeekHigh": 130,
+      "averageDailyVolume3Month": 900000,
+      "trailingPE": 18,
+    }
+    summary = {
+      "financialData": {
+        "totalRevenue": {"raw": 1000},
+        "returnOnEquity": {"raw": 0.15},
+        "recommendationKey": "buy",
+        "numberOfAnalystOpinions": {"raw": 12},
+      },
+      "defaultKeyStatistics": {"trailingEps": {"raw": 10}},
+      "recommendationTrend": {"trend": [{"strongBuy": 1, "buy": 4, "hold": 3, "sell": 1, "strongSell": 0}]},
+      "majorHoldersBreakdown": {"insidersPercentHeld": {"raw": 0.02}},
+    }
+    with mock.patch.object(server, "build_history", return_value=([100 + index for index in range(260)], {"historySource": "test"})):
+      dossier = server.build_stock_dossier("ICICIBANK.NS", snapshot, quote, summary, [100 + index for index in range(40)], [100 + index for index in range(260)])
+
+    self.assertIn("daySnapshot", dossier)
+    self.assertEqual(len(dossier["peerComparison"]), 5)
+    self.assertGreaterEqual(len(dossier["benchmarkComparison"]), 3)
+    self.assertIn("expertConsensus", dossier)
+    self.assertTrue(dossier["influenceGraph"]["ledger"])
+
+  def test_influence_graph_omits_unsourced_sensitive_claims(self):
+    graph = server.build_influence_graph("TEST", {})
+
+    self.assertEqual(graph["edges"], [])
+    self.assertIn("Public cited", graph["policy"])
+
   def test_build_region_payload_contains_bonds_inflation_and_watchlist_implications(self):
     watchlist = [
       {"symbol": "AAPL", "name": "Apple", "exchange": "NASDAQ", "currency": "USD"},
@@ -293,6 +399,12 @@ class ForecastAndLabTests(unittest.TestCase):
     self.assertEqual(payload["watchlistImplications"]["cards"][0]["symbol"], "AAPL")
     self.assertIn("factorSchedule", payload["watchlistImplications"]["graph"])
     self.assertIn("papers", payload["watchlistImplications"]["graph"])
+    self.assertIn("projects", payload["watchlistImplications"]["cards"][0])
+    self.assertGreaterEqual(len(payload["watchlistImplications"]["cards"][0]["projects"]), 1)
+    self.assertTrue(any(node.get("group") == "project" for node in payload["watchlistImplications"]["graph"]["nodes"]))
+    self.assertIn("researchProtocol", payload)
+    self.assertIn("factors", payload["researchProtocol"])
+    self.assertIn("datasets", payload["researchProtocol"])
 
   def test_build_region_comparison_returns_cross_region_rows(self):
     comparison = server.build_region_comparison(
@@ -304,6 +416,18 @@ class ForecastAndLabTests(unittest.TestCase):
 
     self.assertGreaterEqual(len(comparison["rows"]), 4)
     self.assertIn("US", comparison["summary"])
+
+  def test_build_methodology_payload_contains_concepts_and_flow(self):
+    snapshot = server.build_ticker_snapshot("AAPL")
+    region = server.build_region_payload("us", [{"symbol": "AAPL", "name": "Apple", "exchange": "NASDAQ", "currency": "USD"}], snapshot)
+    snapshot["researchOverview"] = server.build_active_research_overview(snapshot, region)
+    snapshot["decisionInputs"] = server.build_market_decision_overview(snapshot, region)
+
+    payload = server.build_methodology_payload(snapshot, region)
+
+    self.assertTrue(payload["concepts"])
+    self.assertTrue(payload["flow"]["nodes"])
+    self.assertTrue(payload["liveInputs"])
 
   def test_build_backtest_produces_samples_with_short_real_history(self):
     history = [100 + index for index in range(20)]
@@ -524,6 +648,8 @@ class DashboardAssemblyTests(unittest.TestCase):
     self.assertEqual(payload["macroPulse"][0]["label"], "NIFTY 50")
     self.assertEqual(payload["radar"]["summary"], "Radar summary")
     self.assertEqual(payload["active"]["eventFocus"]["category"], "business")
+    self.assertIn("researchOverview", payload["active"])
+    self.assertIn("cards", payload["active"]["researchOverview"])
 
 
 if __name__ == "__main__":

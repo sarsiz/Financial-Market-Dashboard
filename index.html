@@ -148,6 +148,7 @@
           <button class="tab" data-tab="inflation">Inflation</button>
           <button class="tab" data-tab="equity-context">Equity Context</button>
           <button class="tab" data-tab="events-calendar">Events &amp; Calendar</button>
+          <button class="tab" data-tab="methodology">Methodology</button>
           <button class="tab" data-tab="watchlist-implications">Watchlist Implications</button>
           <button class="tab" data-tab="comparison">Compare</button>
         </nav>
@@ -265,6 +266,16 @@
             </div>
           </div>
 
+          <article id="stock-dossier-panel" class="glass-panel stock-dossier-panel">
+            <div class="section-heading">
+              <h3>Stock Dossier</h3>
+              <span>Peers, fundamentals, benchmarks, consensus, and sourced links</span>
+            </div>
+            <div id="stock-dossier-nav" class="dossier-nav"></div>
+            <div id="stock-dossier" class="stock-dossier"></div>
+            <div id="market-discovery" class="market-discovery"></div>
+          </article>
+
           <div class="content-grid">
             <article class="glass-panel large-panel">
               <div class="section-heading">
@@ -362,22 +373,73 @@
           </div>
         </section>
 
+        <section id="methodology" class="tab-panel">
+          <div class="macro-grid methodology-grid">
+            <article class="glass-panel macro-panel methodology-panel methodology-panel-wide">
+              <div class="section-heading">
+                <h3>Methodology Flow</h3>
+                <span>What the dashboard uses, where it flows, and why it matters</span>
+              </div>
+              <div id="methodology-headline" class="micro-note">Methodology is loading.</div>
+              <div id="methodology-cockpit" class="methodology-cockpit"></div>
+              <div id="methodology-principles" class="macro-analysis-list"></div>
+              <div class="methodology-flow-shell">
+                <svg id="methodology-flowchart" class="methodology-flowchart" viewBox="0 0 900 360" preserveAspectRatio="xMidYMid meet"></svg>
+              </div>
+            </article>
+            <article class="glass-panel macro-panel methodology-panel">
+              <div class="section-heading">
+                <h3>Live Inputs</h3>
+                <span>What updates the calculations</span>
+              </div>
+              <div id="methodology-live-inputs" class="macro-summary-grid"></div>
+            </article>
+            <article class="glass-panel macro-panel methodology-panel">
+              <div class="section-heading">
+                <h3>Quant Concepts</h3>
+                <span>Popular concepts, formulas, and use in this dashboard</span>
+              </div>
+              <div id="methodology-concepts" class="macro-analysis-list methodology-concepts"></div>
+            </article>
+          </div>
+        </section>
+
         <section id="watchlist-implications" class="tab-panel">
-          <div class="macro-grid">
+          <div class="macro-grid watchlist-implications-grid">
+            <article class="glass-panel macro-panel impact-workspace-panel">
+              <div class="section-heading">
+                <h3>Dependency Workspace</h3>
+                <span>Bond, inflation, project, supplier, and partner transmission</span>
+              </div>
+              <div class="impact-workspace-toolbar">
+                <div class="impact-workspace-actions">
+                  <button id="impact-fit" class="ghost-button compact-ghost" type="button">Fit</button>
+                  <button id="impact-zoom-in" class="ghost-button compact-ghost" type="button">Zoom +</button>
+                  <button id="impact-zoom-out" class="ghost-button compact-ghost" type="button">Zoom -</button>
+                  <button id="impact-reset" class="ghost-button compact-ghost" type="button">Reset</button>
+                </div>
+                <div id="impact-graph-note" class="micro-note">Graph source is loading.</div>
+              </div>
+              <div class="impact-workspace-grid">
+                <div id="impact-graph" class="impact-graph-canvas"></div>
+                <aside class="impact-sidepanel">
+                  <div class="impact-sidepanel-section">
+                    <h4>Selected node</h4>
+                    <div id="impact-graph-detail" class="impact-graph-detail">Pick a node to inspect its role in the transmission chain.</div>
+                  </div>
+                  <div class="impact-sidepanel-section">
+                    <h4>How to read</h4>
+                    <div id="impact-graph-legend" class="impact-graph-legend"></div>
+                  </div>
+                </aside>
+              </div>
+            </article>
             <article class="glass-panel macro-panel">
               <div class="section-heading">
                 <h3>Stock Watchlist Implications</h3>
                 <span>Scenario, risk, confidence, unknowns</span>
               </div>
               <div id="watchlist-implication-cards" class="macro-summary-grid"></div>
-            </article>
-            <article class="glass-panel macro-panel">
-              <div class="section-heading">
-                <h3>Impact Graph</h3>
-                <span>Bond and inflation transmission into stocks</span>
-              </div>
-              <svg id="impact-graph" class="impact-graph" viewBox="0 0 720 360" preserveAspectRatio="none"></svg>
-              <div id="impact-graph-note" class="micro-note">Graph source is loading.</div>
             </article>
           </div>
         </section>
@@ -430,7 +492,7 @@
         <button id="save-settings" value="default">Save</button>
       </form>
     </dialog>
-
+    <script src="./vendor/cytoscape.min.js"></script>
     <script type="module" src="./app.js"></script>
   </body>
 </html>

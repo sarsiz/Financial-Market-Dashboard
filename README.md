@@ -8,6 +8,7 @@ Full-stack dark financial dashboard with:
 - multi-region macro + markets framing with US and India as the first supported regions
 - bond-market-first regional analysis covering yields, inflation, policy, events, equity context, and watchlist implications
 - explainable multi-factor forecasting and walk-forward validation
+- a methodology tab that maps quant concepts, live inputs, cadence, and factor flow
 - saved watchlists persisted in SQLite
 - a learning tab that explains what the signals mean
 
@@ -21,10 +22,19 @@ Full-stack dark financial dashboard with:
 - `data/company_networks.json`: local company/entity relationship hints for deeper market maps
 - `data/factors/`: factor cadence and update-significance datasets
 - `data/papers/`: local paper registry for research-backed factor and graph design
+- `vendor/cytoscape.min.js`: local graph engine for the dependency workspace
+- `data/macro/`: local macro factor store and sync manifest
 - `vault/market-map/`: Obsidian-friendly markdown vault generated from universes, relation graphs, papers, and playbooks
 - `config.json`: created automatically when you save provider settings
 - local LLM features are pinned to `Bonsai-8B-1bit` through the Ollama-compatible endpoint
 - `kb/`: durable local knowledge base for macro, region, sector, company, and playbook notes
+- `scripts/sync_macro_factor_store.py`: local macro-factor downloader / manifest builder
+- `scripts/build_research_protocol_vault.py`: Obsidian-friendly research note generator
+- `scripts/build_agent_memory_vault.py`: builds the Obsidian-friendly memory operating system around the vault
+- `vault/market-map/concepts/`: Obsidian-friendly quant concept notes
+- `vault/market-map/workflows/`: Obsidian-friendly methodology flow notes
+- `vault/market-map/_meta/`: vault manifest and memory protocol
+- `vault/market-map/inbox/`, `sessions/`, `sources/`, `templates/`: working-memory and note-promotion structure
 
 ## Technical Summary
 
@@ -37,6 +47,10 @@ This platform is built as a lightweight full-stack app with a browser client and
 - historical price series are cached locally in SQLite so previously viewed symbols load faster on later visits
 - normalized historical records are also stored locally in SQLite so old data can be reused by charts, macro analysis, and relation graphs without repeated refetches
 - regional bond, inflation, events, and calendar payloads are also cached locally with TTLs and stale-safe fallback so older context is reused instead of being refetched on every dashboard load
+- derived insights such as the 5D/25D moving-average signal are persisted locally so repeated dashboard refreshes reuse computed stock context
+- a local macro factor store can be materialized under `data/macro/` so slower-moving official series become reusable local context instead of repeated fetches
+- the overview includes a decision cockpit that combines live quote movement, local history, 5D/25D trend, radar sentiment, event risk, bonds, inflation, policy, confidence, and model error into facts, scenarios, unknowns, and monitor-next items
+- the overview includes a stock dossier with day snapshot, fundamentals, moving averages, peer comparison, benchmark comparison, external consensus, unusual activity, source provenance, and public-cited influence/ownership context
 - live quote updates are pushed to the UI through server-sent events
 - forecasting and model-lab outputs are computed on the backend so the browser stays fast and thin
 - the client now renders in stages, so the active quote and overview paint first while slower Academy and event explainers fill in afterward
@@ -48,11 +62,15 @@ This platform is built as a lightweight full-stack app with a browser client and
 - market radar surfaces floating event clouds only from live news items, with in-place expansion on click, a hide/show glass toggle, and fresh-item re-formation when more important stories arrive
 - market radar now blends live event headlines with macro pulse and active-ticker micro context, so the section reflects both top-down and stock-specific pressure
 - the dashboard now keeps a region-selected macro layer for bonds, inflation, policy, events, equity context, watchlist implications, and US-vs-India comparison
+- the main overview now carries a research methodology layer showing live formulas, cadence, and factor transmission for the active ticker
+- the dashboard now includes a dedicated methodology tab showing popular quant concepts, live inputs, cadence, and an animated factor flow
+- watchlist implications now use a dedicated graph workspace with pan/zoom and details instead of a cramped inline SVG
 - universe sync, historical backfill, and relation-graph generation are now explicit scripts so large-market datasets can be refreshed deterministically
 - the top watch overview can be compacted away with a user toggle, and radar clouds can be popped together so the panel shrinks upward when you want a denser layout
 - news retrieval now blends Google News RSS with popular publisher RSS feeds like BBC and NPR, then dedupes and ranks them server-side
 - large charts now carry timestamp-aware history series, axis labels, and hover inspection instead of only raw close arrays
 - local-LLM features are pinned to `Bonsai-8B-1bit`, even if another model name is saved in config, to keep inference lighter and more predictable
+- factor governance and paper-backed protocol are now local datasets, so cadence, significance, provenance, and methodology are explicit rather than hidden in code
 
 ## Architecture
 
@@ -84,6 +102,69 @@ Then open [http://127.0.0.1:8000](http://127.0.0.1:8000).
 
 ```bash
 python3 -m unittest discover -s tests -v
+```
+
+## Research Protocol
+
+The dashboard now keeps a local research-backed operating model:
+
+- `data/factors/factor_registry.json`: factor significance, cadence, fact-first reading, and provenance
+- `data/factors/prediction_formulas.json`: live formula lenses used in the main overview
+- `data/papers/dashboard_practices.json`: paper and classic-quant practices mapped into concrete dashboard behavior
+- `data/papers/quant_concepts.json`: popular quant and trading concepts used by the methodology tab
+- `data/factors/methodology_flow.json`: local definition of how inputs become factors, regimes, and decision support
+- `data/macro/manifest.json`: local macro-store coverage by region
+- `kb/playbooks/research-backed-dashboard-protocol.md`: the repo-level methodology rulebook
+- `kb/playbooks/quant-concepts-dashboard-map.md`: concise map from concepts to dashboard surfaces
+- `vault/market-map/research/`: Obsidian-friendly factor notes generated from the registry
+- `vault/market-map/concepts/`: Obsidian-friendly concept notes
+- `vault/market-map/workflows/`: Obsidian-friendly flow notes
+- `vault/market-map/_meta/Agent Memory Protocol.md`: how agents should use durable vs working memory
+- `vault/market-map/_meta/Vault Manifest.md`: coverage snapshot for the current local memory system
+
+This lets the UI show:
+
+- what is fact
+- what is interpretation
+- what cadence a factor should refresh at
+- what datasets are local, partial, fallback-backed, or still missing
+
+## Rich Market Workflow Plan
+
+The dashboard is moving toward the useful parts of Mint, Moneycontrol, Groww, and similar market tools while keeping the current local-first architecture:
+
+- `Market snapshot`: price, change, volume, session status, breadth, radar sentiment, and watchlist movement.
+- `Technical context`: 5D/25D moving-average spread, slope, trend confirmation, volatility, breakout pressure, and reversion stretch.
+- `Fundamental context`: valuation, quality, project exposure, supplier risk, and sector sensitivity where local data exists.
+- `Events`: market-relevant RSS/news, category filters, impact score, source timestamps, and major event overrides.
+- `Decision support`: scenarios, confidence, unknowns, and monitor-next signals, not direct buy/sell instructions.
+- `Local database`: historical records, cached payloads, derived insights, relation graphs, and Obsidian markdown memory.
+
+## Obsidian Memory
+
+The repo now has a fuller Obsidian-style memory system, not just generated notes:
+
+- durable memory:
+  - `companies/`
+  - `concepts/`
+  - `papers/`
+  - `playbooks/`
+  - `research/`
+  - `sectors/`
+  - `workflows/`
+- working memory:
+  - `inbox/`
+  - `sessions/`
+  - `sources/`
+  - `templates/`
+  - `_meta/`
+
+Generate or refresh it with:
+
+```bash
+python3 scripts/build_market_map_vault.py
+python3 scripts/build_research_protocol_vault.py
+python3 scripts/build_agent_memory_vault.py
 ```
 
 The current suite covers:
@@ -132,9 +213,30 @@ Historical-price loading now uses a layered path:
 
 - Yahoo chart API when available
 - Google Finance page timeline extraction as fallback
+- Alpha Vantage daily history when an API key is configured
+- Stooq daily CSV as a low-request fallback for supported US symbols
 - local SQLite history cache for already-tracked symbols
 - local SQLite historical-record storage for durable series reuse
 - SQLite payload cache for regional macro/event/calendar context with TTL-based refresh
+
+## Outbound data and request safety
+
+The backend now uses a guarded outbound request layer:
+
+- HTTPS-only allowlisted hosts
+- small per-host minimum intervals to avoid bombarding providers
+- short response caching for repeated URLs
+- TTL-based payload caches for slower macro/event/calendar paths
+- local history reuse before external back-history fetches
+- security headers on dashboard responses
+
+Alternative sources currently wired:
+
+- Yahoo Finance
+- Google Finance page extraction
+- Alpha Vantage, when a key is configured
+- FRED / BLS / Fed / RBI for macro context
+- Stooq daily CSV for supported US history fallback
 
 ## Market graph pipeline
 
@@ -185,6 +287,8 @@ Build it with:
 
 ```bash
 python3 scripts/build_market_map_vault.py
+python3 scripts/build_research_protocol_vault.py
+python3 scripts/sync_macro_factor_store.py
 ```
 
 This follows the same simple pattern:

@@ -19,6 +19,10 @@ class HtmlContractTests(unittest.TestCase):
       "radar-hotspots",
       "radar-source-note",
       "overview-board",
+      "stock-dossier-panel",
+      "stock-dossier-nav",
+      "stock-dossier",
+      "market-discovery",
       "region-selector",
       "bond-summary",
       "bond-curve",
@@ -28,7 +32,13 @@ class HtmlContractTests(unittest.TestCase):
       "sector-grid",
       "macro-events-list",
       "macro-watch-next",
+      "methodology-headline",
+      "methodology-cockpit",
+      "methodology-live-inputs",
+      "methodology-concepts",
+      "methodology-flowchart",
       "watchlist-implication-cards",
+      "impact-graph-detail",
       "impact-graph",
       "comparison-table",
       "recent-tickers",
@@ -41,7 +51,7 @@ class HtmlContractTests(unittest.TestCase):
 
   def test_index_contains_expected_top_level_tabs(self):
     tabs = re.findall(r'data-tab="([^"]+)"', self.index_html)
-    self.assertEqual(tabs, ["overview", "bond-market", "inflation", "equity-context", "events-calendar", "watchlist-implications", "comparison"])
+    self.assertEqual(tabs, ["overview", "bond-market", "inflation", "equity-context", "events-calendar", "methodology", "watchlist-implications", "comparison"])
 
   def test_frontend_contains_key_renderers_and_handlers(self):
     expected_snippets = [
@@ -53,6 +63,7 @@ class HtmlContractTests(unittest.TestCase):
       "function renderInflationView()",
       "function renderEquityContext()",
       "function renderMacroEvents()",
+      "function renderMethodology()",
       "function renderWatchlistImplications()",
       "function renderComparison()",
       "function renderRegionSelector()",
@@ -65,6 +76,17 @@ class HtmlContractTests(unittest.TestCase):
       "selectedRegion",
       "function buildRadarFloatItems",
       "state.radarFloatOpenId",
+      "function renderImpactGraphWorkspace(",
+      "decision-cockpit-card",
+      "function logNonAbort(",
+      "methodology-cockpit-hero",
+      "function renderStockDossier(",
+      "function setupDossierDrag(",
+      "dossierOrder",
+      "stockDossier",
+      "Peer comparison",
+      "dossier-card-band",
+      "Market discovery",
     ]
     for snippet in expected_snippets:
       self.assertIn(snippet, self.app_js)

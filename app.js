@@ -7,6 +7,7 @@ const STORAGE_KEYS = {
   eventCategory: "financial-board-event-category",
   boardHidden: "financial-board-market-board-hidden",
   region: "financial-board-region",
+  dossierOrder: "financial-board-dossier-order",
 };
 
 const RESEARCH_REFERENCES = [
@@ -122,6 +123,18 @@ const REGION_LABELS = {
   india: "India",
 };
 
+const DEFAULT_DOSSIER_ORDER = [
+  "day",
+  "fundamentals",
+  "ma",
+  "consensus",
+  "activity",
+  "peers",
+  "benchmarks",
+  "links",
+  "metrics",
+];
+
 const state = {
   watchlist: loadStoredWatchlist(),
   activeTicker: localStorage.getItem(STORAGE_KEYS.activeTicker) || "BHARTIARTL.NS",
@@ -171,7 +184,11 @@ const state = {
   radarFreshFloatIds: [],
   visualValueMemory: {},
   impactGraphPositions: {},
+  impactGraphCy: null,
+  impactResizeTimer: null,
   revealObserver: null,
+  lastOverviewChartRefreshAt: 0,
+  dossierOrder: loadStoredDossierOrder(),
 };
 
 if (state.watchlist.length === 0) {
@@ -205,6 +222,21 @@ function loadStoredChartFeatures() {
   } catch {
     return { sma20: true, sma50: true, bands: false };
   }
+}
+
+function loadStoredDossierOrder() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(STORAGE_KEYS.dossierOrder) || "[]");
+    return DEFAULT_DOSSIER_ORDER.filter((key) => stored.includes(key)).length
+      ? DEFAULT_DOSSIER_ORDER.filter((key) => stored.includes(key)).sort((a, b) => stored.indexOf(a) - stored.indexOf(b))
+      : DEFAULT_DOSSIER_ORDER.slice();
+  } catch {
+    return DEFAULT_DOSSIER_ORDER.slice();
+  }
+}
+
+function persistDossierOrder() {
+  localStorage.setItem(STORAGE_KEYS.dossierOrder, JSON.stringify(state.dossierOrder));
 }
 
 function persistWatchlist() {
@@ -407,6 +439,594 @@ function animateSvgRefresh(svg) {
   );
 }
 
+function renderOverviewLowerPanels(active, forecast) {
+  const seenContextLabels = new Set();
+  const macroMicroContext = []
+    .concat(state.dashboard?.radar?.macroFactors || [])
+    .concat(state.dashboard?.radar?.microFactors || [])
+    .filter((item) => {
+      const label = String(item?.label || "").trim();
+      if (!label) return false;
+      if (/(^|\b)(s&p|nasdaq|dow|nifty|sensex)(\b|$)/i.test(label)) return false;
+      const key = label.toLowerCase();
+      if (seenContextLabels.has(key)) return false;
+      seenContextLabels.add(key);
+      return true;
+    })
+    .slice(0, 4);
+  const relationshipCards = active.relationshipCards || forecast.factors || [];
+  const factorSchedule = selectedRegionPayload()?.researchProtocol?.factors?.length
+    ? (selectedRegionPayload()?.researchProtocol?.factors || []).slice(0, 3)
+    : state.dashboard?.selectedRegion
+      ? (selectedRegionPayload()?.watchlistImplications?.graph?.factorSchedule || []).slice(0, 3)
+      : [];
+  const researchOverview = active.researchOverview || {};
+  const decisionInputs = active.decisionInputs || {};
+  const decisionCockpit = active.decisionCockpit || {};
+  const movingAverage = forecast.movingAverageSignal || {};
+  const ma5Label = Number.isFinite(Number(movingAverage.sma5))
+    ? formatCurrency(movingAverage.sma5, active.currency)
+    : "n/a";
+  const ma25Label = Number.isFinite(Number(movingAverage.sma25))
+    ? formatCurrency(movingAverage.sma25, active.currency)
+    : "n/a";
+  document.getElementById("factor-map").innerHTML = `
+    ${decisionCockpit.stance ? `
+      <div class="decision-cockpit-card">
+        <div class="decision-cockpit-head">
+          <div>
+            <span>Decision cockpit</span>
+            <strong>${decisionCockpit.stance}</strong>
+          </div>
+          <div class="decision-score-ring" style="--score:${Number(decisionCockpit.edgeScore || 0).toFixed(0)}">
+            <b>${Number(decisionCockpit.edgeScore || 0).toFixed(0)}</b>
+            <small>edge</small>
+          </div>
+        </div>
+        <div class="decision-cockpit-grid">
+          ${(decisionCockpit.facts || []).slice(0, 4).map((item) => `
+            <div class="decision-fact">
+              <span>${item.label}</span>
+              <strong>${item.value}</strong>
+              <p>${item.why}</p>
+            </div>
+          `).join("")}
+        </div>
+        <div class="decision-brief-lines">
+          ${(decisionCockpit.interpretation || []).slice(0, 2).map((item) => `<p>${item}</p>`).join("")}
+        </div>
+        <div class="decision-monitor-row">
+          ${(decisionCockpit.monitor || []).slice(0, 3).map((item) => `<span>${item}</span>`).join("")}
+        </div>
+        <small class="decision-source-note">${decisionCockpit.sourceNote || "Scenario support only, not direct investment advice."}</small>
+      </div>
+    ` : ""}
+    ${movingAverage.state ? `
+      <div class="research-overview-hero ma-signal-hero">
+        <div class="research-overview-copy">
+          <span>5D / 25D trend</span>
+          <strong>${movingAverage.state} · ${movingAverage.nextRunBias || "Mixed"}</strong>
+        </div>
+        <div class="research-overview-monitor">
+          <p>5D ${ma5Label} · 25D ${ma25Label}</p>
+          <p>Spread ${formatPercent(movingAverage.spreadPercent || 0)} · Confidence ${Number(movingAverage.confidence || 0).toFixed(0)}%</p>
+        </div>
+      </div>
+    ` : ""}
+    ${decisionInputs.inputs?.length ? `
+      <div class="research-overview-hero">
+        <div class="research-overview-copy">
+          <span>${decisionInputs.mode || "Decision inputs"}</span>
+          <strong>Live calculation inputs for the active market regime.</strong>
+        </div>
+        <div class="research-overview-monitor">
+          ${decisionInputs.inputs.slice(0, 2).map((item) => `<p>${item.label}: ${item.note || item.why}</p>`).join("")}
+        </div>
+      </div>
+      <div class="research-formula-grid decision-input-grid">
+        ${decisionInputs.inputs.slice(0, 4).map((item) => `
+          <div class="formula-card decision-card">
+            <div class="formula-card-head">
+              <span>${item.label}</span>
+              <strong>${item.value}</strong>
+            </div>
+            <code>${item.formula}</code>
+            <p>${item.why}</p>
+            <small>${item.cadence}${item.significance ? ` • ${item.significance}` : ""}${item.sourceLabel ? ` • ${item.sourceLabel}` : ""}</small>
+          </div>
+        `).join("")}
+      </div>
+    ` : ""}
+    ${researchOverview.headline ? `
+      <div class="research-overview-hero">
+        <div class="research-overview-copy">
+          <span>Research stack</span>
+          <strong>${researchOverview.headline}</strong>
+        </div>
+        <div class="research-overview-monitor">
+          ${(researchOverview.nextWatch || []).slice(0, 2).map((item) => `<p>${item}</p>`).join("")}
+        </div>
+      </div>
+    ` : ""}
+    ${(researchOverview.cards || []).length ? `
+      <div class="research-formula-grid">
+        ${(researchOverview.cards || [])
+          .slice(0, 4)
+          .map(
+            (item) => `
+              <div class="formula-card">
+                <div class="formula-card-head">
+                  <span>${item.label}</span>
+                  <strong>${item.value}</strong>
+                </div>
+                <code>${item.formula}</code>
+                <p>${item.why}</p>
+                <small>${item.note}${item.cadence ? ` • ${item.cadence}` : ""}</small>
+              </div>
+            `,
+          )
+          .join("")}
+      </div>
+    ` : ""}
+    ${macroMicroContext.length ? `
+      <div class="analysis-context-grid">
+        ${macroMicroContext
+          .map(
+            (item) => `
+              <div class="factor-context-card">
+                <span>${item.label}</span>
+                <strong>${item.value || "Live"}</strong>
+                <p>${item.trend || "Current live context."}</p>
+              </div>
+            `,
+          )
+          .join("")}
+      </div>
+    ` : ""}
+    ${factorSchedule.length ? `
+      <div class="analysis-context-grid factor-cadence-grid">
+        ${factorSchedule
+          .map(
+            (item) => `
+              <div class="factor-context-card cadence-card">
+                <span>${item.label}</span>
+                <strong>${item.cadence}</strong>
+                <p>${item.significance} significance • ${item.use || item.why || item.factsFirst}</p>
+              </div>
+            `,
+          )
+          .join("")}
+      </div>
+    ` : ""}
+    <div class="analysis-flow-grid">
+      ${relationshipCards
+        .map(
+          (factor) => `
+            <div class="factor-card">
+              <div class="factor-card-header">
+                <strong>${factor.title}</strong>
+                <span>${factor.score.toFixed(0)}</span>
+              </div>
+              <div class="impact-bar"><div class="impact-fill" style="width:${Math.abs(factor.score)}%"></div></div>
+              <p>${factor.description}</p>
+            </div>
+          `,
+        )
+        .join("")}
+    </div>
+  `;
+
+  const latestDriverEvents = [...(state.eventResult?.items || state.dashboard?.radar?.items || [])]
+    .slice(0, 2)
+    .map((item) => ({
+      title: item.title || "Live catalyst",
+      tag: item.category || "Live",
+      meta: `${formatEventDateTime(item.publishedAt)}${item.source ? ` • ${item.source}` : ""}`,
+      body: item.description || item.summary || item.title || "Latest event context is being refreshed.",
+    }));
+  const signalDrivers = (active.driverCards || forecast.triggers || []).slice(0, 5);
+  const paperNotes = (selectedRegionPayload()?.researchProtocol?.practices || selectedRegionPayload()?.watchlistImplications?.graph?.papers || []).slice(0, 2);
+  document.getElementById("catalyst-list").innerHTML = `
+    ${latestDriverEvents.length ? `
+      <div class="driver-event-strip">
+        ${latestDriverEvents
+          .map(
+            (item) => `
+              <div class="catalyst-card event-led">
+                <div class="catalyst-header">
+                  <strong>${item.title}</strong>
+                  <span>${String(item.tag).toUpperCase()}</span>
+                </div>
+                <small>${item.meta}</small>
+                <p>${item.body}</p>
+              </div>
+            `,
+          )
+          .join("")}
+      </div>
+    ` : ""}
+    ${paperNotes.length ? `
+      <div class="driver-event-strip paper-strip">
+        ${paperNotes
+          .map(
+            (item) => `
+              <div class="catalyst-card paper-led">
+                <div class="catalyst-header">
+                  <strong>${item.title}</strong>
+                  <span>PAPER</span>
+                </div>
+                <small>${item.year || ""} • ${item.type || "research"}</small>
+                <p>${item.practice || item.whyItMatters}</p>
+              </div>
+            `,
+          )
+          .join("")}
+      </div>
+    ` : ""}
+    ${(researchOverview.papers || []).length ? `
+      <div class="driver-event-strip paper-strip methodology-strip">
+        ${(researchOverview.papers || [])
+          .slice(0, 2)
+          .map(
+            (item) => `
+              <div class="catalyst-card paper-led">
+                <div class="catalyst-header">
+                  <strong>${item.title}</strong>
+                  <span>METHOD</span>
+                </div>
+                <small>${item.year || ""} • ${item.type || "research"}</small>
+                <p>${item.dashboardUse || item.practice}</p>
+              </div>
+            `,
+          )
+          .join("")}
+      </div>
+    ` : ""}
+    <div class="driver-card-stack">
+      ${signalDrivers
+        .map(
+          (item, index) => `
+            <div class="catalyst-card">
+              <div class="catalyst-header">
+                <strong>${index + 1}. ${item.title}</strong>
+                <span>${item.tag || (index === 0 ? "Primary" : "Active")}</span>
+              </div>
+              <p>${item.body || item.description}</p>
+            </div>
+          `,
+        )
+        .join("")}
+    </div>
+  `;
+}
+
+function dossierMetric(value, kind = "plain", currency = "") {
+  if (value === null || value === undefined || value === "" || value === "Unavailable") return "Unavailable";
+  const number = Number(value);
+  if (!Number.isFinite(number)) return String(value);
+  if (kind === "currency") return formatCurrency(number, currency);
+  if (kind === "large") return formatCompactNumber(number);
+  if (kind === "percent") return formatPercent(number);
+  if (kind === "ratio") return `${number.toFixed(2)}x`;
+  return number.toLocaleString(undefined, { maximumFractionDigits: 2 });
+}
+
+function renderBenchmarkBars(items = []) {
+  if (!items.length) return `<div class="dossier-empty">Benchmark history unavailable.</div>`;
+  const maxAbs = Math.max(4, ...items.map((item) => Math.abs(Number(item.returnPercent || 0))));
+  return `
+    <div class="benchmark-bars">
+      ${items.map((item) => {
+        const value = Number(item.returnPercent || 0);
+        const width = Math.max(4, Math.abs(value) / maxAbs * 100);
+        return `
+          <div class="benchmark-row">
+            <span>${item.label}</span>
+            <div class="benchmark-bar-track">
+              <div class="benchmark-bar ${value >= 0 ? "positive" : "negative"}" style="width:${width}%"></div>
+            </div>
+            <strong class="${value >= 0 ? "positive" : "negative"}">${formatPercent(value)}</strong>
+          </div>
+        `;
+      }).join("")}
+    </div>
+  `;
+}
+
+function setupDossierDrag(container) {
+  const cards = Array.from(container.querySelectorAll("[data-dossier-card]"));
+  if (!cards.length) return;
+
+  const syncOrder = () => {
+    state.dossierOrder = Array.from(container.querySelectorAll("[data-dossier-card]"))
+      .map((card) => card.dataset.dossierCard)
+      .filter(Boolean);
+    persistDossierOrder();
+  };
+
+  cards.forEach((card) => {
+    card.addEventListener("dragstart", (event) => {
+      card.classList.add("dragging");
+      container.classList.add("is-dragging");
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("text/plain", card.dataset.dossierCard || "");
+    });
+
+    card.addEventListener("dragend", () => {
+      card.classList.remove("dragging");
+      container.classList.remove("is-dragging");
+      syncOrder();
+    });
+  });
+
+  container.ondragover = (event) => {
+    event.preventDefault();
+    const dragging = container.querySelector(".dossier-card.dragging");
+    if (!dragging || !(event.target instanceof Element)) return;
+    const target = event.target.closest("[data-dossier-card]");
+    if (!target || target === dragging || !container.contains(target)) return;
+
+    const rect = target.getBoundingClientRect();
+    const shouldInsertBefore = event.clientY < rect.top + rect.height / 2;
+    container.insertBefore(dragging, shouldInsertBefore ? target : target.nextSibling);
+  };
+
+  container.ondrop = (event) => {
+    event.preventDefault();
+    syncOrder();
+  };
+}
+
+function renderStockDossier(active) {
+  const dossier = active.stockDossier || {};
+  const panel = document.getElementById("stock-dossier-panel");
+  const nav = document.getElementById("stock-dossier-nav");
+  const node = document.getElementById("stock-dossier");
+  const discoveryNode = document.getElementById("market-discovery");
+  if (!panel || !nav || !node || !discoveryNode) return;
+  if (!dossier.daySnapshot) {
+    node.innerHTML = `<div class="dossier-empty">Stock dossier is loading.</div>`;
+    discoveryNode.innerHTML = "";
+    return;
+  }
+  const day = dossier.daySnapshot || {};
+  const fundamentals = dossier.fundamentals || {};
+  const consensus = dossier.expertConsensus || {};
+  const unusual = dossier.unusualActivity || {};
+  const influence = dossier.influenceGraph || {};
+  const discoveryItems = state.dashboard?.discovery?.items || [];
+  const roeLabel = fundamentals.roe === null || fundamentals.roe === undefined || fundamentals.roe === ""
+    ? "Unavailable"
+    : dossierMetric(Number(fundamentals.roe) * 100, "percent");
+  nav.innerHTML = [
+    ["Snapshot", "dossier-day"],
+    ["Averages", "dossier-ma"],
+    ["Fundamentals", "dossier-fundamentals"],
+    ["Peers", "dossier-peers"],
+    ["Benchmarks", "dossier-benchmarks"],
+    ["Links", "dossier-links"],
+  ].map(([label, target]) => `<button type="button" data-scroll-target="${target}">${label}</button>`).join("");
+  nav.querySelectorAll("button").forEach((button) => {
+    button.addEventListener("click", () => document.getElementById(button.dataset.scrollTarget)?.scrollIntoView({ behavior: "smooth", block: "nearest" }));
+  });
+  const cards = {
+    day: `
+    <section id="dossier-day" class="dossier-card dossier-card-focus" draggable="true" data-dossier-card="day">
+      <button class="dossier-drag-handle" type="button" aria-label="Drag Day snapshot">Drag</button>
+      <div class="dossier-card-head"><span>Day snapshot</span><strong>${active.symbol}</strong><small>${day.source || "Quote provider"}</small></div>
+      <div class="dossier-metric-grid">
+        <div><span>Open</span><strong>${dossierMetric(day.open, "currency", active.currency)}</strong></div>
+        <div><span>Previous</span><strong>${dossierMetric(day.previousClose, "currency", active.currency)}</strong></div>
+        <div><span>Day range</span><strong>${dossierMetric(day.dayLow, "currency", active.currency)} - ${dossierMetric(day.dayHigh, "currency", active.currency)}</strong></div>
+        <div><span>52W range</span><strong>${dossierMetric(day.fiftyTwoWeekLow, "currency", active.currency)} - ${dossierMetric(day.fiftyTwoWeekHigh, "currency", active.currency)}</strong></div>
+        <div><span>Volume</span><strong>${dossierMetric(day.volume, "large")}</strong></div>
+        <div><span>Avg volume</span><strong>${dossierMetric(day.averageVolume, "large")}</strong></div>
+      </div>
+    </section>`,
+    ma: `
+    <section id="dossier-ma" class="dossier-card dossier-card-compact" draggable="true" data-dossier-card="ma">
+      <button class="dossier-drag-handle" type="button" aria-label="Drag Moving averages">Drag</button>
+      <div class="dossier-card-head"><span>Moving averages</span><strong>Trend stack</strong><small>5 / 20 / 25 / 50 / 200</small></div>
+      <div class="ma-dossier-list">
+        ${(dossier.movingAverages || []).map((item) => `
+          <div>
+            <span>${item.label}</span>
+            <strong>${dossierMetric(item.value, "currency", active.currency)}</strong>
+            <em class="${item.state === "Above" ? "positive" : item.state === "Below" ? "negative" : ""}">${item.state}${item.distancePercent !== null && item.distancePercent !== undefined ? ` · ${formatPercent(item.distancePercent)}` : ""}</em>
+          </div>
+        `).join("")}
+      </div>
+    </section>`,
+    fundamentals: `
+    <section id="dossier-fundamentals" class="dossier-card dossier-card-focus" draggable="true" data-dossier-card="fundamentals">
+      <button class="dossier-drag-handle" type="button" aria-label="Drag Fundamentals">Drag</button>
+      <div class="dossier-card-head"><span>Fundamentals</span><strong>Quality ${dossierMetric(fundamentals.scores?.quality)}</strong><small>${fundamentals.source || "Provider summary"}</small></div>
+      <div class="dossier-score-row">
+        <span>Valuation ${dossierMetric(fundamentals.scores?.valuation)}</span>
+        <span>Risk ${dossierMetric(fundamentals.scores?.risk)}</span>
+      </div>
+      <div class="dossier-mini-grid">
+        <div><span>EPS</span><strong>${dossierMetric(fundamentals.eps)}</strong></div>
+        <div><span>Revenue</span><strong>${dossierMetric(fundamentals.revenue, "large")}</strong></div>
+        <div><span>Net income</span><strong>${dossierMetric(fundamentals.netIncome, "large")}</strong></div>
+        <div><span>ROE</span><strong>${roeLabel}</strong></div>
+      </div>
+    </section>`,
+    consensus: `
+    <section class="dossier-card dossier-card-compact" draggable="true" data-dossier-card="consensus">
+      <button class="dossier-drag-handle" type="button" aria-label="Drag Expert consensus">Drag</button>
+      <div class="dossier-card-head"><span>Expert consensus</span><strong>${consensus.rating || "Unavailable"}</strong><small>${consensus.sourceLabel || "External source"}</small></div>
+      <div class="consensus-stack">
+        <span style="--w:${consensus.buy || 0}" class="positive">Buy ${consensus.buy || 0}%</span>
+        <span style="--w:${consensus.hold || 0}" class="neutral">Hold ${consensus.hold || 0}%</span>
+        <span style="--w:${consensus.sell || 0}" class="negative">Sell ${consensus.sell || 0}%</span>
+      </div>
+      <p class="dossier-note">${consensus.note || "External consensus only; not dashboard advice."}</p>
+    </section>`,
+    peers: `
+    <section id="dossier-peers" class="dossier-card dossier-card-table" draggable="true" data-dossier-card="peers">
+      <button class="dossier-drag-handle" type="button" aria-label="Drag Peer comparison">Drag</button>
+      <div class="dossier-card-head"><span>Peer comparison</span><strong>5 closest peers</strong><small>Market cap, P/E, return, growth, ROE</small></div>
+      <div class="peer-table">
+        <div class="peer-row peer-head"><span>Peer</span><span>MCap</span><span>P/E</span><span>1Y</span><span>Sales</span><span>ROE</span></div>
+        ${(dossier.peerComparison || []).map((peer) => `
+          <div class="peer-row"><strong>${peer.symbol}</strong><span>${peer.marketCap}</span><span>${peer.pe}</span><span>${peer.oneYearReturn}</span><span>${peer.salesGrowth}</span><span>${peer.roe}</span></div>
+        `).join("")}
+      </div>
+    </section>`,
+    benchmarks: `
+    <section id="dossier-benchmarks" class="dossier-card dossier-card-compact" draggable="true" data-dossier-card="benchmarks">
+      <button class="dossier-drag-handle" type="button" aria-label="Drag Benchmark comparison">Drag</button>
+      <div class="dossier-card-head"><span>Benchmark comparison</span><strong>Normalized 1Y</strong><small>Selected vs region indices</small></div>
+      ${renderBenchmarkBars(dossier.benchmarkComparison || [])}
+    </section>`,
+    activity: `
+    <section id="dossier-activity" class="dossier-card dossier-card-band" draggable="true" data-dossier-card="activity">
+      <button class="dossier-drag-handle" type="button" aria-label="Drag Range watch">Drag</button>
+      <div class="dossier-card-head"><span>Range watch</span><strong>${unusual.breakout || "Range watch"}</strong><small>Gap, breakout, volume, two-day move</small></div>
+      <div class="activity-band-grid">
+        <div><span>2D move</span><strong>${formatPercent(unusual.twoDayMove || 0)}</strong></div>
+        <div><span>Gap</span><strong>${formatPercent(unusual.gapPercent || 0)}</strong></div>
+        <div><span>Volume</span><strong>${Number(unusual.volumeRatio || 0).toFixed(2)}x</strong></div>
+        <div><span>Breakout</span><strong>${unusual.breakout || "Range watch"}</strong></div>
+      </div>
+    </section>`,
+    links: `
+    <section id="dossier-links" class="dossier-card dossier-card-table" draggable="true" data-dossier-card="links">
+      <button class="dossier-drag-handle" type="button" aria-label="Drag Influence graph">Drag</button>
+      <div class="dossier-card-head"><span>Influence / ownership graph</span><strong>${(influence.nodes || []).length} nodes</strong><small>Public cited only</small></div>
+      <div class="influence-ledger">
+        ${(influence.ledger || []).length ? (influence.ledger || []).map((item) => `
+          <div><strong>${item.claim}</strong><span>${item.confidence} · ${item.sourceLabel || "Source noted"}</span><p>${item.status}</p></div>
+        `).join("") : `<div><strong>No sourced sensitive links yet</strong><span>${influence.policy || "Public cited only"}</span><p>Unsourced political or shell-company claims are intentionally hidden.</p></div>`}
+      </div>
+    </section>`,
+    metrics: `
+    <section class="dossier-card dossier-card-table" draggable="true" data-dossier-card="metrics">
+      <button class="dossier-drag-handle" type="button" aria-label="Drag Show all metrics">Drag</button>
+      <div class="dossier-card-head"><span>Show all metrics</span><strong>Drawer preview</strong><small>Grouped source-backed values</small></div>
+      <div class="metric-drawer-preview">
+        ${(dossier.metricDrawer || []).map((section) => `<div><strong>${section.section}</strong><span>${(section.metrics || []).join(" · ")}</span></div>`).join("")}
+      </div>
+      <div class="source-provenance">${(dossier.sourceProvenance || []).map((item) => `<span>${item.label}: ${item.usedFor}</span>`).join("")}</div>
+    </section>`,
+  };
+  const orderedKeys = state.dossierOrder.filter((key) => cards[key]).concat(DEFAULT_DOSSIER_ORDER.filter((key) => !state.dossierOrder.includes(key)));
+  node.innerHTML = orderedKeys.map((key) => cards[key]).join("");
+  setupDossierDrag(node);
+  discoveryNode.innerHTML = `
+    <div class="dossier-card-head"><span>Market discovery</span><strong>Unusual movers</strong><small>${state.dashboard?.discovery?.source || "Local scan"}</small></div>
+    <div class="discovery-strip">
+      ${discoveryItems.length ? discoveryItems.map((item) => `
+        <button type="button" data-symbol="${item.symbol}">
+          <strong>${item.symbol}</strong>
+          <span>${formatPercent(item.twoDayMove)} 2D · ${formatPercent(item.latestMove)} latest</span>
+          <em>${item.reason} · ${item.confidence}</em>
+        </button>
+      `).join("") : `<div class="dossier-empty">No unusual watchlist movers yet.</div>`}
+    </div>
+  `;
+  discoveryNode.querySelectorAll("button[data-symbol]").forEach((button) => {
+    button.addEventListener("click", () => selectActiveTicker(button.dataset.symbol));
+  });
+}
+
+function patchOverviewLiveSurface(active, forecast, { redrawChart = false } = {}) {
+  const agreement = forecast.models?.agreement || { label: "Pending", score: 0, summary: "Agreement refreshing." };
+  const recommendation = active.recommendation || { buy: 0, hold: 100, sell: 0, signal: "Refreshing" };
+  document.getElementById("hero-regime").textContent = active.regime;
+  const heroPriceNode = document.getElementById("hero-price");
+  const heroPriceText = formatCurrency(active.price, active.currency);
+  const priceSizeClass = heroPriceText.length >= 14 ? "is-compact" : heroPriceText.length >= 11 ? "is-tight" : "";
+  heroPriceNode.className = `hero-price ${priceSizeClass} ${liveValueClass(`hero:${active.symbol}:price`, active.price)}`.trim();
+  heroPriceNode.innerHTML = buildPriceFlipMarkup(active.price, active.currency);
+  const changeNode = document.getElementById("hero-change");
+  changeNode.textContent = formatPercent(active.changePercent);
+  changeNode.className = `hero-change live-number ${active.changePercent >= 0 ? "positive" : "negative"} ${liveValueClass(`hero:${active.symbol}:change`, active.changePercent)}`;
+  document.getElementById("forecast-direction").textContent = forecast.direction;
+  document.getElementById("forecast-confidence").textContent = `Confidence ${Number(forecast.confidence || 0).toFixed(0)}% · ${agreement.label}`;
+  const fairValueNode = document.getElementById("fair-value-gap");
+  fairValueNode.textContent = formatPercent(forecast.fairValueGap);
+  fairValueNode.className = liveValueClass(`hero:${active.symbol}:fair`, forecast.fairValueGap);
+  document.getElementById("event-pressure").textContent = forecast.eventPressureLabel;
+  const modelErrorNode = document.getElementById("model-error");
+  modelErrorNode.textContent = `${Number(forecast.mae || 0).toFixed(1)}%`;
+  modelErrorNode.className = liveValueClass(`hero:${active.symbol}:mae`, forecast.mae);
+  const forecastRangeNode = document.getElementById("forecast-range");
+  forecastRangeNode.textContent = `10D projection ${formatPercent(forecast.expectedReturn)}`;
+  forecastRangeNode.className = `forecast-range live-number ${liveValueClass(`hero:${active.symbol}:projection`, forecast.expectedReturn)}`;
+  document.getElementById("buy-sell-signal").textContent = recommendation.signal ? recommendation.signal.replace("bias", "scenario") : "Balanced scenario";
+  document.getElementById("buy-sell-breakdown").textContent = `Upside ${recommendation.buy ?? 0}% · Base ${recommendation.hold ?? 100}% · Downside ${recommendation.sell ?? 0}%`;
+  document.getElementById("model-agreement-note").textContent = `${agreement.summary} Score ${Number(agreement.score || 0).toFixed(0)}/100.`;
+  document.getElementById("quote-source-note").textContent = active.asOf
+    ? `Quote source: ${formatSourceLabel(active.dataSource)} • Updated ${new Date(active.asOf).toLocaleString()}`
+    : `Quote source: ${formatSourceLabel(active.dataSource)}`;
+  const overviewMetaItems = [
+    {
+      label: active.exchange || active.region || "Global",
+      help: "Where the stock trades.",
+    },
+    {
+      label: `${active.currency || "USD"} pricing`,
+      help: "Home-market trading currency.",
+    },
+    {
+      label: `${active.marketState || "Live"} ${liveBadgeMarkup()}`,
+      help: "Current session state.",
+    },
+    {
+      label: `Vol ${formatCompactNumber(active.volume)} ${liveBadgeMarkup()}`,
+      help: "Current traded volume.",
+    },
+    {
+      label: `${active.asOf ? new Date(active.asOf).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "Delayed"} ${liveBadgeMarkup()}`,
+      help: "Last quote update time.",
+    },
+  ];
+  document.getElementById("overview-meta").innerHTML = `
+    ${overviewMetaItems
+      .map(
+        (item) => `<span class="overview-meta-pill" data-help="${item.help.replace(/"/g, "&quot;")}" tabindex="0">${item.label}</span>`,
+      )
+      .join("")}
+  `;
+  const sessionNode = document.getElementById("market-session-strip");
+  if (sessionNode) {
+    const session = active.marketSession?.nextTransitionAt
+      ? active.marketSession
+      : buildClientMarketSession(active.exchange || active.region, active.marketState);
+    const nextTransitionAt = session.nextTransitionAt ? new Date(session.nextTransitionAt) : null;
+    const remainingSeconds = nextTransitionAt ? Math.max(0, Math.floor((nextTransitionAt.getTime() - Date.now()) / 1000)) : 0;
+    const countdown = nextTransitionAt ? formatDuration(remainingSeconds) : "--:--:--";
+    const nextLabel = session.transitionLabel === "close" ? "Closes in" : "Opens in";
+    sessionNode.innerHTML = `
+      <span class="market-session-pill ${session.isOpen ? "open" : "closed"}">${session.status || "Closed"}</span>
+      <strong>${nextLabel} ${countdown}</strong>
+      <small>${session.hoursLabel || "Hours unavailable"} · ${session.timezone || "UTC"}</small>
+    `;
+  }
+  document.getElementById("hero-stats").innerHTML = (active.stats || [])
+    .map(
+      (stat, index) => `
+        <div class="hero-stat-card">
+          <span>${stat.label}</span>
+          <strong class="live-number ${liveValueClass(`hero:${active.symbol}:stat:${index}`, parseFloat(String(stat.value).replace(/[^\d.+-]/g, "")))}">${stat.value}</strong>
+        </div>
+      `,
+    )
+    .join("");
+  drawSparkline(document.getElementById("hero-sparkline"), (active.history || []).slice(-24));
+  if (redrawChart) {
+    drawTimeline(
+      document.getElementById("hero-projection-chart"),
+      active.historySeries?.length ? active.historySeries : (active.history || []),
+      forecast.projected || [],
+      state.chartFeatures,
+      { currency: active.currency, range: state.chartRange, overlayId: "hero-chart-hover" },
+    );
+  }
+}
+
 function formatDuration(seconds) {
   const total = Math.max(0, Math.floor(Number(seconds) || 0));
   const hours = Math.floor(total / 3600);
@@ -551,7 +1171,7 @@ function buildRadarFloatItems(radar = {}) {
       source: extractDomainLabel(item.url) || "Live scan",
       region: formatRegionLabel(hotspots[index]?.region || "world"),
       when: formatEventDateTime(item.publishedAt),
-      bubble: shortenHeadline(item.title || "Market event", 4),
+      bubble: item.title || "Market event",
       summary: item.source || extractDomainLabel(item.url) || "",
       cta: item.url ? "View full" : "View detail",
     }));
@@ -568,7 +1188,7 @@ function buildRadarFloatItems(radar = {}) {
       source: "Radar brief",
       region: formatRegionLabel(hotspots[index]?.region || "world"),
       when: "Latest",
-      bubble: shortenHeadline(headline, 4),
+      bubble: headline,
       summary: "",
       cta: "View detail",
     }));
@@ -583,7 +1203,7 @@ function buildRadarFloatItems(radar = {}) {
     source: "Radar zone",
     region: formatRegionLabel(item.region || "world"),
     when: "Live",
-    bubble: shortenHeadline(item.headline || `${formatRegionLabel(item.region)} signal`, 4),
+    bubble: item.headline || `${formatRegionLabel(item.region)} signal`,
     summary: "",
     cta: "View detail",
   }));
@@ -603,23 +1223,28 @@ function buildRadarFloatSlots(floatNode, count) {
   if (!floatNode || count <= 0) return [];
   const width = Math.max(260, floatNode.clientWidth || 0);
   const height = Math.max(92, floatNode.clientHeight || 0);
-  const leftPad = 10;
-  const rightPad = 14;
+  const leftPad = 18;
+  const rightPad = 20;
   const topPad = 14;
-  const bottomPad = 8;
-  const rowHeight = 52;
-  const rows = Math.max(1, Math.floor((height - topPad - bottomPad) / rowHeight));
-  const usableWidth = Math.max(148, width - leftPad - rightPad);
-  const colStep = 142;
-  const cols = Math.max(1, Math.floor(usableWidth / colStep));
+  const bottomPad = 10;
+  const rows = count <= 3 ? 1 : 2;
+  const usableWidth = Math.max(188, width - leftPad - rightPad);
+  const usableHeight = Math.max(52, height - topPad - bottomPad);
+  const cols = Math.max(1, Math.ceil(count / rows));
+  const approxChipWidth = 196;
   const capacity = Math.max(1, rows * cols);
   const slots = [];
   for (let index = 0; index < Math.min(count, capacity); index += 1) {
-    const row = index % rows;
-    const col = Math.floor(index / rows);
+    const row = Math.floor(index / cols);
+    const col = index % cols;
+    const itemsInRow = row === rows - 1 ? Math.max(1, count - (row * cols)) : Math.min(cols, count);
+    const rowSpan = Math.max(approxChipWidth, usableWidth);
+    const availableLeft = Math.max(0, rowSpan - approxChipWidth);
+    const xStep = itemsInRow > 1 ? availableLeft / (itemsInRow - 1) : 0;
+    const yStep = rows > 1 ? usableHeight / (rows - 1) : 0;
     slots.push({
-      x: leftPad + Math.min(col, cols - 1) * Math.max(128, usableWidth / cols),
-      y: topPad + row * rowHeight + (col % 2 ? 4 : 0),
+      x: leftPad + (itemsInRow > 1 ? col * xStep : availableLeft / 2),
+      y: topPad + (rows > 1 ? row * yStep : 10),
     });
   }
   return slots;
@@ -957,6 +1582,12 @@ function deferWork(callback, timeout = 120) {
   window.setTimeout(callback, 0);
 }
 
+function logNonAbort(error) {
+  if (error?.name === "AbortError") return;
+  if (String(error?.message || error).includes("signal is aborted")) return;
+  logNonAbort(error);
+}
+
 function flashStatus(message, timeout = 1600) {
   window.clearTimeout(state.statusTimer);
   setStatus(message);
@@ -1259,6 +1890,318 @@ function drawTimeline(svg, history, projected, features = {}, options = {}) {
   drawProjection(svg, history, projected, features, options);
 }
 
+function drawMethodologyFlow(svg, flow = {}) {
+  if (!svg) return;
+  const nodes = flow.nodes || [];
+  const edges = flow.edges || [];
+  if (!nodes.length) {
+    svg.innerHTML = "";
+    return;
+  }
+  const nodeMap = new Map(nodes.map((node) => [node.id, node]));
+  svg.innerHTML = `
+    <defs>
+      <linearGradient id="method-flow-line" x1="0%" x2="100%" y1="0%" y2="0%">
+        <stop offset="0%" stop-color="rgba(84,210,255,0.48)" />
+        <stop offset="100%" stop-color="rgba(255,176,0,0.64)" />
+      </linearGradient>
+      <filter id="method-flow-glow"><feGaussianBlur stdDeviation="2.4" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    </defs>
+    ${edges
+      .map((edge, index) => {
+        const source = nodeMap.get(edge.source);
+        const target = nodeMap.get(edge.target);
+        if (!source || !target) return "";
+        const d = `M ${source.x + 88} ${source.y + 34} C ${source.x + 146} ${source.y + 34}, ${target.x - 38} ${target.y + 34}, ${target.x} ${target.y + 34}`;
+        return `
+          <path d="${d}" fill="none" stroke="url(#method-flow-line)" stroke-width="3.2" stroke-linecap="round" opacity="0.68" />
+          <path d="${d}" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="8" stroke-linecap="round" />
+          <circle r="4.2" fill="#f3b85f" filter="url(#method-flow-glow)">
+            <animateMotion dur="${4.8 + (index * 0.8)}s" repeatCount="indefinite" path="${d}" />
+          </circle>
+          <text x="${(source.x + target.x) / 2}" y="${Math.min(source.y, target.y) + 18}" text-anchor="middle" fill="rgba(223,214,194,0.62)" font-size="10" font-family="Azeret Mono, monospace">${edge.label || ""}</text>
+        `;
+      })
+      .join("")}
+    ${nodes
+      .map(
+        (node) => `
+          <g transform="translate(${node.x}, ${node.y})">
+            <rect width="176" height="68" rx="20" fill="rgba(12,12,12,0.86)" stroke="rgba(255,176,0,0.14)" />
+            <text x="18" y="24" fill="rgba(255,176,0,0.78)" font-size="10" font-family="Azeret Mono, monospace">FLOW</text>
+            <text x="18" y="42" fill="#fff1cc" font-size="14" font-family="Sora, sans-serif">${node.label}</text>
+            <text x="18" y="58" fill="rgba(224,214,193,0.7)" font-size="10.5" font-family="Manrope, sans-serif">${splitImpactLabel(node.summary || "", 30, 1)[0]}</text>
+          </g>
+        `,
+      )
+      .join("")}
+  `;
+  animateSvgRefresh(svg);
+}
+
+function renderMethodology() {
+  const methodology = state.dashboard?.methodology;
+  const headlineNode = document.getElementById("methodology-headline");
+  const cockpitNode = document.getElementById("methodology-cockpit");
+  const principlesNode = document.getElementById("methodology-principles");
+  const inputsNode = document.getElementById("methodology-live-inputs");
+  const conceptsNode = document.getElementById("methodology-concepts");
+  const flowNode = document.getElementById("methodology-flowchart");
+  if (!headlineNode || !cockpitNode || !principlesNode || !inputsNode || !conceptsNode || !flowNode) return;
+  if (!methodology) {
+    headlineNode.textContent = "Methodology is loading.";
+    cockpitNode.innerHTML = "";
+    principlesNode.innerHTML = "";
+    inputsNode.innerHTML = "";
+    conceptsNode.innerHTML = "";
+    drawMethodologyFlow(flowNode, { nodes: [], edges: [] });
+    return;
+  }
+  const cockpit = methodology.cockpit || {};
+  headlineNode.textContent = methodology.headline || "Methodology is ready.";
+  cockpitNode.innerHTML = cockpit.stance ? `
+    <div class="methodology-cockpit-hero">
+      <div>
+        <span>Current operating model</span>
+        <strong>${cockpit.stance}</strong>
+        <p>${cockpit.summary || "Inputs are transformed into scenario support with risks and unknowns kept visible."}</p>
+      </div>
+      <div class="methodology-cockpit-score">
+        <b>${Number(cockpit.edgeScore || 0).toFixed(0)}</b>
+        <small>edge score</small>
+        <em>${cockpit.riskLevel || "Monitoring"} risk</em>
+      </div>
+    </div>
+    <div class="methodology-rule-grid">
+      ${(cockpit.rules || []).map((item) => `
+        <div class="methodology-rule-card">
+          <span>${item.label}</span>
+          <strong>${item.value}</strong>
+          <p>${item.note}</p>
+        </div>
+      `).join("")}
+    </div>
+  ` : "";
+  principlesNode.innerHTML = (methodology.principles || [])
+    .map(
+      (item) => `
+        <div class="methodology-principle-pill">${item}</div>
+      `,
+    )
+    .join("");
+  inputsNode.innerHTML = (methodology.liveInputs || [])
+    .slice(0, 4)
+    .map(
+      (item) => `
+        <div class="metric-card methodology-input-card">
+          <span>${item.label}</span>
+          <strong>${item.value || "Monitoring"}</strong>
+          <p>${item.impactPath || item.useWhere || "Feeds the scenario engine."}</p>
+          <small>${item.cadence}${item.significance ? ` • ${item.significance}` : ""}</small>
+        </div>
+      `,
+    )
+    .join("");
+  conceptsNode.innerHTML = (methodology.concepts || [])
+    .slice(0, 4)
+    .map(
+      (item) => `
+        <div class="research-card methodology-card">
+          <span>${item.family} • ${item.phase}</span>
+          <strong>${item.label}</strong>
+          <code>${item.formula}</code>
+          <p>${item.whyItMatters || item.impactPath}</p>
+          <div class="methodology-card-meta">
+            <span>Used in: ${item.useWhere}</span>
+            <span>Updates: ${item.cadence}</span>
+            ${item.liveValue ? `<span>Live ${item.liveValue}</span>` : ""}
+          </div>
+          ${item.url ? `<a href="${item.url}" target="_blank" rel="noreferrer">Source: ${item.sourceTitle || "Reference"}</a>` : `<small>${item.sourceTitle || ""}</small>`}
+        </div>
+      `,
+    )
+    .join("");
+  drawMethodologyFlow(flowNode, methodology.flow || {});
+}
+
+function buildImpactGraphElements(graph = {}) {
+  const nodes = (graph.nodes || []).map((node) => ({
+    data: {
+      id: node.id,
+      label: node.label,
+      group: node.group || "entity",
+      subtitle: node.subtitle || "",
+      summary: node.summary || "",
+      detail: node.detail || "",
+      impact: node.impact || "",
+      worthLabel: node.worthLabel || "",
+      status: node.status || "",
+      sourceUrl: node.sourceUrl || "",
+      sourceLabel: node.sourceLabel || "",
+      confidence: node.confidence || "",
+      entityType: node.entityType || "",
+      asOf: node.asOf || "",
+    },
+  }));
+  const links = (graph.links || []).map((link, index) => ({
+    data: {
+      id: `${link.source}->${link.target}->${index}`,
+      source: link.source,
+      target: link.target,
+      relation: link.relation || "",
+      direction: link.direction || "neutral",
+      strength: Number(link.value || 1),
+      worthLabel: link.worthLabel || "",
+    },
+  }));
+  return nodes.concat(links);
+}
+
+function renderImpactGraphDetail(nodeData = null) {
+  const detailNode = document.getElementById("impact-graph-detail");
+  const legendNode = document.getElementById("impact-graph-legend");
+  if (!detailNode || !legendNode) return;
+  legendNode.innerHTML = `
+    <span class="legend-pill macro">Macro</span>
+    <span class="legend-pill market">Market</span>
+    <span class="legend-pill stock">Stock</span>
+    <span class="legend-pill project">Project</span>
+    <span class="legend-pill entity">Entity</span>
+  `;
+  if (!nodeData) {
+    detailNode.innerHTML = `<p>Pick a node to inspect its role, dependency path, and source context.</p>`;
+    return;
+  }
+  detailNode.innerHTML = `
+    <div class="impact-detail-card">
+      <span>${String(nodeData.group || "entity").toUpperCase()}</span>
+      <strong>${nodeData.label || "Node"}</strong>
+      ${nodeData.subtitle ? `<small>${nodeData.subtitle}</small>` : ""}
+      ${nodeData.summary ? `<p>${nodeData.summary}</p>` : ""}
+      ${nodeData.detail ? `<p>${nodeData.detail}</p>` : ""}
+      <div class="impact-detail-meta">
+        ${nodeData.confidence ? `<span>${nodeData.confidence}</span>` : ""}
+        ${nodeData.impact ? `<span>${nodeData.impact}</span>` : ""}
+        ${nodeData.worthLabel ? `<span>${nodeData.worthLabel}</span>` : ""}
+        ${nodeData.status ? `<span>${nodeData.status}</span>` : ""}
+        ${nodeData.asOf ? `<span>${formatEventDateTime(nodeData.asOf)}</span>` : ""}
+      </div>
+      ${nodeData.sourceUrl ? `<a class="project-source-link" href="${nodeData.sourceUrl}" target="_blank" rel="noreferrer">${nodeData.sourceLabel || "Source"}</a>` : ""}
+    </div>
+  `;
+}
+
+function renderImpactGraphWorkspace(graph = {}) {
+  const container = document.getElementById("impact-graph");
+  if (!container) return;
+  const noteNode = document.getElementById("impact-graph-note");
+  if (!window.cytoscape) {
+    container.innerHTML = `<div class="impact-graph-fallback">Graph engine unavailable.</div>`;
+    if (noteNode) noteNode.textContent = "Graph engine unavailable.";
+    return;
+  }
+  const elements = buildImpactGraphElements(graph);
+  if (!elements.length) {
+    container.innerHTML = `<div class="impact-graph-fallback">No graph data for the current region.</div>`;
+    renderImpactGraphDetail(null);
+    if (noteNode) noteNode.textContent = "Graph source pending.";
+    return;
+  }
+  if (!state.impactGraphCy) {
+    state.impactGraphCy = window.cytoscape({
+      container,
+      elements,
+      wheelSensitivity: 0.18,
+      minZoom: 0.45,
+      maxZoom: 1.8,
+      boxSelectionEnabled: false,
+      autoungrabify: false,
+      style: [
+        {
+          selector: "node",
+          style: {
+            "background-color": "#101010",
+            "border-width": 1.2,
+            "border-color": "rgba(255,176,0,0.2)",
+            label: "data(label)",
+            color: "#fff1cf",
+            "font-family": "Manrope",
+            "font-size": 10,
+            "text-wrap": "wrap",
+            "text-max-width": 120,
+            "text-valign": "center",
+            "text-halign": "center",
+            width: (ele) => (ele.data("group") === "project" ? 168 : ele.data("group") === "stock" ? 136 : 116),
+            height: (ele) => (ele.data("group") === "project" ? 70 : ele.data("group") === "stock" ? 58 : 50),
+            shape: (ele) => (ele.data("group") === "entity" ? "round-rectangle" : "round-hexagon"),
+            "overlay-opacity": 0,
+          },
+        },
+        { selector: 'node[group = "macro"]', style: { "background-color": "#2d2000", "border-color": "#f3b85f" } },
+        { selector: 'node[group = "market"]', style: { "background-color": "#102437", "border-color": "#73d2ff" } },
+        { selector: 'node[group = "stock"]', style: { "background-color": "#10271f", "border-color": "#7dffc4" } },
+        { selector: 'node[group = "project"]', style: { "background-color": "#2b170d", "border-color": "#ff9c6a" } },
+        { selector: 'node[group = "entity"]', style: { "background-color": "#1a1a1a", "border-color": "#bcb7a5" } },
+        {
+          selector: "edge",
+          style: {
+            width: (ele) => Math.max(1.8, Math.min(7, Number(ele.data("strength") || 1) * 1.5)),
+            "line-color": (ele) => (ele.data("direction") === "positive" ? "#4dd889" : ele.data("direction") === "negative" ? "#ff6d6d" : "#f2c572"),
+            "target-arrow-color": (ele) => (ele.data("direction") === "positive" ? "#4dd889" : ele.data("direction") === "negative" ? "#ff6d6d" : "#f2c572"),
+            "target-arrow-shape": "triangle",
+            "curve-style": "bezier",
+            opacity: 0.72,
+            label: "data(relation)",
+            color: "rgba(224,214,193,0.52)",
+            "font-size": 8,
+            "text-background-opacity": 0,
+            "text-rotation": "autorotate",
+          },
+        },
+        {
+          selector: ":selected",
+          style: {
+            "border-width": 2.2,
+            "border-color": "#fff0c8",
+            "line-color": "#fff0c8",
+            "target-arrow-color": "#fff0c8",
+          },
+        },
+      ],
+    });
+    state.impactGraphCy.on("tap", "node", (event) => {
+      renderImpactGraphDetail(event.target.data());
+    });
+  } else {
+    state.impactGraphCy.elements().remove();
+    state.impactGraphCy.add(elements);
+  }
+  state.impactGraphCy.layout({
+    name: "breadthfirst",
+    directed: true,
+    padding: 34,
+    spacingFactor: 1.1,
+    animate: true,
+    roots: ["#bonds", "#inflation", "#policy"],
+  }).run();
+  state.impactGraphCy.fit(undefined, 34);
+  const firstNode = state.impactGraphCy.nodes()[0];
+  renderImpactGraphDetail(firstNode ? firstNode.data() : null);
+  if (noteNode) {
+    const relationMeta = graph.relationMeta || {};
+    const projectMeta = graph.projectMeta || {};
+    const graphMeta = graph.graphMeta || {};
+    const generatedAt = relationMeta.generatedAt ? new Date(relationMeta.generatedAt).toLocaleString() : "";
+    const noteBits = [
+      relationMeta.source || graphMeta.layout || "Dependency workspace",
+      generatedAt,
+      projectMeta.coverage ? `${projectMeta.coverage} project maps` : "",
+      graphMeta.maxNodes ? `${graphMeta.maxNodes} nodes` : "",
+    ].filter(Boolean);
+    noteNode.textContent = noteBits.join(" • ");
+  }
+}
+
 function renderSearchResults(results = []) {
   const node = document.getElementById("search-results");
   if (!results.length) {
@@ -1549,15 +2492,15 @@ function renderBanner() {
     radarPanel.style.setProperty("--radar-footer-height", `${footerHeight}px`);
   }
   if (sentimentBox) {
-    const sentiment = radar.sentiment || { label: "Mixed", score: 0 };
+    const sentiment = radar.sentiment || { label: "Balanced", score: 0 };
     const score = Number(sentiment.score || 0);
     const scoreText = score > 0 ? `+${(score * 100).toFixed(0)}` : `${(score * 100).toFixed(0)}`;
-    const toneClass = score > 0.2 ? "positive" : score < -0.2 ? "negative" : "neutral";
+    const toneClass = sentiment.tone || (score > 0.2 ? "positive" : score < -0.2 ? "negative" : "neutral");
     sentimentBox.className = `radar-sentiment-box ${toneClass}`;
     sentimentBox.innerHTML = `
       <span>Radar sentiment</span>
-      <strong>${sentiment.label || "Mixed"}</strong>
-      <small>${scoreText} headline balance</small>
+      <strong>${sentiment.label || "Balanced"}</strong>
+      <small>${scoreText} • ${sentiment.driver || "headline balance"}</small>
     `;
   }
 
@@ -1566,7 +2509,7 @@ function renderBanner() {
     floatNode.innerHTML = floatItems
       .map((item, index) => {
         const pos = state.radarFloatPositions[item.id] || floatSlots[index] || getDefaultRadarFloatSlots()[0];
-        const size = item.title.length > 82 ? "large" : item.title.length > 58 ? "medium" : "small";
+        const size = item.title.length > 120 ? "large" : item.title.length > 72 ? "medium" : "small";
         const active = state.radarFloatOpenId === item.id;
         return `
           <div
@@ -1887,151 +2830,8 @@ function renderOverview() {
   document.getElementById("feature-sma20").checked = Boolean(state.chartFeatures.sma20);
   document.getElementById("feature-sma50").checked = Boolean(state.chartFeatures.sma50);
   document.getElementById("feature-bands").checked = Boolean(state.chartFeatures.bands);
-
-  document.getElementById("factor-map").innerHTML = (active.relationshipCards || forecast.factors || [])
-    .map(
-      (factor) => `
-        <div class="factor-card">
-          <div class="factor-card-header">
-            <strong>${factor.title}</strong>
-            <span>${factor.score.toFixed(0)}</span>
-          </div>
-          <div class="impact-bar"><div class="impact-fill" style="width:${Math.abs(factor.score)}%"></div></div>
-          <p>${factor.description}</p>
-        </div>
-      `,
-    )
-    .join("");
-  const seenContextLabels = new Set();
-  const macroMicroContext = []
-    .concat(state.dashboard?.radar?.macroFactors || [])
-    .concat(state.dashboard?.radar?.microFactors || [])
-    .filter((item) => {
-      const label = String(item?.label || "").trim();
-      if (!label) return false;
-      if (/(^|\b)(s&p|nasdaq|dow|nifty|sensex)(\b|$)/i.test(label)) return false;
-      const key = label.toLowerCase();
-      if (seenContextLabels.has(key)) return false;
-      seenContextLabels.add(key);
-      return true;
-    })
-    .slice(0, 4);
-  const relationshipCards = active.relationshipCards || forecast.factors || [];
-  const factorSchedule = state.dashboard?.selectedRegion
-    ? (selectedRegionPayload()?.watchlistImplications?.graph?.factorSchedule || []).slice(0, 3)
-    : [];
-  document.getElementById("factor-map").innerHTML = `
-    ${macroMicroContext.length ? `
-      <div class="analysis-context-grid">
-        ${macroMicroContext
-          .map(
-            (item) => `
-              <div class="factor-context-card">
-                <span>${item.label}</span>
-                <strong>${item.value || "Live"}</strong>
-                <p>${item.trend || "Current live context."}</p>
-              </div>
-            `,
-          )
-          .join("")}
-      </div>
-    ` : ""}
-    ${factorSchedule.length ? `
-      <div class="analysis-context-grid factor-cadence-grid">
-        ${factorSchedule
-          .map(
-            (item) => `
-              <div class="factor-context-card cadence-card">
-                <span>${item.label}</span>
-                <strong>${item.cadence}</strong>
-                <p>${item.significance} significance • ${item.use}</p>
-              </div>
-            `,
-          )
-          .join("")}
-      </div>
-    ` : ""}
-    <div class="analysis-flow-grid">
-      ${relationshipCards
-        .map(
-          (factor) => `
-            <div class="factor-card">
-              <div class="factor-card-header">
-                <strong>${factor.title}</strong>
-                <span>${factor.score.toFixed(0)}</span>
-              </div>
-              <div class="impact-bar"><div class="impact-fill" style="width:${Math.abs(factor.score)}%"></div></div>
-              <p>${factor.description}</p>
-            </div>
-          `,
-        )
-        .join("")}
-    </div>
-  `;
-
-  const latestDriverEvents = [...(state.eventResult?.items || state.dashboard?.radar?.items || [])]
-    .slice(0, 2)
-    .map((item) => ({
-      title: item.title || "Live catalyst",
-      tag: item.category || "Live",
-      meta: `${formatEventDateTime(item.publishedAt)}${item.source ? ` • ${item.source}` : ""}`,
-      body: item.description || item.summary || item.title || "Latest event context is being refreshed.",
-    }));
-  const signalDrivers = (active.driverCards || forecast.triggers || []).slice(0, 5);
-  const paperNotes = (selectedRegionPayload()?.watchlistImplications?.graph?.papers || []).slice(0, 2);
-  document.getElementById("catalyst-list").innerHTML = `
-    ${latestDriverEvents.length ? `
-      <div class="driver-event-strip">
-        ${latestDriverEvents
-          .map(
-            (item) => `
-              <div class="catalyst-card event-led">
-                <div class="catalyst-header">
-                  <strong>${item.title}</strong>
-                  <span>${String(item.tag).toUpperCase()}</span>
-                </div>
-                <small>${item.meta}</small>
-                <p>${item.body}</p>
-              </div>
-            `,
-          )
-          .join("")}
-      </div>
-    ` : ""}
-    ${paperNotes.length ? `
-      <div class="driver-event-strip paper-strip">
-        ${paperNotes
-          .map(
-            (item) => `
-              <div class="catalyst-card paper-led">
-                <div class="catalyst-header">
-                  <strong>${item.title}</strong>
-                  <span>PAPER</span>
-                </div>
-                <small>${item.year || ""} • ${item.type || "research"}</small>
-                <p>${item.whyItMatters}</p>
-              </div>
-            `,
-          )
-          .join("")}
-      </div>
-    ` : ""}
-    <div class="driver-card-stack">
-      ${signalDrivers
-        .map(
-          (item, index) => `
-            <div class="catalyst-card">
-              <div class="catalyst-header">
-                <strong>${index + 1}. ${item.title}</strong>
-                <span>${item.tag || (index === 0 ? "Primary" : "Active")}</span>
-              </div>
-              <p>${item.body || item.description}</p>
-            </div>
-          `,
-        )
-        .join("")}
-    </div>
-  `;
+  renderStockDossier(active);
+  renderOverviewLowerPanels(active, forecast);
 }
 
 function renderBondMarket() {
@@ -2047,6 +2847,7 @@ function renderBondMarket() {
     return;
   }
   const bonds = region.bonds;
+  const research = region.researchProtocol || {};
   summaryNode.innerHTML = `
     <div class="metric-card"><span>10Y</span><strong>${bonds.tenors[2].yield.toFixed(2)}%</strong><small>${bonds.tenors[2].change1D >= 0 ? "+" : ""}${bonds.tenors[2].change1D.toFixed(1)} bp today</small></div>
     <div class="metric-card"><span>2s10s</span><strong>${bonds.curve.slope2s10s.toFixed(2)}%</strong><small>${bonds.curve.shape}</small></div>
@@ -2069,6 +2870,20 @@ function renderBondMarket() {
     <div class="reason-card"><span class="analysis-tag fact">Fact</span><strong>What changed?</strong><p>${analysis.whatChanged || bonds.narrative}</p></div>
     <div class="reason-card"><span class="analysis-tag interpretation">Interpretation</span><strong>Why it changed</strong><p>${analysis.whyChanged || bonds.narrative}</p></div>
     <div class="reason-card"><span class="analysis-tag implication">Implication</span><strong>What it implies</strong><p>${analysis.marketImplication || "Rates are shaping cross-asset leadership."}</p></div>
+    ${research.summary ? `<div class="reason-card"><span class="analysis-tag note">Protocol</span><strong>Research protocol</strong><p>${research.summary}</p></div>` : ""}
+    ${(research.factors || [])
+      .slice(0, 3)
+      .map(
+        (item) => `
+          <div class="reason-card">
+            <span class="analysis-tag fact">${item.significance || "High"}</span>
+            <strong>${item.label}</strong>
+            <p>${item.factsFirst}</p>
+            <small>${item.cadence}${item.sourceLabel ? ` • ${item.sourceLabel}` : ""}</small>
+          </div>
+        `,
+      )
+      .join("")}
     ${(analysis.kbNotes || [])
       .map((note) => `<div class="reason-card"><span class="analysis-tag note">Note</span><strong>Regime note</strong><p>${note}</p></div>`)
       .join("")}
@@ -2113,6 +2928,7 @@ function renderEquityContext() {
   summaryNode.innerHTML = `
     <div class="reason-card"><span class="analysis-tag interpretation">Interpretation</span><strong>Rates to equities</strong><p>${equity.summary}</p></div>
     <div class="reason-card"><span class="analysis-tag implication">Implication</span><strong>Likely leadership</strong><p>${equity.styleBias}</p></div>
+    ${equity.breadth ? `<div class="reason-card"><span class="analysis-tag fact">Breadth</span><strong>${equity.breadth.label}</strong><p>${equity.breadth.detail}</p></div>` : ""}
     ${equity.kbNote ? `<div class="reason-card"><span class="analysis-tag note">Note</span><strong>Sensitivity note</strong><p>${equity.kbNote}</p></div>` : ""}
   `;
   sectorNode.innerHTML = (equity.sectors || [])
@@ -2172,6 +2988,34 @@ function renderMacroEvents() {
     .join("");
 }
 
+function splitImpactLabel(text, limit = 18, maxLines = 2) {
+  const words = String(text || "").trim().split(/\s+/).filter(Boolean);
+  if (!words.length) return [""];
+  const lines = [];
+  let current = "";
+  words.forEach((word) => {
+    const next = current ? `${current} ${word}` : word;
+    if (next.length <= limit || !current) {
+      current = next;
+      return;
+    }
+    lines.push(current);
+    current = word;
+  });
+  if (current) lines.push(current);
+  if (lines.length <= maxLines) return lines;
+  const trimmed = lines.slice(0, maxLines);
+  trimmed[maxLines - 1] = `${trimmed[maxLines - 1].replace(/\.\.\.$/, "").slice(0, Math.max(0, limit - 3)).trim()}...`;
+  return trimmed;
+}
+
+function impactNodeDimensions(node = {}) {
+  if (node.group === "project") return { width: 184, height: 60, radius: 20 };
+  if (node.group === "entity") return { width: 156, height: 46, radius: 16 };
+  if (node.group === "stock") return { width: 150, height: 50, radius: 18 };
+  return { width: 134, height: 46, radius: 18 };
+}
+
 function drawImpactGraph(svg, graph) {
   if (!svg) return;
   const nodes = graph?.nodes || [];
@@ -2182,12 +3026,13 @@ function drawImpactGraph(svg, graph) {
   }
   const positions = {};
   const columns = {
-    macro: { x: 104, yStart: 78, gap: 92 },
-    market: { x: 300, yStart: 130, gap: 92 },
-    stock: { x: 508, yStart: 68, gap: 64 },
-    entity: { x: 640, yStart: 54, gap: 50 },
+    macro: { x: 118, yStart: 84, gap: 108 },
+    market: { x: 324, yStart: 144, gap: 108 },
+    stock: { x: 530, yStart: 78, gap: 88 },
+    project: { x: 746, yStart: 70, gap: 84 },
+    entity: { x: 962, yStart: 60, gap: 70 },
   };
-  const counts = { macro: 0, market: 0, stock: 0, entity: 0 };
+  const counts = { macro: 0, market: 0, stock: 0, project: 0, entity: 0 };
   nodes.forEach((node) => {
     const cached = state.impactGraphPositions[node.id];
     if (cached) {
@@ -2199,10 +3044,17 @@ function drawImpactGraph(svg, graph) {
     positions[node.id] = { x: column.x, y: column.yStart + idx * column.gap };
     counts[node.group] = idx + 1;
   });
+  const graphHeight = Math.max(
+    440,
+    ...Object.entries(columns).map(([group, config]) => config.yStart + ((counts[group] || 0) * config.gap) + 64),
+  );
+  svg.setAttribute("viewBox", `0 0 1088 ${graphHeight}`);
+  svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
   const paletteByGroup = {
     macro: "rgba(255,176,0,0.18)",
     market: "rgba(115,210,255,0.18)",
     stock: "rgba(125,255,196,0.18)",
+    project: "rgba(255,156,106,0.24)",
     entity: "rgba(255,255,255,0.12)",
   };
   svg.innerHTML = `
@@ -2216,8 +3068,12 @@ function drawImpactGraph(svg, graph) {
         const target = positions[link.target];
         if (!source || !target) return "";
         const color = link.direction === "positive" ? "#4dd889" : link.direction === "negative" ? "#ff6d6d" : "#f2c572";
-        const width = Math.max(2, Number(link.value || 1) * 2);
-        const d = `M ${source.x + 64} ${source.y} C ${source.x + 144} ${source.y}, ${target.x - 90} ${target.y}, ${target.x - 16} ${target.y}`;
+        const width = Math.max(2.2, Number(link.value || 1) * 1.9);
+        const sourceNode = nodes.find((node) => node.id === link.source) || {};
+        const targetNode = nodes.find((node) => node.id === link.target) || {};
+        const sourceBox = impactNodeDimensions(sourceNode);
+        const targetBox = impactNodeDimensions(targetNode);
+        const d = `M ${source.x + (sourceBox.width / 2) - 8} ${source.y} C ${source.x + 124} ${source.y}, ${target.x - 124} ${target.y}, ${target.x - (targetBox.width / 2) + 8} ${target.y}`;
         return `
           <path data-impact-link="${index}" d="${d}" fill="none" stroke="${color}" stroke-width="${width + 3}" opacity="0.18" filter="url(#impact-glow)" />
           <path data-impact-link-core="${index}" d="${d}" fill="none" stroke="${color}" stroke-width="${width}" opacity="0.82" stroke-linecap="round" />
@@ -2233,13 +3089,18 @@ function drawImpactGraph(svg, graph) {
       .map((node) => {
         const pos = positions[node.id];
         const groupTone = paletteByGroup[node.group] || paletteByGroup.entity;
-        const width = node.group === "entity" ? 118 : 124;
-        const height = node.group === "entity" ? 34 : 38;
+        const { width, height, radius } = impactNodeDimensions(node);
+        const labelLines = splitImpactLabel(node.label, node.group === "project" ? 22 : node.group === "entity" ? 18 : 16, node.group === "project" ? 2 : 1);
+        const subtitle = String(node.subtitle || "").trim();
+        const kicker = String(node.impact || node.status || node.entityType || node.group || "").trim().toUpperCase();
         return `
           <g class="impact-node-group" data-node-id="${node.id}" data-node-group="${node.group}" transform="translate(${pos.x}, ${pos.y})">
-            <rect class="impact-node-plate" x="-${width / 2}" y="-${height / 2}" width="${width}" height="${height}" rx="${node.group === "entity" ? 14 : 18}" fill="rgba(10,10,10,0.88)" stroke="${groupTone}" />
-            <text x="0" y="-2" text-anchor="middle" fill="#f7f0dd" font-size="${node.group === "entity" ? 11 : 12}" font-family="Manrope, sans-serif">${node.label}</text>
-            <text x="0" y="12" text-anchor="middle" fill="rgba(220,210,188,0.78)" font-size="9" font-family="Azeret Mono, monospace">${String(node.entityType || node.group || "").toUpperCase()}</text>
+            <rect class="impact-node-plate" x="-${width / 2}" y="-${height / 2}" width="${width}" height="${height}" rx="${radius}" fill="rgba(10,10,10,0.88)" stroke="${groupTone}" />
+            <text x="0" y="${labelLines.length > 1 ? "-11" : "-5"}" text-anchor="middle" fill="#f7f0dd" font-size="${node.group === "project" ? 11 : node.group === "entity" ? 10.5 : 11.5}" font-family="Manrope, sans-serif">
+              ${labelLines.map((line, index) => `<tspan x="0" dy="${index === 0 ? 0 : 12}">${line}</tspan>`).join("")}
+            </text>
+            ${subtitle ? `<text x="0" y="${node.group === "project" ? "18" : "12"}" text-anchor="middle" fill="rgba(255,228,187,0.82)" font-size="${node.group === "project" ? 9.5 : 8.6}" font-family="Azeret Mono, monospace">${subtitle}</text>` : ""}
+            <text x="0" y="${node.group === "project" ? "30" : subtitle ? "22" : "15"}" text-anchor="middle" fill="rgba(220,210,188,0.66)" font-size="8.4" font-family="Azeret Mono, monospace">${kicker}</text>
           </g>
         `;
       })
@@ -2259,7 +3120,11 @@ function bindImpactGraphInteractions(svg, graph, positions) {
       const source = positions[link.source];
       const target = positions[link.target];
       if (!source || !target) return;
-      const d = `M ${source.x + 64} ${source.y} C ${source.x + 144} ${source.y}, ${target.x - 90} ${target.y}, ${target.x - 16} ${target.y}`;
+      const sourceNode = (graph?.nodes || []).find((node) => node.id === link.source) || {};
+      const targetNode = (graph?.nodes || []).find((node) => node.id === link.target) || {};
+      const sourceBox = impactNodeDimensions(sourceNode);
+      const targetBox = impactNodeDimensions(targetNode);
+      const d = `M ${source.x + (sourceBox.width / 2) - 8} ${source.y} C ${source.x + 124} ${source.y}, ${target.x - 124} ${target.y}, ${target.x - (targetBox.width / 2) + 8} ${target.y}`;
       glowPath.setAttribute("d", d);
       const core = svg.querySelector(`[data-impact-link-core="${index}"]`);
       if (core) core.setAttribute("d", d);
@@ -2272,13 +3137,13 @@ function bindImpactGraphInteractions(svg, graph, positions) {
       const nodeId = element.dataset.nodeId;
       const start = positions[nodeId];
       if (!start) return;
-      const svgRect = svg.getBoundingClientRect();
       const startX = event.clientX;
       const startY = event.clientY;
       const handleMove = (moveEvent) => {
+        const limitY = Number(svg.getAttribute("viewBox")?.split(" ")[3] || 440) - 44;
         const next = {
-          x: Math.max(70, Math.min(650, start.x + (moveEvent.clientX - startX))),
-          y: Math.max(42, Math.min(320, start.y + (moveEvent.clientY - startY))),
+          x: Math.max(70, Math.min(1018, start.x + (moveEvent.clientX - startX))),
+          y: Math.max(42, Math.min(limitY, start.y + (moveEvent.clientY - startY))),
         };
         positions[nodeId] = next;
         state.impactGraphPositions[nodeId] = next;
@@ -2298,13 +3163,10 @@ function bindImpactGraphInteractions(svg, graph, positions) {
 function renderWatchlistImplications() {
   const region = selectedRegionPayload();
   const cardsNode = document.getElementById("watchlist-implication-cards");
-  const graphNode = document.getElementById("impact-graph");
-  const graphNoteNode = document.getElementById("impact-graph-note");
-  if (!cardsNode || !graphNode) return;
+  if (!cardsNode) return;
   if (!region?.watchlistImplications) {
     cardsNode.innerHTML = "";
-    graphNode.innerHTML = "";
-    if (graphNoteNode) graphNoteNode.textContent = "Graph source pending.";
+    renderImpactGraphWorkspace({});
     return;
   }
   cardsNode.innerHTML = (region.watchlistImplications.cards || [])
@@ -2318,20 +3180,48 @@ function renderWatchlistImplications() {
           <p><strong>Scenario:</strong> ${item.scenario}</p>
           <p><strong>Impact:</strong> ${item.impact}</p>
           <p><strong>Why:</strong> ${item.why}</p>
+          ${
+            item.projects?.length
+              ? `
+                <div class="project-implication-list">
+                  ${item.projects
+                    .map(
+                      (project) => `
+                        <article class="project-implication-card">
+                          <div class="project-implication-head">
+                            <strong>${project.title}</strong>
+                            <span>${project.worthLabel || "Undisclosed"}</span>
+                          </div>
+                          <p>${project.summary}</p>
+                          <div class="project-implication-meta">
+                            ${project.theme ? `<span>${project.theme}</span>` : ""}
+                            ${project.status ? `<span>${project.status}</span>` : ""}
+                            ${project.asOf ? `<span>${formatEventDateTime(project.asOf)}</span>` : ""}
+                          </div>
+                          ${
+                            project.suppliers?.length
+                              ? `<div class="project-supplier-list">${project.suppliers.map((supplier) => `<span>${supplier.label}${supplier.role ? ` • ${supplier.role}` : ""}</span>`).join("")}</div>`
+                              : ""
+                          }
+                          ${
+                            project.sourceUrl
+                              ? `<a class="project-source-link" href="${project.sourceUrl}" target="_blank" rel="noreferrer">${project.sourceLabel || "Source"}</a>`
+                              : ""
+                          }
+                        </article>
+                      `,
+                    )
+                    .join("")}
+                </div>
+              `
+              : ""
+          }
           ${item.marketMapNote?.summary ? `<p><strong>Map:</strong> ${item.marketMapNote.summary}</p>` : ""}
         </div>
       `,
     )
     .join("");
-  drawImpactGraph(graphNode, region.watchlistImplications.graph);
-  if (graphNoteNode) {
-    const relationMeta = region.watchlistImplications.graph?.relationMeta || {};
-    const source = relationMeta.source || "Dynamic relation graph";
-    const generatedAt = relationMeta.generatedAt ? new Date(relationMeta.generatedAt).toLocaleString() : "";
-    const vaultMode = region.watchlistImplications.graph?.vault?.mode || "";
-    const suffix = vaultMode ? ` • ${vaultMode}` : "";
-    graphNoteNode.textContent = generatedAt ? `${source} • ${generatedAt}${suffix}` : `${source}${suffix}`;
-  }
+  renderImpactGraphWorkspace(region.watchlistImplications.graph || {});
 }
 
 function renderComparison() {
@@ -2634,6 +3524,7 @@ function renderCorePanels() {
   renderInflationView();
   renderEquityContext();
   renderMacroEvents();
+  renderMethodology();
   renderWatchlistImplications();
   renderComparison();
   renderTopbar();
@@ -2695,7 +3586,18 @@ function applyLiveQuoteUpdate(payload) {
 
   renderWatchlist();
   renderBoard();
-  renderOverview();
+  if (state.dashboard.active) {
+    const now = Date.now();
+    const redrawChart = !state.lastOverviewChartRefreshAt || now - state.lastOverviewChartRefreshAt >= 2000;
+    patchOverviewLiveSurface(
+      state.dashboard.active,
+      state.dashboard.active.forecast || emptyForecastPayload(),
+      { redrawChart },
+    );
+    if (redrawChart) {
+      state.lastOverviewChartRefreshAt = now;
+    }
+  }
   renderTopbar();
   flashStatus("Live now", 900);
 }
@@ -2713,7 +3615,7 @@ function startQuoteStream() {
       const payload = JSON.parse(event.data);
       applyLiveQuoteUpdate(payload);
     } catch (error) {
-      console.error(error);
+      logNonAbort(error);
     }
   });
   stream.onerror = () => {
@@ -2767,7 +3669,7 @@ function startRadarRefresh() {
   window.clearInterval(state.radarTimer);
   state.radarTimer = window.setInterval(() => {
     loadRadar({ silent: true }).catch((error) => {
-      console.error(error);
+      logNonAbort(error);
     });
   }, 900000);
 }
@@ -2802,7 +3704,7 @@ function startEventRefresh() {
   window.clearInterval(state.eventTimer);
   state.eventTimer = window.setInterval(() => {
     loadEventFeed(state.eventLastQuery || "", { silent: true, force: true }).catch((error) => {
-      console.error(error);
+      logNonAbort(error);
     });
   }, 1800000);
 }
@@ -2876,7 +3778,7 @@ function selectActiveTicker(symbol, { refresh = true } = {}) {
   if (changed) {
     setStatus("Loading quote");
     loadOverviewFast({ silent: true }).catch((error) => {
-      console.error(error);
+      logNonAbort(error);
     });
   }
   refreshDashboard();
@@ -2886,7 +3788,7 @@ async function refreshDashboard() {
   const requestId = ++state.dashboardRequestId;
   setStatus("Refreshing");
   loadOverviewFast({ silent: true }).catch((error) => {
-    console.error(error);
+    logNonAbort(error);
   });
   const payload = await api("/api/dashboard", {
     method: "POST",
@@ -2934,7 +3836,7 @@ async function refreshDashboard() {
       });
     })
     .catch((error) => {
-      console.error(error);
+      logNonAbort(error);
     });
   if (document.getElementById("academy-cards")) {
     loadAcademyDetail(state.activeTicker, { silent: true })
@@ -2945,11 +3847,11 @@ async function refreshDashboard() {
         });
       })
       .catch((error) => {
-        console.error(error);
+        logNonAbort(error);
       });
   }
   loadRadar({ silent: true }).catch((error) => {
-    console.error(error);
+    logNonAbort(error);
   });
 }
 
@@ -3067,7 +3969,21 @@ function bindEvents() {
       const target = tab.dataset.tab;
       document.querySelectorAll(".tab").forEach((node) => node.classList.toggle("active", node === tab));
       document.querySelectorAll(".tab-panel").forEach((panel) => panel.classList.toggle("active", panel.id === target));
+      if (target === "watchlist-implications" && state.impactGraphCy) {
+        window.setTimeout(() => {
+          state.impactGraphCy.resize();
+          state.impactGraphCy.fit(undefined, 34);
+        }, 60);
+      }
     });
+  });
+  window.addEventListener("resize", () => {
+    if (!state.impactGraphCy) return;
+    window.clearTimeout(state.impactResizeTimer);
+    state.impactResizeTimer = window.setTimeout(() => {
+      state.impactGraphCy?.resize();
+      state.impactGraphCy?.fit(undefined, 34);
+    }, 120);
   });
 
   const settingsDialog = document.getElementById("settings-dialog");
@@ -3079,6 +3995,33 @@ function bindEvents() {
   });
   document.getElementById("pop-radar-clouds").addEventListener("click", () => {
     toggleRadarClouds();
+  });
+  document.getElementById("impact-fit")?.addEventListener("click", () => state.impactGraphCy?.fit(undefined, 34));
+  document.getElementById("impact-reset")?.addEventListener("click", () => {
+    if (!state.impactGraphCy) return;
+    state.impactGraphCy.layout({
+      name: "breadthfirst",
+      directed: true,
+      padding: 34,
+      spacingFactor: 1.1,
+      animate: true,
+      roots: ["#bonds", "#inflation", "#policy"],
+    }).run();
+    window.setTimeout(() => state.impactGraphCy?.fit(undefined, 34), 320);
+  });
+  document.getElementById("impact-zoom-in")?.addEventListener("click", () => {
+    if (!state.impactGraphCy) return;
+    state.impactGraphCy.zoom({
+      level: Math.min(1.8, state.impactGraphCy.zoom() * 1.16),
+      renderedPosition: { x: state.impactGraphCy.width() / 2, y: state.impactGraphCy.height() / 2 },
+    });
+  });
+  document.getElementById("impact-zoom-out")?.addEventListener("click", () => {
+    if (!state.impactGraphCy) return;
+    state.impactGraphCy.zoom({
+      level: Math.max(0.45, state.impactGraphCy.zoom() / 1.16),
+      renderedPosition: { x: state.impactGraphCy.width() / 2, y: state.impactGraphCy.height() / 2 },
+    });
   });
   document.getElementById("save-settings").addEventListener("click", async (event) => {
     event.preventDefault();
@@ -3149,7 +4092,7 @@ function bindEvents() {
       primeActiveTickerSelection(payload.symbol);
       renderOverview();
       refreshDashboard().catch((error) => {
-        console.error(error);
+        logNonAbort(error);
       });
       flashStatus("Lab ready", 1200);
     });
@@ -3195,7 +4138,7 @@ async function init() {
   bindEvents();
   render();
   loadOverviewFast({ silent: true }).catch((error) => {
-    console.error(error);
+    logNonAbort(error);
   });
   const dashboardPromise = refreshDashboard();
   const backgroundLoads = Promise.allSettled([loadConfig(), loadPresets(), loadSavedWatchlists()]);
@@ -3209,6 +4152,6 @@ async function init() {
 }
 
 init().catch((error) => {
-  console.error(error);
+  logNonAbort(error);
   document.getElementById("headline-track").innerHTML = `<span>Backend unavailable. Start server.py to enable the full-stack dashboard.</span>`;
 });

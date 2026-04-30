@@ -5,6 +5,7 @@ import html
 import math
 import os
 import re
+import socket
 import sqlite3
 import statistics
 import time
@@ -31,7 +32,9 @@ UNIVERSE_DIR = DATA_DIR / "universes"
 RELATIONS_DIR = DATA_DIR / "relations"
 FACTOR_DIR = DATA_DIR / "factors"
 PAPER_DIR = DATA_DIR / "papers"
+MACRO_DATA_DIR = DATA_DIR / "macro"
 VAULT_DIR = BASE_DIR / "vault" / "market-map"
+COMPANY_PROJECTS_PATH = DATA_DIR / "company_projects.json"
 
 DEFAULT_CONFIG = {
   "provider": "yahoo",
@@ -379,6 +382,84 @@ RADAR_REGION_KEYWORDS = {
 
 USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123 Safari/537.36"
 DB_LOCK = threading.Lock()
+OUTBOUND_LOCK = threading.Lock()
+OUTBOUND_LAST_REQUEST_AT: dict[str, float] = {}
+OUTBOUND_RESPONSE_CACHE: dict[str, tuple[float, object]] = {}
+OUTBOUND_ALLOWED_HOSTS = {
+  "query1.finance.yahoo.com",
+  "query2.finance.yahoo.com",
+  "finance.yahoo.com",
+  "feeds.finance.yahoo.com",
+  "www.google.com",
+  "news.google.com",
+  "duckduckgo.com",
+  "feeds.bbci.co.uk",
+  "www.npr.org",
+  "feeds.npr.org",
+  "rss.nytimes.com",
+  "feeds.content.dowjones.io",
+  "economictimes.indiatimes.com",
+  "timesofindia.indiatimes.com",
+  "www.smh.com.au",
+  "www.abc.net.au",
+  "www.theguardian.com",
+  "api.bls.gov",
+  "api.stlouisfed.org",
+  "www.federalreserve.gov",
+  "www.rbi.org.in",
+  "www.alphavantage.co",
+  "stooq.com",
+}
+OUTBOUND_MIN_INTERVAL = {
+  "query1.finance.yahoo.com": 0.8,
+  "query2.finance.yahoo.com": 0.8,
+  "finance.yahoo.com": 0.8,
+  "feeds.finance.yahoo.com": 1.2,
+  "www.google.com": 1.4,
+  "news.google.com": 1.4,
+  "duckduckgo.com": 2.0,
+  "feeds.bbci.co.uk": 3.0,
+  "www.npr.org": 3.0,
+  "feeds.npr.org": 3.0,
+  "rss.nytimes.com": 4.0,
+  "feeds.content.dowjones.io": 4.0,
+  "economictimes.indiatimes.com": 4.0,
+  "timesofindia.indiatimes.com": 4.0,
+  "www.smh.com.au": 4.0,
+  "www.abc.net.au": 4.0,
+  "www.theguardian.com": 4.0,
+  "api.bls.gov": 2.5,
+  "api.stlouisfed.org": 2.5,
+  "www.federalreserve.gov": 5.0,
+  "www.rbi.org.in": 5.0,
+  "www.alphavantage.co": 12.0,
+  "stooq.com": 4.0,
+}
+OUTBOUND_CACHE_TTL = {
+  "query1.finance.yahoo.com": 20,
+  "query2.finance.yahoo.com": 20,
+  "finance.yahoo.com": 20,
+  "feeds.finance.yahoo.com": 90,
+  "www.google.com": 30,
+  "news.google.com": 120,
+  "duckduckgo.com": 300,
+  "feeds.bbci.co.uk": 900,
+  "www.npr.org": 900,
+  "feeds.npr.org": 900,
+  "rss.nytimes.com": 900,
+  "feeds.content.dowjones.io": 900,
+  "economictimes.indiatimes.com": 900,
+  "timesofindia.indiatimes.com": 900,
+  "www.smh.com.au": 900,
+  "www.abc.net.au": 900,
+  "www.theguardian.com": 900,
+  "api.bls.gov": 21600,
+  "api.stlouisfed.org": 21600,
+  "www.federalreserve.gov": 21600,
+  "www.rbi.org.in": 21600,
+  "www.alphavantage.co": 1800,
+  "stooq.com": 1800,
+}
 
 
 def resolve_local_llm_model(config: dict | None = None) -> str:
@@ -455,6 +536,19 @@ def init_db() -> None:
           source TEXT NOT NULL,
           updated_at TEXT NOT NULL,
           PRIMARY KEY(symbol, interval, timestamp)
+        )
+        """
+      )
+      connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS derived_insights (
+          symbol TEXT NOT NULL,
+          interval TEXT NOT NULL,
+          insight_key TEXT NOT NULL,
+          payload_json TEXT NOT NULL,
+          source TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          PRIMARY KEY(symbol, interval, insight_key)
         )
         """
       )
@@ -682,6 +776,116 @@ def load_historical_records(symbol: str, interval: str, limit: int = 0) -> list[
   return points
 
 
+def save_derived_insight(symbol: str, interval: str, insight_key: str, payload: dict, source: str) -> None:
+  init_db()
+  updated_at = datetime.now(timezone.utc).isoformat()
+  with DB_LOCK:
+    connection = sqlite3.connect(DB_PATH)
+    try:
+      connection.execute(
+        """
+        INSERT INTO derived_insights(symbol, interval, insight_key, payload_json, source, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(symbol, interval, insight_key) DO UPDATE SET
+          payload_json = excluded.payload_json,
+          source = excluded.source,
+          updated_at = excluded.updated_at
+        """,
+        (
+          normalize_symbol(symbol),
+          interval.lower(),
+          insight_key,
+          json.dumps(payload or {}),
+          source,
+          updated_at,
+        ),
+      )
+      connection.commit()
+    finally:
+      connection.close()
+
+
+def load_derived_insight(symbol: str, interval: str, insight_key: str) -> dict | None:
+  init_db()
+  with DB_LOCK:
+    connection = sqlite3.connect(DB_PATH)
+    try:
+      row = connection.execute(
+        """
+        SELECT payload_json, source, updated_at
+        FROM derived_insights
+        WHERE symbol = ? AND interval = ? AND insight_key = ?
+        """,
+        (normalize_symbol(symbol), interval.lower(), insight_key),
+      ).fetchone()
+    finally:
+      connection.close()
+  if not row:
+    return None
+  try:
+    payload = json.loads(row[0])
+  except json.JSONDecodeError:
+    return None
+  payload["source"] = row[1]
+  payload["updatedAt"] = row[2]
+  return payload
+
+
+def build_moving_average_insight(symbol: str, history: list[float], interval: str = "1d", persist: bool = True) -> dict:
+  values = [float(value) for value in history if isinstance(value, (int, float)) and value > 0]
+  if len(values) < 5:
+    return {
+      "label": "MA signal",
+      "state": "Insufficient history",
+      "sma5": None,
+      "sma25": None,
+      "spreadPercent": 0.0,
+      "nextRunBias": "Wait",
+      "confidence": 18.0,
+      "why": "At least 5 valid closes are required.",
+    }
+  sma5 = average(values[-5:])
+  sma25 = average(values[-25:]) if len(values) >= 25 else average(values)
+  latest = values[-1]
+  previous_sma5 = average(values[-6:-1]) if len(values) >= 6 else sma5
+  previous_sma25 = average(values[-26:-1]) if len(values) >= 26 else sma25
+  spread_percent = pct_change(sma5, sma25) if sma25 else 0.0
+  slope5 = pct_change(sma5, previous_sma5) if previous_sma5 else 0.0
+  slope25 = pct_change(sma25, previous_sma25) if previous_sma25 else 0.0
+  price_vs_sma5 = pct_change(latest, sma5) if sma5 else 0.0
+  price_vs_sma25 = pct_change(latest, sma25) if sma25 else 0.0
+  if spread_percent > 1.2 and slope5 > 0:
+    bias = "Continuation"
+    state = "5D above 25D"
+  elif spread_percent < -1.2 and slope5 < 0:
+    bias = "Pressure"
+    state = "5D below 25D"
+  elif abs(spread_percent) <= 1.2:
+    bias = "Compression"
+    state = "Moving averages compressed"
+  else:
+    bias = "Mixed"
+    state = "Moving averages diverging"
+  confidence = clamp(42 + min(abs(spread_percent) * 5, 24) + min(abs(slope5) * 4, 12), 18, 86)
+  payload = {
+    "label": "5D / 25D moving-average signal",
+    "state": state,
+    "sma5": round(sma5, 4),
+    "sma25": round(sma25, 4),
+    "spreadPercent": round(spread_percent, 3),
+    "slope5": round(slope5, 3),
+    "slope25": round(slope25, 3),
+    "priceVsSma5": round(price_vs_sma5, 3),
+    "priceVsSma25": round(price_vs_sma25, 3),
+    "nextRunBias": bias,
+    "confidence": round(confidence, 1),
+    "why": f"Latest price is {price_vs_sma5:+.2f}% vs 5D average and {price_vs_sma25:+.2f}% vs 25D average.",
+  }
+  if persist:
+    save_derived_insight(symbol, interval, "sma_5_25", payload, "Local historical records")
+  return payload
+
+
 def save_payload_cache(cache_key: str, payload: dict, source: str) -> None:
   init_db()
   updated_at = datetime.now(timezone.utc).isoformat()
@@ -848,32 +1052,102 @@ def json_get(url: str) -> dict | list | None:
 
   for candidate in dict.fromkeys(candidates):
     for headers in header_sets:
-      request = urllib.request.Request(candidate, headers=headers)
-      try:
-        with urllib.request.urlopen(request, timeout=16) as response:
-          return json.loads(response.read().decode("utf-8"))
-      except urllib.error.HTTPError as error:
-        if error.code not in {403, 429}:
-          continue
-        time.sleep(0.2)
-      except Exception:
+      cache_key = outbound_cache_key("GET", candidate)
+      hostname = (urllib.parse.urlparse(candidate).hostname or "").lower()
+      ttl_seconds = outbound_ttl_for_host(hostname)
+      with OUTBOUND_LOCK:
+        cached = OUTBOUND_RESPONSE_CACHE.get(cache_key)
+        if cached and (time.time() - cached[0]) <= ttl_seconds:
+          return cached[1]
+      body = secure_open_url(candidate, timeout=16, headers=headers)
+      if body is None:
         continue
+      try:
+        payload = json.loads(body.decode("utf-8"))
+      except json.JSONDecodeError:
+        continue
+      with OUTBOUND_LOCK:
+        OUTBOUND_RESPONSE_CACHE[cache_key] = (time.time(), payload)
+      return payload
   return None
 
 
+def is_allowed_outbound_url(url: str) -> bool:
+  parsed = urllib.parse.urlparse(url)
+  if parsed.scheme != "https":
+    return False
+  hostname = (parsed.hostname or "").lower()
+  return hostname in OUTBOUND_ALLOWED_HOSTS
+
+
+def outbound_cache_key(method: str, url: str, payload: dict | None = None) -> str:
+  if payload is None:
+    return f"{method}:{url}"
+  return f"{method}:{url}:{json.dumps(payload, sort_keys=True, separators=(',', ':'))}"
+
+
+def outbound_ttl_for_host(hostname: str) -> int:
+  return OUTBOUND_CACHE_TTL.get(hostname, 120)
+
+
+def outbound_min_interval_for_host(hostname: str) -> float:
+  return OUTBOUND_MIN_INTERVAL.get(hostname, 1.5)
+
+
+def secure_open_url(url: str, timeout: int = 12, headers: dict | None = None, data: bytes | None = None) -> bytes | None:
+  if not is_allowed_outbound_url(url):
+    return None
+  parsed = urllib.parse.urlparse(url)
+  hostname = (parsed.hostname or "").lower()
+  min_interval = outbound_min_interval_for_host(hostname)
+  with OUTBOUND_LOCK:
+    last_seen = OUTBOUND_LAST_REQUEST_AT.get(hostname, 0.0)
+    wait_time = max(0.0, min_interval - (time.time() - last_seen))
+  if wait_time > 0:
+    time.sleep(wait_time)
+  request = urllib.request.Request(url, headers=headers or {"User-Agent": USER_AGENT}, data=data)
+  try:
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+      final_url = response.geturl()
+      if not is_allowed_outbound_url(final_url):
+        return None
+      body = response.read()
+  except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, socket.timeout, ValueError):
+    return None
+  finally:
+    with OUTBOUND_LOCK:
+      OUTBOUND_LAST_REQUEST_AT[hostname] = time.time()
+  return body
+
+
+def cached_get_text(url: str, timeout: int = 12, headers: dict | None = None) -> str | None:
+  if not is_allowed_outbound_url(url):
+    return None
+  hostname = (urllib.parse.urlparse(url).hostname or "").lower()
+  cache_key = outbound_cache_key("GET", url)
+  ttl_seconds = outbound_ttl_for_host(hostname)
+  with OUTBOUND_LOCK:
+    cached = OUTBOUND_RESPONSE_CACHE.get(cache_key)
+    if cached and (time.time() - cached[0]) <= ttl_seconds:
+      return cached[1]
+  body = secure_open_url(url, timeout=timeout, headers=headers)
+  if body is None:
+    return None
+  text = body.decode("utf-8", errors="replace")
+  with OUTBOUND_LOCK:
+    OUTBOUND_RESPONSE_CACHE[cache_key] = (time.time(), text)
+  return text
+
+
 def text_get(url: str) -> str | None:
-  request = urllib.request.Request(
+  return cached_get_text(
     url,
+    timeout=12,
     headers={
       "User-Agent": USER_AGENT,
       "Accept": "application/rss+xml,application/xml,text/xml,text/plain,*/*",
     },
   )
-  try:
-    with urllib.request.urlopen(request, timeout=12) as response:
-      return response.read().decode("utf-8", errors="replace")
-  except Exception:
-    return None
 
 
 def first_kb_paragraph(path: Path) -> str:
@@ -1196,6 +1470,103 @@ def fetch_google_finance_history(symbol: str, exchange_hint: str = "", chart_ran
   return [], {}
 
 
+def stooq_symbol_candidates(symbol: str, exchange_hint: str = "") -> list[str]:
+  upper = (symbol or "").upper()
+  if upper.startswith("^") or upper.endswith("=F") or upper.endswith("-USD"):
+    return []
+  if upper.endswith(".NS") or upper.endswith(".BO"):
+    return []
+  base = upper.split(".")[0].lower()
+  candidates = []
+  preferred = (exchange_hint or fallback_meta(upper).get("exchange", "")).upper()
+  if preferred in {"NASDAQ", "NASDAQGS", "NASDAQGM", "NASDAQCM"}:
+    candidates.extend([f"{base}.us", f"{base}.u"])
+  elif preferred in {"NYSE", "NYSEARCA", "NYSEAMERICAN", "US"}:
+    candidates.extend([f"{base}.us"])
+  else:
+    candidates.extend([f"{base}.us"])
+  return list(dict.fromkeys(candidates))
+
+
+def fetch_stooq_history(symbol: str, exchange_hint: str = "", chart_range: str = "1M") -> tuple[list[float], dict]:
+  keep_map = {"1D": 2, "3D": 3, "5D": 5, "1M": 31, "1Y": 370}
+  keep = keep_map.get(chart_range.upper(), 31)
+  for stooq_symbol in stooq_symbol_candidates(symbol, exchange_hint):
+    url = f"https://stooq.com/q/d/l/?s={urllib.parse.quote(stooq_symbol)}&i=d"
+    csv_text = text_get(url)
+    if not csv_text:
+      continue
+    rows = csv_text.splitlines()
+    if len(rows) < 3:
+      continue
+    closes = []
+    timestamps = []
+    volumes = []
+    for row in rows[1:]:
+      parts = row.split(",")
+      if len(parts) < 5:
+        continue
+      date_text = parts[0].strip()
+      close_text = parts[4].strip()
+      volume_text = parts[5].strip() if len(parts) > 5 else ""
+      try:
+        close_value = float(close_text)
+      except ValueError:
+        continue
+      closes.append(close_value)
+      timestamps.append(f"{date_text}T00:00:00+00:00")
+      try:
+        volumes.append(float(volume_text))
+      except ValueError:
+        pass
+    if len(closes) >= 2:
+      payload = {
+        "historySource": "Stooq CSV",
+        "stooqSymbol": stooq_symbol,
+        "timestamps": timestamps[-keep:],
+      }
+      if len(volumes) == len(closes):
+        payload["volumes"] = volumes[-keep:]
+      return closes[-keep:], payload
+  return [], {}
+
+
+def fetch_alpha_vantage_history(symbol: str, api_key: str, chart_range: str = "1M") -> tuple[list[float], dict]:
+  normalized = chart_range.upper()
+  query = urllib.parse.urlencode(
+    {
+      "function": "TIME_SERIES_DAILY_ADJUSTED",
+      "symbol": symbol,
+      "outputsize": "compact" if normalized != "1Y" else "full",
+      "apikey": api_key,
+    }
+  )
+  payload = json_get(f"https://www.alphavantage.co/query?{query}")
+  series = (payload or {}).get("Time Series (Daily)") or {}
+  if not isinstance(series, dict) or not series:
+    return [], {}
+  keep_map = {"1D": 2, "3D": 3, "5D": 5, "1M": 31, "1Y": 370}
+  keep = keep_map.get(normalized, 31)
+  rows = sorted(series.items())[-keep:]
+  closes = []
+  timestamps = []
+  volumes = []
+  for date_key, fields in rows:
+    try:
+      closes.append(float(fields.get("4. close")))
+      timestamps.append(f"{date_key}T00:00:00+00:00")
+      volumes.append(float(fields.get("6. volume")))
+    except (TypeError, ValueError):
+      continue
+  if len(closes) >= 2:
+    return closes, {
+      "historySource": "Alpha Vantage Daily Adjusted",
+      "timestamps": timestamps,
+      "volumes": volumes if len(volumes) == len(closes) else [],
+    }
+  return [], {}
+
+
 def fetch_live_quotes(symbols: list[str]) -> dict[str, dict]:
   primary = fetch_yahoo_quotes(symbols)
   missing = [symbol for symbol in symbols if symbol.upper() not in primary]
@@ -1218,21 +1589,35 @@ def fetch_live_quotes(symbols: list[str]) -> dict[str, dict]:
 
 
 def post_json(url: str, payload: dict, timeout: int = 40) -> dict | None:
+  if not is_allowed_outbound_url(url):
+    return None
+  cache_key = outbound_cache_key("POST", url, payload)
+  hostname = (urllib.parse.urlparse(url).hostname or "").lower()
+  ttl_seconds = outbound_ttl_for_host(hostname)
+  with OUTBOUND_LOCK:
+    cached = OUTBOUND_RESPONSE_CACHE.get(cache_key)
+    if cached and (time.time() - cached[0]) <= ttl_seconds:
+      return cached[1]
   data = json.dumps(payload).encode("utf-8")
-  request = urllib.request.Request(
+  body = secure_open_url(
     url,
-    data=data,
+    timeout=timeout,
     headers={
       "User-Agent": USER_AGENT,
       "Content-Type": "application/json",
       "Accept": "application/json",
     },
+    data=data,
   )
-  try:
-    with urllib.request.urlopen(request, timeout=timeout) as response:
-      return json.loads(response.read().decode("utf-8"))
-  except Exception:
+  if body is None:
     return None
+  try:
+    parsed = json.loads(body.decode("utf-8"))
+  except json.JSONDecodeError:
+    return None
+  with OUTBOUND_LOCK:
+    OUTBOUND_RESPONSE_CACHE[cache_key] = (time.time(), parsed)
+  return parsed
 
 
 def normalize_symbol(symbol: str, market: str | None = None) -> str:
@@ -1319,6 +1704,13 @@ def pct_change(current: float, previous: float) -> float:
   return ((current - previous) / previous) * 100
 
 
+def raw_value(block: dict, key: str, default=None):
+  value = (block or {}).get(key)
+  if isinstance(value, dict):
+    return value.get("raw", value.get("fmt", default))
+  return value if value is not None else default
+
+
 def format_large_number(value: float | int | None) -> str:
   if value in (None, ""):
     return "n/a"
@@ -1357,7 +1749,7 @@ def fetch_yahoo_chart(symbol: str, range_value: str = "6mo", interval: str = "1d
 def fetch_yahoo_quote_summary(symbol: str) -> dict:
   quoted = urllib.parse.quote(symbol)
   payload = json_get(
-    f"https://query1.finance.yahoo.com/v10/finance/quoteSummary/{quoted}?modules=summaryDetail,defaultKeyStatistics,financialData,assetProfile"
+    f"https://query1.finance.yahoo.com/v10/finance/quoteSummary/{quoted}?modules=summaryDetail,defaultKeyStatistics,financialData,assetProfile,recommendationTrend,earningsTrend,majorHoldersBreakdown"
   )
   result = ((payload or {}).get("quoteSummary") or {}).get("result") or []
   return result[0] if result else {}
@@ -2218,8 +2610,8 @@ def enrich_market_radar(radar: dict, macro_pulse: list[dict] | None = None, acti
   enriched = dict(radar or {})
   macro_pulse = macro_pulse or []
   active_snapshot = active_snapshot or {}
-  radar_headlines = [item.get("title", "") for item in enriched.get("items", []) if item.get("title")] or list(enriched.get("headlines") or [])
-  sentiment = headline_sentiment(radar_headlines) if radar_headlines else {"score": 0.0, "label": "Mixed", "positiveHits": 0, "negativeHits": 0}
+  radar_items = enriched.get("items") or []
+  sentiment = radar_sentiment(radar_items, active_snapshot, macro_pulse)
   macro_items = []
   for item in macro_pulse[:3]:
     macro_items.append(
@@ -2345,6 +2737,80 @@ def headline_sentiment(headlines: list[str]) -> dict:
   score = clamp((pos - neg) / max(len(headlines), 1), -1.0, 1.0)
   label = "Positive" if score > 0.22 else "Negative" if score < -0.22 else "Mixed"
   return {"score": score, "label": label, "positiveHits": pos, "negativeHits": neg}
+
+
+def radar_sentiment(items: list[dict], active_snapshot: dict | None = None, macro_pulse: list[dict] | None = None) -> dict:
+  active_snapshot = active_snapshot or {}
+  macro_pulse = macro_pulse or []
+  if not items:
+    return {"score": 0.0, "label": "Balanced", "tone": "neutral", "driver": "No live radar items", "positiveHits": 0, "negativeHits": 0}
+  positive_terms = {
+    "deal", "partnership", "approval", "beat", "beats", "cut rates", "stimulus", "ceasefire", "recovery", "eases", "expansion", "wins",
+  }
+  negative_terms = {
+    "war", "attack", "bomb", "missile", "tariff", "sanction", "downgrade", "probe", "lawsuit", "recall", "inflation", "surge in yields",
+    "selloff", "cut guidance", "miss", "slump", "ban", "fine", "escalation",
+  }
+  positive_score = 0.0
+  negative_score = 0.0
+  strongest_reason = "Mixed headline stack"
+  strongest_abs = 0.0
+  for item in items[:8]:
+    title = str(item.get("title", "")).lower()
+    significance = float(item.get("significance") or 1.0)
+    freshness = max(0.3, 1.0 - (item_age_hours(item) / 72))
+    weight = significance * freshness
+    item_score = 0.0
+    for term in positive_terms:
+      if term in title:
+        item_score += 1.0
+    for term in negative_terms:
+      if term in title:
+        item_score -= 1.15
+    category = str(item.get("category") or "").lower()
+    if category in {"war", "world"}:
+      item_score -= 0.5
+    if category in {"deals", "partnerships"}:
+      item_score += 0.35
+    if category in {"layoffs"}:
+      item_score -= 0.45
+    weighted = item_score * weight
+    if weighted > 0:
+      positive_score += weighted
+    elif weighted < 0:
+      negative_score += abs(weighted)
+    if abs(weighted) > strongest_abs:
+      strongest_abs = abs(weighted)
+      strongest_reason = item.get("title") or strongest_reason
+
+  macro_bias = 0.0
+  macro_text = " ".join(f"{item.get('label', '')} {item.get('trend', '')} {item.get('value', '')}".lower() for item in macro_pulse[:3])
+  if "risk off" in macro_text or "yield" in macro_text and "higher" in macro_text:
+    macro_bias -= 0.2
+  if "risk on" in macro_text or "cooling" in macro_text or "easing" in macro_text:
+    macro_bias += 0.15
+  if str((active_snapshot.get("eventFocus") or {}).get("category") or "") == "war":
+    macro_bias -= 0.2
+
+  raw_score = clamp((positive_score - negative_score) / max(1.0, positive_score + negative_score), -1.0, 1.0)
+  score = clamp(raw_score + macro_bias, -1.0, 1.0)
+  if score >= 0.25:
+    label = "Risk-on"
+    tone = "positive"
+  elif score <= -0.25:
+    label = "Risk-off"
+    tone = "negative"
+  else:
+    label = "Balanced"
+    tone = "neutral"
+  return {
+    "score": score,
+    "label": label,
+    "tone": tone,
+    "driver": strongest_reason,
+    "positiveHits": round(positive_score, 2),
+    "negativeHits": round(negative_score, 2),
+  }
 
 
 def categorized_signal(headlines: list[str], keywords: set[str], fallback_label: str) -> dict:
@@ -2523,6 +2989,19 @@ def history_symbol_candidates(symbol: str) -> list[str]:
 
 def build_history(symbol: str, chart_range: str = "1M") -> tuple[list[float], dict]:
   normalized_range = chart_range.upper()
+  interval = CHART_RANGE_CONFIG.get(normalized_range, CHART_RANGE_CONFIG["1M"])[1]
+  historical_points = load_historical_records(symbol, interval, limit=380 if normalized_range == "1Y" else 40)
+  if len(historical_points) >= 2:
+    values = [point["value"] for point in historical_points]
+    timestamps = [point["timestamp"] for point in historical_points if point.get("timestamp")]
+    historical_meta = {
+      "timestamps": timestamps if len(timestamps) == len(values) else [],
+      "historySource": historical_points[-1].get("source", "Historical records"),
+      "historyCacheState": "fresh",
+      "historyCachedAt": datetime.now(timezone.utc).isoformat(),
+    }
+    if normalized_range in {"1D", "3D", "5D", "1M", "1Y"}:
+      return values, historical_meta
   cached = load_cached_history(symbol, normalized_range)
   if cached:
     closes, meta, source, updated_at = cached
@@ -2537,6 +3016,8 @@ def build_history(symbol: str, chart_range: str = "1M") -> tuple[list[float], di
       return closes, build_cached_meta(meta, source or "Local cache", updated_at)
 
   range_value, interval = CHART_RANGE_CONFIG.get(normalized_range, CHART_RANGE_CONFIG["1M"])
+  config = load_config()
+  alpha_key = config.get("alphaVantageApiKey", "").strip()
   for candidate_symbol in history_symbol_candidates(symbol):
     chart = fetch_yahoo_chart(candidate_symbol, range_value=range_value, interval=interval)
     if chart:
@@ -2558,6 +3039,31 @@ def build_history(symbol: str, chart_range: str = "1M") -> tuple[list[float], di
       return google_closes, build_cached_meta(
         google_meta,
         google_meta.get("historySource", "Google Finance Page"),
+        datetime.now(timezone.utc).isoformat(),
+      )
+
+    if alpha_key:
+      alpha_closes, alpha_meta = fetch_alpha_vantage_history(candidate_symbol, alpha_key, normalized_range)
+      if len(alpha_closes) >= 2:
+        if candidate_symbol != symbol:
+          alpha_meta["historyMappedSymbol"] = candidate_symbol
+        save_historical_records(symbol, interval, history_points_from_meta(alpha_closes, alpha_meta), alpha_meta.get("historySource", "Alpha Vantage Daily Adjusted"))
+        save_history_cache(symbol, normalized_range, alpha_closes, alpha_meta, alpha_meta.get("historySource", "Alpha Vantage Daily Adjusted"))
+        return alpha_closes, build_cached_meta(
+          alpha_meta,
+          alpha_meta.get("historySource", "Alpha Vantage Daily Adjusted"),
+          datetime.now(timezone.utc).isoformat(),
+        )
+
+    stooq_closes, stooq_meta = fetch_stooq_history(candidate_symbol, fallback_meta(candidate_symbol).get("exchange", ""), normalized_range)
+    if len(stooq_closes) >= 2:
+      if candidate_symbol != symbol:
+        stooq_meta["historyMappedSymbol"] = candidate_symbol
+      save_historical_records(symbol, interval, history_points_from_meta(stooq_closes, stooq_meta), stooq_meta.get("historySource", "Stooq CSV"))
+      save_history_cache(symbol, normalized_range, stooq_closes, stooq_meta, stooq_meta.get("historySource", "Stooq CSV"))
+      return stooq_closes, build_cached_meta(
+        stooq_meta,
+        stooq_meta.get("historySource", "Stooq CSV"),
         datetime.now(timezone.utc).isoformat(),
       )
 
@@ -2630,14 +3136,54 @@ def load_company_networks() -> dict:
   return merged
 
 
+def load_company_projects() -> dict:
+  payload = load_json_file(COMPANY_PROJECTS_PATH, {})
+  return payload if isinstance(payload, dict) else {}
+
+
 def load_factor_schedule() -> list[dict]:
   payload = load_json_file(FACTOR_DIR / "factor_update_schedule.json", [])
+  return payload if isinstance(payload, list) else []
+
+
+def load_factor_registry() -> list[dict]:
+  payload = load_json_file(FACTOR_DIR / "factor_registry.json", [])
+  return payload if isinstance(payload, list) else []
+
+
+def load_prediction_formulas() -> list[dict]:
+  payload = load_json_file(FACTOR_DIR / "prediction_formulas.json", [])
+  return payload if isinstance(payload, list) else []
+
+
+def load_market_decision_inputs() -> list[dict]:
+  payload = load_json_file(FACTOR_DIR / "market_decision_inputs.json", [])
   return payload if isinstance(payload, list) else []
 
 
 def load_trading_papers() -> list[dict]:
   payload = load_json_file(PAPER_DIR / "trading_papers.json", [])
   return payload if isinstance(payload, list) else []
+
+
+def load_dashboard_practices() -> list[dict]:
+  payload = load_json_file(PAPER_DIR / "dashboard_practices.json", [])
+  return payload if isinstance(payload, list) else []
+
+
+def load_quant_concepts() -> list[dict]:
+  payload = load_json_file(PAPER_DIR / "quant_concepts.json", [])
+  return payload if isinstance(payload, list) else []
+
+
+def load_methodology_flow() -> list[dict]:
+  payload = load_json_file(FACTOR_DIR / "methodology_flow.json", [])
+  return payload if isinstance(payload, list) else []
+
+
+def load_macro_dataset_manifest() -> dict:
+  payload = load_json_file(MACRO_DATA_DIR / "manifest.json", {})
+  return payload if isinstance(payload, dict) else {}
 
 
 def slugify_note_name(value: str) -> str:
@@ -2756,6 +3302,12 @@ def company_network_for_symbol(symbol: str) -> dict:
   networks = load_company_networks()
   network = networks.get((symbol or "").upper()) or {}
   return network if isinstance(network, dict) else {}
+
+
+def company_projects_for_symbol(symbol: str) -> list[dict]:
+  projects = load_company_projects().get((symbol or "").upper()) or {}
+  project_list = projects.get("projects") if isinstance(projects, dict) else []
+  return project_list if isinstance(project_list, list) else []
 
 
 def dedupe_graph_nodes(nodes: list[dict]) -> list[dict]:
@@ -3010,7 +3562,13 @@ def build_driver_cards(signal_map: dict, summary: dict, forecast: dict) -> list[
   sector = signal_map["sector"]
   industry = signal_map["industry"]
   agreement = forecast.get("models", {}).get("agreement", {})
+  moving_average = forecast.get("movingAverageSignal") or {}
   cards = [
+    {
+      "title": "5D vs 25D trend",
+      "body": f"{moving_average.get('state', 'MA signal')} with {str(moving_average.get('nextRunBias', 'mixed')).lower()} next-run bias. {moving_average.get('why', '')}",
+      "tag": f"{float(moving_average.get('confidence') or 0):.0f}% MA",
+    },
     {
       "title": "Sentiment pulse",
       "body": f"Current headline sentiment is {signal_map['sentiment']['label'].lower()}. This is used with volatility so sentiment alone does not dominate the forecast.",
@@ -3141,6 +3699,7 @@ def build_forecast(symbol: str, quote: dict, summary: dict, history: list[float]
       "realizedVol": 0.0,
       "factors": [],
       "factorsRaw": {},
+      "movingAverageSignal": build_moving_average_insight(symbol, [previous_close, latest_price], persist=False),
       "models": {
         "classic": {"direction": direction, "expectedReturn": round(expected_return, 2), "confidence": 22.0, "summary": "History is unavailable, so the classic stack is using live-quote drift only."},
         "modern": {"direction": direction, "expectedReturn": round(expected_return, 2), "confidence": 22.0, "summary": "The modern overlay is disabled until a fuller price path is available."},
@@ -3164,6 +3723,9 @@ def build_forecast(symbol: str, quote: dict, summary: dict, history: list[float]
 
   fast_momentum = average((returns[-5:] or [0.0]))
   slow_momentum = average((returns[-20:] or [0.0]))
+  moving_average = build_moving_average_insight(symbol, history, persist=True)
+  ma_spread = float(moving_average.get("spreadPercent") or 0.0) / 100
+  ma_slope = float(moving_average.get("slope5") or 0.0) / 100
   mean_reversion = (average(history[-10:]) - enriched["latestPrice"]) / enriched["latestPrice"]
   realized_vol = std_dev(recent_returns)
   volatility_penalty = realized_vol * 1.6
@@ -3175,6 +3737,8 @@ def build_forecast(symbol: str, quote: dict, summary: dict, history: list[float]
   classic_score = (
     fast_momentum * 1.4
     + slow_momentum * 1.2
+    + ma_spread * 0.85
+    + ma_slope * 0.65
     + mean_reversion * 0.9
     + macro_score * 0.8
     + quality_lift
@@ -3228,6 +3792,8 @@ def build_forecast(symbol: str, quote: dict, summary: dict, history: list[float]
   factors = {
     "fastMomentum": fast_momentum,
     "slowMomentum": slow_momentum,
+    "maSpread": ma_spread,
+    "maSlope": ma_slope,
     "meanReversion": mean_reversion,
     "macroScore": macro_score,
     "realizedVol": realized_vol,
@@ -3252,6 +3818,7 @@ def build_forecast(symbol: str, quote: dict, summary: dict, history: list[float]
     "realizedVol": realized_vol,
     "factors": build_factor_cards(factors),
     "factorsRaw": factors,
+    "movingAverageSignal": moving_average,
     "models": {
       "classic": {
         "direction": model_direction(classic_expected_return),
@@ -3311,6 +3878,7 @@ def build_backtest(symbol: str, history: list[float], quote: dict, summary: dict
 def build_recommendation(forecast: dict) -> dict:
   confidence = float(forecast.get("confidence") or 0)
   expected_return = float(forecast.get("expectedReturn") or 0)
+  capped_expected_return = clamp(expected_return, -10, 10)
   fair_value_gap = float(forecast.get("fairValueGap") or 0)
   event_pressure = float(forecast.get("eventPressure") or 0)
 
@@ -3329,6 +3897,347 @@ def build_recommendation(forecast: dict) -> dict:
     "sell": sell,
     "signal": signal,
   }
+
+
+def build_decision_cockpit(snapshot: dict, region_payload: dict, radar: dict | None = None) -> dict:
+  forecast = snapshot.get("forecast") or {}
+  recommendation = snapshot.get("recommendation") or {}
+  moving_average = forecast.get("movingAverageSignal") or {}
+  region_analysis = region_payload.get("analysis") or {}
+  bonds = region_payload.get("bonds") or {}
+  inflation = region_payload.get("inflation") or {}
+  policy = region_payload.get("policy") or {}
+  radar = radar or {}
+  sentiment = radar.get("sentiment") or {}
+  confidence = float(forecast.get("confidence") or 0)
+  expected_return = float(forecast.get("expectedReturn") or 0)
+  capped_expected_return = clamp(expected_return, -10, 10)
+  event_pressure = float(forecast.get("eventPressure") or 0)
+  model_error = float(forecast.get("mae") or 0)
+  ma_spread = float(moving_average.get("spreadPercent") or 0)
+  snapshot_sentiment = snapshot.get("sentiment") or 0
+  if isinstance(snapshot_sentiment, dict):
+    snapshot_sentiment = snapshot_sentiment.get("score") or 0
+  sentiment_score = float(sentiment.get("score") or snapshot_sentiment or 0)
+  buy = float(recommendation.get("buy") or 0)
+  sell = float(recommendation.get("sell") or 0)
+  base = float(recommendation.get("hold") or 0)
+  edge_score = clamp(
+    50
+    + ((confidence - 50) * 0.35)
+    + (capped_expected_return * 1.9)
+    + (ma_spread * 1.35)
+    + (sentiment_score * 12)
+    - (event_pressure * 14)
+    - (model_error * 0.7),
+    0,
+    100,
+  )
+  if edge_score >= 68:
+    stance = "Constructive setup"
+  elif edge_score <= 38:
+    stance = "Defensive setup"
+  else:
+    stance = "Selective setup"
+  risk_level = "High" if event_pressure >= 0.65 or model_error >= 7 else "Medium" if event_pressure >= 0.35 or model_error >= 4 else "Contained"
+  top_event = (radar.get("items") or [{}])[0]
+  event_title = top_event.get("title") or (snapshot.get("headlines") or ["No dominant event yet"])[0]
+  facts = [
+    {"label": "Price move", "value": f"{float(snapshot.get('changePercent') or 0):+.2f}%", "why": "Live quote change for the selected ticker."},
+    {"label": "Trend stack", "value": moving_average.get("state") or "Trend pending", "why": moving_average.get("why") or "5D/25D moving-average relationship."},
+    {"label": "Macro driver", "value": region_analysis.get("driver", "mixed"), "why": region_analysis.get("whyChanged", "Bond, inflation, and policy context.")},
+    {"label": "Event tone", "value": sentiment.get("label") or "Balanced", "why": event_title[:140]},
+  ]
+  interpretation = [
+    f"{stance}: model edge {edge_score:.0f}/100 with {risk_level.lower()} event/model risk.",
+    f"Scenario split is upside {buy:.0f}%, base {base:.0f}%, downside {sell:.0f}% and is not direct buy/sell instruction.",
+    f"Bond anchor: {((bonds.get('curve') or {}).get('shape') or 'mixed').lower()} curve, {policy.get('centralBank', 'central bank')} stance {str(policy.get('stance', 'watching')).lower()}, inflation impulse {str(inflation.get('impulse', 'mixed')).lower()}.",
+  ]
+  monitor = [
+    f"Confirm whether 5D/25D spread holds above {ma_spread:.2f}%.",
+    f"Watch volume versus normal: {format_large_number(snapshot.get('volume') or 0)} traded.",
+    *(region_analysis.get("monitorNext") or [])[:2],
+  ]
+  return {
+    "title": "Decision cockpit",
+    "stance": stance,
+    "edgeScore": round(edge_score, 1),
+    "riskLevel": risk_level,
+    "confidence": round(confidence, 1),
+    "asOf": snapshot.get("asOf") or datetime.now(timezone.utc).isoformat(),
+    "facts": facts,
+    "interpretation": interpretation,
+    "monitor": monitor[:4],
+    "unknowns": (region_analysis.get("unknowns") or [])[:2],
+    "sourceNote": "Uses live quote, local history, moving averages, radar sentiment, bonds, inflation, and policy context.",
+  }
+
+
+def sma_value(history: list[float], period: int) -> float | None:
+  values = [float(value) for value in (history or []) if value is not None]
+  if len(values) < period:
+    return None
+  return average(values[-period:])
+
+
+def format_metric_value(value, kind: str = "plain", currency: str = "") -> str:
+  if value in (None, "", "n/a"):
+    return "Unavailable"
+  try:
+    number = float(value)
+  except (TypeError, ValueError):
+    return str(value)
+  if kind == "currency":
+    return f"{currency} {number:,.2f}".strip()
+  if kind == "large":
+    return format_large_number(number)
+  if kind == "percent":
+    return f"{number:.2f}%"
+  if kind == "ratio":
+    return f"{number:.2f}x"
+  return f"{number:,.2f}"
+
+
+def benchmark_symbols_for_region(region_key: str) -> list[dict]:
+  if region_key == "india":
+    return [
+      {"symbol": "^NSEI", "label": "NIFTY 50"},
+      {"symbol": "^BSESN", "label": "SENSEX"},
+    ]
+  return [
+    {"symbol": "^GSPC", "label": "S&P 500"},
+    {"symbol": "^NDX", "label": "NASDAQ 100"},
+  ]
+
+
+def normalized_return_series(label: str, symbol: str, history: list[float]) -> dict:
+  values = [float(item) for item in (history or []) if item is not None]
+  if not values:
+    return {"label": label, "symbol": symbol, "series": [], "returnPercent": 0.0}
+  base = values[0] or 1
+  series = [round(pct_change(value, base), 2) for value in values[-80:]]
+  return {
+    "label": label,
+    "symbol": symbol,
+    "series": series,
+    "returnPercent": round(series[-1], 2) if series else 0.0,
+  }
+
+
+def peer_candidates_for_symbol(symbol: str, currency: str, exchange: str, sector: str) -> list[str]:
+  upper = (symbol or "").upper()
+  region_key = infer_region_key(upper, exchange, currency)
+  preferred = []
+  if region_key == "india":
+    if "BANK" in upper or "BANK" in sector.upper():
+      preferred = ["HDFCBANK.NS", "SBIN.NS", "KOTAKBANK.NS", "AXISBANK.NS", "BANKBARODA.NS"]
+    elif "PHARMA" in upper or "HEALTH" in sector.upper():
+      preferred = ["SUNPHARMA.NS", "CIPLA.NS", "DRREDDY.NS", "DIVISLAB.NS", "LUPIN.NS"]
+    elif "AIRTEL" in upper or "TELECOM" in sector.upper():
+      preferred = ["RELIANCE.NS", "IDEA.NS", "TATACOMM.NS", "HFCL.NS", "TEJASNET.NS"]
+    else:
+      preferred = ["RELIANCE.NS", "TCS.NS", "INFY.NS", "HDFCBANK.NS", "SBIN.NS"]
+  else:
+    if upper in {"AAPL", "MSFT", "GOOGL", "META", "AMZN"}:
+      preferred = ["MSFT", "AAPL", "GOOGL", "META", "AMZN", "NVDA"]
+    elif upper in {"NVDA", "AMD"}:
+      preferred = ["NVDA", "AMD", "AVGO", "QCOM", "INTC", "TSM"]
+    else:
+      preferred = ["AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META"]
+  fallback_pool = [candidate for candidate, meta in FALLBACK_TICKERS.items() if meta.get("currency") == currency and candidate != upper]
+  return [item for item in list(dict.fromkeys(preferred + fallback_pool)) if item != upper][:5]
+
+
+def build_peer_comparison(symbol: str, currency: str, exchange: str, sector: str) -> list[dict]:
+  peers = peer_candidates_for_symbol(symbol, currency, exchange, sector)
+  rows = []
+  for peer in peers[:5]:
+    quote = {}
+    fallback = fallback_meta(peer)
+    cached = load_cached_history(peer, "1Y")
+    history = cached[0] if cached else []
+    latest = float(quote.get("regularMarketPrice") or (history[-1] if history else fallback["basePrice"]))
+    first = float(history[0]) if history else latest
+    pe = quote.get("trailingPE") or fallback.get("pe")
+    market_cap = quote.get("marketCap")
+    rows.append(
+      {
+        "symbol": peer,
+        "name": quote.get("shortName") or quote.get("longName") or fallback["name"],
+        "marketCap": format_metric_value(market_cap, "large"),
+        "pe": format_metric_value(pe, "ratio"),
+        "oneYearReturn": format_metric_value(pct_change(latest, first), "percent") if first else "Unavailable",
+        "salesGrowth": "Unavailable",
+        "roe": "Unavailable",
+        "valuationGap": "Unavailable" if pe in (None, "") else format_metric_value(float(pe) - float(fallback.get("pe") or pe), "ratio"),
+      }
+    )
+  return rows
+
+
+def build_expert_consensus(summary: dict, recommendation: dict) -> dict:
+  financial_data = summary.get("financialData") or {}
+  trend = ((summary.get("recommendationTrend") or {}).get("trend") or [])
+  current = trend[0] if trend else {}
+  buy_count = int((current.get("strongBuy") or 0) + (current.get("buy") or 0))
+  hold_count = int(current.get("hold") or 0)
+  sell_count = int((current.get("sell") or 0) + (current.get("strongSell") or 0))
+  total = buy_count + hold_count + sell_count
+  mean = raw_value(financial_data, "recommendationMean")
+  key = raw_value(financial_data, "recommendationKey")
+  opinions = raw_value(financial_data, "numberOfAnalystOpinions")
+  if not total and opinions:
+    hold_count = int(opinions)
+    total = hold_count
+  return {
+    "buy": round((buy_count / total) * 100) if total else 0,
+    "hold": round((hold_count / total) * 100) if total else 0,
+    "sell": max(0, 100 - round((buy_count / total) * 100) - round((hold_count / total) * 100)) if total else 0,
+    "rawCounts": {"buy": buy_count, "hold": hold_count, "sell": sell_count, "total": total},
+    "rating": str(key or "Unavailable").title(),
+    "mean": mean,
+    "sourceLabel": "Yahoo Finance quote summary",
+    "note": "External analyst consensus only; not dashboard advice.",
+    "fallbackScenario": recommendation,
+  }
+
+
+def build_influence_graph(symbol: str, summary: dict) -> dict:
+  nodes = [{"id": symbol, "label": symbol, "group": "company", "confidence": "High"}]
+  edges = []
+  ledger = []
+  holders = summary.get("majorHoldersBreakdown") or {}
+  for key, label in [
+    ("insidersPercentHeld", "Insider ownership"),
+    ("institutionsPercentHeld", "Institution ownership"),
+  ]:
+    value = raw_value(holders, key)
+    if value is None:
+      continue
+    node_id = f"{symbol}:{key}"
+    nodes.append({"id": node_id, "label": label, "group": "holder", "value": format_metric_value(float(value) * 100, "percent"), "confidence": "Medium"})
+    edges.append({"source": symbol, "target": node_id, "relation": "reported holding", "confidence": "Medium", "sourceLabel": "Yahoo Finance quote summary"})
+    ledger.append({"claim": f"{label}: {format_metric_value(float(value) * 100, 'percent')}", "sourceLabel": "Yahoo Finance quote summary", "confidence": "Medium", "status": "Public provider field; not independently verified here."})
+  for project in company_projects_for_symbol(symbol)[:3]:
+    if not project.get("sourceUrl") and not project.get("sourceLabel"):
+      continue
+    project_id = f"{symbol}:project:{slugify_note_name(project.get('title', 'project'))}"
+    nodes.append({"id": project_id, "label": project.get("title", "Project"), "group": "project", "value": project.get("worthLabel", "Undisclosed"), "confidence": "Medium"})
+    edges.append({"source": symbol, "target": project_id, "relation": "public project exposure", "confidence": "Medium", "sourceLabel": project.get("sourceLabel", "Curated public project map"), "sourceUrl": project.get("sourceUrl", "")})
+    ledger.append({"claim": f"Project exposure: {project.get('title', 'Project')}", "sourceLabel": project.get("sourceLabel", "Curated public project map"), "sourceUrl": project.get("sourceUrl", ""), "confidence": "Medium", "status": "Shown as context only."})
+  return {"nodes": nodes, "edges": edges, "ledger": ledger, "policy": "Public cited relationships only; no unsourced political or shell-company claims."}
+
+
+def build_stock_dossier(symbol: str, snapshot: dict, quote: dict, summary: dict, history: list[float], model_history: list[float]) -> dict:
+  currency = snapshot.get("currency") or fallback_meta(symbol)["currency"]
+  region_key = infer_region_key(symbol, snapshot.get("exchange"), currency)
+  financial_data = summary.get("financialData") or {}
+  statistics_block = summary.get("defaultKeyStatistics") or {}
+  summary_detail = summary.get("summaryDetail") or {}
+  latest = float(snapshot.get("price") or 0)
+  previous_close = float(snapshot.get("previousClose") or quote.get("regularMarketPreviousClose") or latest)
+  avg_volume = quote.get("averageDailyVolume3Month") or quote.get("averageDailyVolume10Day") or 0
+  moving_average_periods = [5, 20, 25, 50, 200]
+  moving_averages = []
+  for period in moving_average_periods:
+    value = sma_value(model_history or history, period)
+    moving_averages.append(
+      {
+        "period": period,
+        "value": value,
+        "label": f"SMA {period}",
+        "distancePercent": pct_change(latest, value) if value else None,
+        "state": "Above" if value and latest >= value else "Below" if value else "Unavailable",
+      }
+    )
+  benchmark_items = [{"symbol": symbol, "label": symbol, "history": history}]
+  for benchmark in benchmark_symbols_for_region(region_key):
+    cached_benchmark = load_cached_history(benchmark["symbol"], "1Y")
+    benchmark_history = cached_benchmark[0] if cached_benchmark else []
+    benchmark_items.append({"symbol": benchmark["symbol"], "label": benchmark["label"], "history": benchmark_history})
+  return {
+    "daySnapshot": {
+      "open": quote.get("regularMarketOpen"),
+      "previousClose": previous_close,
+      "dayLow": quote.get("regularMarketDayLow") or quote.get("dayLow"),
+      "dayHigh": quote.get("regularMarketDayHigh") or quote.get("dayHigh"),
+      "fiftyTwoWeekLow": quote.get("fiftyTwoWeekLow"),
+      "fiftyTwoWeekHigh": quote.get("fiftyTwoWeekHigh"),
+      "lowerCircuit": None,
+      "upperCircuit": None,
+      "volume": snapshot.get("volume"),
+      "averageVolume": avg_volume,
+      "source": snapshot.get("dataSource") or "Quote provider",
+    },
+    "fundamentals": {
+      "eps": raw_value(statistics_block, "trailingEps"),
+      "revenue": raw_value(financial_data, "totalRevenue"),
+      "netIncome": raw_value(financial_data, "netIncomeToCommon"),
+      "grossMargins": raw_value(financial_data, "grossMargins"),
+      "profitMargins": raw_value(financial_data, "profitMargins"),
+      "debtToEquity": raw_value(financial_data, "debtToEquity"),
+      "roe": raw_value(financial_data, "returnOnEquity"),
+      "roa": raw_value(financial_data, "returnOnAssets"),
+      "freeCashflow": raw_value(financial_data, "freeCashflow"),
+      "salesGrowth": raw_value(financial_data, "revenueGrowth"),
+      "trailingPe": quote.get("trailingPE") or raw_value(summary_detail, "trailingPE"),
+      "forwardPe": raw_value(summary_detail, "forwardPE"),
+      "scores": {
+        "quality": round(clamp((float(raw_value(financial_data, "returnOnEquity", 0) or 0) * 120) + 45, 0, 100), 1),
+        "valuation": round(clamp(72 - float((quote.get("trailingPE") or raw_value(summary_detail, "trailingPE") or 28)) * 0.9, 0, 100), 1),
+        "risk": round(clamp(100 - float((snapshot.get("forecast") or {}).get("mae") or 0) * 8, 0, 100), 1),
+      },
+      "source": "Yahoo Finance quote summary",
+    },
+    "movingAverages": moving_averages,
+    "peerComparison": build_peer_comparison(symbol, currency, snapshot.get("exchange") or "", snapshot.get("sector") or ""),
+    "benchmarkComparison": [normalized_return_series(item["label"], item["symbol"], item["history"]) for item in benchmark_items],
+    "expertConsensus": build_expert_consensus(summary, snapshot.get("recommendation") or {}),
+    "unusualActivity": {
+      "volumeRatio": round(float(snapshot.get("volume") or 0) / float(avg_volume or snapshot.get("volume") or 1), 2),
+      "twoDayMove": pct_change(history[-1], history[-3]) if len(history) >= 3 and history[-3] else 0.0,
+      "gapPercent": pct_change(latest, previous_close),
+      "breakout": "52W breakout" if quote.get("fiftyTwoWeekHigh") and latest >= float(quote.get("fiftyTwoWeekHigh")) * 0.995 else "Range watch",
+    },
+    "metricDrawer": [
+      {"section": "Day snapshot", "metrics": ["open", "previousClose", "dayLow", "dayHigh", "volume", "averageVolume"]},
+      {"section": "Fundamentals", "metrics": ["eps", "revenue", "netIncome", "roe", "salesGrowth", "debtToEquity"]},
+      {"section": "Moving averages", "metrics": [f"SMA {period}" for period in moving_average_periods]},
+    ],
+    "influenceGraph": build_influence_graph(symbol, summary),
+    "sourceProvenance": [
+      {"label": snapshot.get("dataSource") or "Quote provider", "usedFor": "price/day snapshot"},
+      {"label": "Local historical cache", "usedFor": "moving averages and benchmark normalization"},
+      {"label": "Yahoo Finance quote summary", "usedFor": "fundamentals, consensus, holder fields where available"},
+    ],
+  }
+
+
+def build_market_discovery(watchlist: list[dict]) -> dict:
+  items = []
+  for item in watchlist[:10]:
+    cached = load_cached_history(item["symbol"], "5D") or load_cached_history(item["symbol"], "1M")
+    history = cached[0] if cached else []
+    if len(history) < 3:
+      continue
+    two_day = pct_change(history[-1], history[-3])
+    avg_volume = item.get("volume") or 0
+    reason = "Two-day price acceleration" if abs(two_day) >= 2 else "Watchlist movement"
+    if abs(two_day) >= 1 or item.get("changePercent"):
+      items.append(
+        {
+          "symbol": item["symbol"],
+          "name": item.get("name", item["symbol"]),
+          "twoDayMove": round(two_day, 2),
+          "latestMove": round(float(item.get("changePercent") or 0), 2),
+          "volume": int(avg_volume or 0),
+          "reason": reason,
+          "confidence": "Medium" if abs(two_day) >= 2 else "Low",
+          "source": "Local history + live quote",
+        }
+      )
+  items.sort(key=lambda entry: abs(entry["twoDayMove"]) + abs(entry["latestMove"]), reverse=True)
+  return {"items": items[:5], "updatedAt": datetime.now(timezone.utc).isoformat(), "source": "Local history cache and live quote feed"}
 
 
 def build_ticker_snapshot(symbol: str, quote: dict | None = None, stress: str = "base", horizon: int = 10, chart_range: str = "1M") -> dict:
@@ -3408,6 +4317,22 @@ def build_ticker_snapshot(symbol: str, quote: dict | None = None, stress: str = 
     "summary": summarize_classic_quant(classic_quant_cards, forecast),
     "cards": classic_quant_cards,
   }
+  snapshot_context = {
+    "symbol": symbol,
+    "name": quote.get("shortName") or quote.get("longName") or fallback["name"],
+    "exchange": exchange_name,
+    "region": region_name,
+    "currency": quote.get("currency") or chart_meta.get("currency") or fallback["currency"],
+    "dataSource": data_source,
+    "price": latest_price,
+    "previousClose": previous_close,
+    "changePercent": change_percent,
+    "volume": int(volume or 0),
+    "sector": sector,
+    "industry": industry,
+    "forecast": forecast,
+    "recommendation": recommendation,
+  }
 
   return {
     "symbol": symbol,
@@ -3438,6 +4363,7 @@ def build_ticker_snapshot(symbol: str, quote: dict | None = None, stress: str = 
     "driverCards": driver_cards,
     "eventFocus": event_focus,
     "classicQuant": classic_quant,
+    "stockDossier": build_stock_dossier(symbol, snapshot_context, quote, summary, history, model_history),
     "sentiment": signal_map["sentiment"],
     "stats": [
       {"label": "Market cap", "value": format_large_number(market_cap)},
@@ -3666,12 +4592,348 @@ def build_region_equity_context(region_key: str, active_snapshot: dict | None, b
       "why": "Commodity and geopolitical shocks can hold up energy cash flows while pressuring the rest of the market.",
     },
   ]
+  positive_count = sum(1 for item in sectors if item["effect"] == "Positive")
+  mixed_count = sum(1 for item in sectors if item["effect"] == "Mixed")
+  negative_count = sum(1 for item in sectors if item["effect"] == "Negative")
   return {
     "styleBias": style_bias,
     "summary": f"{config['label']} equities are currently reading through the bond market via {impulse.lower()}, {real_yield:.2f}% real yields, and a {((bonds.get('curve') or {}).get('shape') or 'mixed').lower()} curve.",
+    "breadth": {
+      "label": "Broadening" if positive_count >= 2 else "Selective",
+      "detail": f"{positive_count} positive • {mixed_count} mixed • {negative_count} negative sector reads",
+    },
     "sectors": sectors,
     "activeRelevance": active_snapshot.get("symbol") if active_snapshot and infer_region_key(active_snapshot.get('symbol'), active_snapshot.get('exchange'), active_snapshot.get('currency')) == config["key"] else "",
     "kbNote": notes["sector"],
+  }
+
+
+def build_region_research_protocol(region_key: str, bonds: dict, inflation: dict) -> dict:
+  registry = load_factor_registry()
+  practices = load_dashboard_practices()
+  macro_manifest = load_macro_dataset_manifest()
+  region_manifest = (macro_manifest.get("regions") or {}).get(region_key, {})
+  curve_shape = ((bonds.get("curve") or {}).get("shape") or "Mixed").lower()
+  impulse = (inflation.get("impulse") or "Mixed").lower()
+  key_factors = []
+  preferred_domains = {"rates", "inflation", "policy", "equities", "events", "network"}
+  for item in registry:
+    if item.get("domain") not in preferred_domains:
+      continue
+    key_factors.append(
+      {
+        "label": item.get("label", "Factor"),
+        "cadence": item.get("cadence", ""),
+        "significance": item.get("significance", ""),
+        "why": item.get("why", ""),
+        "factsFirst": item.get("factsFirst", ""),
+        "watchFor": item.get("watchFor", ""),
+        "sourceLabel": item.get("sourceLabel", ""),
+        "sourceUrl": item.get("sourceUrl", ""),
+      }
+    )
+  summary = (
+    f"Research protocol currently anchors on a {curve_shape} curve, {impulse} inflation read, and explicit policy/event transmission. "
+    f"Interpretation is layered only after facts, cadence, and provenance are established."
+  )
+  return {
+    "summary": summary,
+    "factors": key_factors[:6],
+    "practices": practices[:4],
+    "datasets": {
+      "seriesCount": region_manifest.get("seriesCount", 0),
+      "sources": region_manifest.get("sources", []),
+      "series": (region_manifest.get("series") or [])[:6],
+    },
+  }
+
+
+def bond_equity_duration_flag(symbol: str) -> float:
+  upper = (symbol or "").upper()
+  if any(token in upper for token in {"AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META", "TCS", "INFY"}):
+    return 1.0
+  return 0.35
+
+
+def compute_project_dependency_pressure(symbol: str) -> tuple[float, int, int]:
+  projects = company_projects_for_symbol(symbol)
+  total_suppliers = 0
+  high_impact = 0
+  worth_scale = 0.0
+  for project in projects:
+    suppliers = project.get("suppliers") or []
+    total_suppliers += len(suppliers)
+    high_impact += sum(1 for supplier in suppliers if str(supplier.get("impact", "")).lower() == "high")
+    worth_value = project.get("worthValue")
+    if isinstance(worth_value, (int, float)) and worth_value > 0:
+      worth_scale += math.log10(worth_value + 1)
+  if total_suppliers <= 0:
+    return 0.0, 0, 0
+  score = (high_impact / total_suppliers) * max(0.8, worth_scale / max(1, len(projects)))
+  return round(score, 3), high_impact, total_suppliers
+
+
+def build_active_research_overview(snapshot: dict, region_payload: dict) -> dict:
+  formulas = load_prediction_formulas()
+  papers = load_dashboard_practices()
+  forecast = snapshot.get("forecast") or {}
+  factors_raw = forecast.get("factorsRaw") or {}
+  bonds = region_payload.get("bonds") or {}
+  inflation = region_payload.get("inflation") or {}
+  event_pressure = float(forecast.get("eventPressure") or 0.0)
+  volume = float(snapshot.get("volume") or 0.0)
+  avg_volume_value = 0.0
+  for stat in snapshot.get("stats") or []:
+    if stat.get("label") == "Avg volume":
+      avg_volume_value = float(re.sub(r"[^0-9.+-]", "", str(stat.get("value") or "0")) or 0)
+  volume_ratio = (volume / avg_volume_value) if avg_volume_value else 1.0
+  fast_momentum = float(factors_raw.get("fastMomentum") or 0.0)
+  slow_momentum = float(factors_raw.get("slowMomentum") or 0.0)
+  trend_participation = (0.45 * fast_momentum) + (0.35 * slow_momentum) + (0.20 * math.log1p(max(volume_ratio, 0.0)))
+  duration_pressure = max(float(bonds.get("realYield") or 0.0) - 1.5, 0.0) * float((snapshot.get("forecast") or {}).get("models", {}).get("classic", {}).get("confidence", 0.0) / 100 or 0.5) * bond_equity_duration_flag(snapshot.get("symbol"))
+  curve_impulse = float((bonds.get("curve") or {}).get("slope2s10s") or 0.0) * (1.0 if "BANK" in (snapshot.get("symbol") or "").upper() or "BANK" in (snapshot.get("name") or "").upper() else 0.35)
+  project_pressure, high_impact_count, supplier_count = compute_project_dependency_pressure(snapshot.get("symbol", ""))
+  z_score = 0.0
+  classic_cards = snapshot.get("classicQuant", {}).get("cards") or []
+  for card in classic_cards:
+    if card.get("title") == "Price z-score":
+      try:
+        z_score = float(str(card.get("value", "0")).replace("+", ""))
+      except ValueError:
+        z_score = 0.0
+        break
+  formula_values = {
+    "trend_participation": {"value": trend_participation, "display": f"{trend_participation:+.2f}", "note": f"MOM5 {fast_momentum:+.3f} • MOM20 {slow_momentum:+.3f} • VR {volume_ratio:.2f}x"},
+    "duration_pressure": {"value": duration_pressure, "display": f"{duration_pressure:.2f}", "note": f"Real yield {float(bonds.get('realYield') or 0):.2f}% • duration flag {bond_equity_duration_flag(snapshot.get('symbol')):.2f}"},
+    "curve_impulse": {"value": curve_impulse, "display": f"{curve_impulse:+.2f}", "note": f"2s10s {float((bonds.get('curve') or {}).get('slope2s10s') or 0):.2f}%"},
+    "event_override": {"value": event_pressure, "display": f"{event_pressure:.2f}", "note": f"{snapshot.get('eventFocus', 'event')} focus • {snapshot.get('sentiment', {}).get('label', 'Mixed')} sentiment"},
+    "project_dependency": {"value": project_pressure, "display": f"{project_pressure:.2f}", "note": f"{high_impact_count}/{supplier_count or 1} high-impact supplier links"},
+    "reversion_stretch": {"value": z_score, "display": f"{z_score:+.2f}", "note": "20-session z-score from classic quant stack"},
+  }
+  cards = []
+  for formula in formulas:
+    mapped = formula_values.get(formula.get("key"))
+    if not mapped:
+      continue
+    cards.append(
+      {
+        "label": formula.get("label", "Formula"),
+        "formula": formula.get("formula", ""),
+        "value": mapped["display"],
+        "note": mapped["note"],
+        "why": formula.get("why", ""),
+        "cadence": formula.get("cadence", ""),
+        "paperLink": formula.get("paperLink", ""),
+      }
+    )
+  next_watch = [
+    f"{region_payload.get('policy', {}).get('centralBank', 'Central bank')} path versus {region_payload.get('inflation', {}).get('headline', 0):.2f}% inflation.",
+    f"Curve shape is {((bonds.get('curve') or {}).get('shape') or 'mixed').lower()} and can reprice sector leadership quickly.",
+    f"{snapshot.get('symbol')} currently carries {supplier_count} mapped supplier/project links.",
+  ]
+  return {
+    "headline": "Research stack ties bond moves, inflation, policy, events, and supplier/project links into the active equity read.",
+    "cards": cards,
+    "nextWatch": next_watch,
+    "papers": papers[:4],
+  }
+
+
+def build_market_decision_overview(snapshot: dict, region_payload: dict) -> dict:
+  market_session = snapshot.get("marketSession") or {}
+  mode = "intraday" if market_session.get("isOpen") else "preopen"
+  bonds = region_payload.get("bonds") or {}
+  analysis = region_payload.get("analysis") or {}
+  inflation = region_payload.get("inflation") or {}
+  forecast = snapshot.get("forecast") or {}
+  factors_raw = forecast.get("factorsRaw") or {}
+  projects = company_projects_for_symbol(snapshot.get("symbol", ""))
+  project_pressure, high_impact_count, supplier_count = compute_project_dependency_pressure(snapshot.get("symbol", ""))
+  volume_ratio = 1.0
+  raw_volume = float(snapshot.get("volume") or 0.0)
+  avg_volume = 0.0
+  for stat in snapshot.get("stats") or []:
+    if stat.get("label") == "Avg volume":
+      compact = str(stat.get("value") or "")
+      if compact.endswith("K"):
+        avg_volume = float(compact[:-1]) * 1e3
+      elif compact.endswith("M"):
+        avg_volume = float(compact[:-1]) * 1e6
+      elif compact.endswith("B"):
+        avg_volume = float(compact[:-1]) * 1e9
+      else:
+        try:
+          avg_volume = float(compact)
+        except ValueError:
+          avg_volume = 0.0
+  if avg_volume:
+    volume_ratio = raw_volume / avg_volume
+  inputs = []
+  for item in sorted(load_market_decision_inputs(), key=lambda entry: entry.get("displayOrder", 99)):
+    if item.get("mode") != mode:
+      continue
+    key = item.get("key")
+    value_display = "Monitoring"
+    note = ""
+    if key == "overnight_rates_gap":
+      curve = bonds.get("tenors") or []
+      ten_year = curve[2] if len(curve) > 2 else {"change1D": 0}
+      value_display = f"{float(ten_year.get('change1D') or 0):+.1f} bp"
+      note = f"{bonds.get('label', 'Bond market')} overnight repricing"
+    elif key == "macro_event_stack":
+      value_display = f"{snapshot.get('eventFocus', {}).get('label', 'Mixed')} focus"
+      note = f"{analysis.get('driver', 'event risk').replace('_', ' ')} is currently dominant"
+    elif key == "global_leadership":
+      value_display = region_payload.get("equity", {}).get("styleBias", "Mixed")
+      note = f"{region_payload.get('equity', {}).get('summary', '')}"
+    elif key == "duration_pressure_live":
+      real_yield = float(bonds.get("realYield") or 0.0)
+      duration_flag = bond_equity_duration_flag(snapshot.get("symbol"))
+      value_display = f"{max(real_yield - 1.5, 0) * duration_flag:.2f}"
+      note = f"Real yield {real_yield:.2f}% • duration flag {duration_flag:.2f}"
+    elif key == "trend_participation_live":
+      fast_momentum = float(factors_raw.get("fastMomentum") or 0.0)
+      slow_momentum = float(factors_raw.get("slowMomentum") or 0.0)
+      signal = (0.45 * fast_momentum) + (0.35 * slow_momentum) + (0.20 * math.log1p(max(volume_ratio, 0.0)))
+      value_display = f"{signal:+.2f}"
+      note = f"MOM5 {fast_momentum:+.3f} • MOM20 {slow_momentum:+.3f} • VR {volume_ratio:.2f}x"
+    elif key == "supplier_project_pressure":
+      value_display = f"{project_pressure:.2f}"
+      note = f"{len(projects)} projects • {high_impact_count}/{supplier_count or 1} high-impact suppliers"
+    elif key == "event_override_live":
+      value_display = f"{float(forecast.get('eventPressure') or 0.0):.2f}"
+      note = f"{snapshot.get('eventFocus', {}).get('label', 'Mixed')} • {snapshot.get('sentiment', {}).get('label', 'Mixed')}"
+    inputs.append(
+      {
+        "label": item.get("label", "Input"),
+        "mode": mode,
+        "cadence": item.get("cadence", ""),
+        "significance": item.get("significance", ""),
+        "formula": item.get("formula", ""),
+        "why": item.get("why", ""),
+        "sourceLabel": item.get("sourceLabel", ""),
+        "value": value_display,
+        "note": note,
+      }
+    )
+  return {
+    "mode": "During market" if mode == "intraday" else "Before market open",
+    "inputs": inputs,
+  }
+
+
+def build_methodology_payload(snapshot: dict, region_payload: dict) -> dict:
+  concepts = load_quant_concepts()
+  flow = load_methodology_flow()
+  decision_inputs = build_market_decision_overview(snapshot, region_payload)
+  research_overview = build_active_research_overview(snapshot, region_payload)
+  research_protocol = region_payload.get("researchProtocol") or {}
+  graph = (region_payload.get("watchlistImplications") or {}).get("graph") or {}
+  forecast = snapshot.get("forecast") or {}
+  moving_average = forecast.get("movingAverageSignal") or {}
+  decision_cockpit = snapshot.get("decisionCockpit") or {}
+  live_input_cards = []
+  for item in decision_inputs.get("inputs", [])[:6]:
+    live_input_cards.append(
+      {
+        "label": item.get("label", "Input"),
+        "value": item.get("value", "Monitoring"),
+        "cadence": item.get("cadence", ""),
+        "significance": item.get("significance", ""),
+        "useWhere": item.get("sourceLabel", ""),
+        "impactPath": item.get("note", ""),
+      }
+    )
+  concept_cards = []
+  for concept in concepts:
+    live_match = next((item for item in live_input_cards if item["label"].lower().startswith(concept.get("label", "").split(" ")[0].lower())), None)
+    concept_cards.append(
+      {
+        "label": concept.get("label", "Concept"),
+        "family": concept.get("family", ""),
+        "phase": concept.get("phase", ""),
+        "formula": concept.get("formula", ""),
+        "useWhere": concept.get("useWhere", ""),
+        "impactPath": concept.get("impactPath", ""),
+        "cadence": concept.get("cadence", ""),
+        "whyItMatters": concept.get("whyItMatters", ""),
+        "sourceTitle": concept.get("sourceTitle", ""),
+        "url": concept.get("url", ""),
+        "liveValue": live_match.get("value") if live_match else "",
+      }
+    )
+  flow_nodes = []
+  flow_edges = []
+  flow_positions = {
+    "inputs": (110, 90),
+    "factors": (330, 90),
+    "regime": (550, 90),
+    "implications": (770, 90),
+    "actions": (550, 260),
+  }
+  for item in flow:
+    x, y = flow_positions.get(item.get("id"), (100, 100))
+    flow_nodes.append(
+      {
+        "id": item.get("id", slugify_note_name(item.get("label", "node"))),
+        "label": item.get("label", "Stage"),
+        "summary": item.get("summary", ""),
+        "x": x,
+        "y": y,
+      }
+    )
+  flow_edges.extend(
+    [
+      {"source": "inputs", "target": "factors", "label": "clean + score"},
+      {"source": "factors", "target": "regime", "label": "classify"},
+      {"source": "regime", "target": "implications", "label": "map impact"},
+      {"source": "implications", "target": "actions", "label": "frame scenario"},
+      {"source": "regime", "target": "actions", "label": "monitor"},
+    ]
+  )
+  return {
+    "headline": "A fact-first pipeline: macro anchor -> market factors -> event override -> stock scenarios.",
+    "principles": [
+      "Facts are separated from interpretation.",
+      "Bonds explain the macro backdrop before equities are judged.",
+      "Fresh events can override slower factors.",
+      "Company links trace second-order impact.",
+    ],
+    "cockpit": {
+      "stance": decision_cockpit.get("stance") or "Scenario engine active",
+      "edgeScore": decision_cockpit.get("edgeScore", 0),
+      "riskLevel": decision_cockpit.get("riskLevel", "Monitoring"),
+      "activeSignal": moving_average.get("state") or forecast.get("direction") or "Signal pending",
+      "summary": "The methodology is intentionally not a black box: every score is tied back to live inputs, classic quant signals, macro context, events, and graph dependencies.",
+      "rules": [
+        {"label": "1. Anchor", "value": region_payload.get("analysis", {}).get("driver", "macro"), "note": "Start with bonds, inflation, and policy."},
+        {"label": "2. Confirm", "value": moving_average.get("state") or "trend pending", "note": "Check trend, volume, and model agreement."},
+        {"label": "3. Override", "value": snapshot.get("eventFocus", {}).get("label", "event scan"), "note": "Fresh catalysts can outrank slow factors."},
+        {"label": "4. Monitor", "value": decision_cockpit.get("riskLevel", "risk"), "note": "Show unknowns and watch-next items."},
+      ],
+    },
+    "concepts": concept_cards,
+    "flow": {
+      "nodes": flow_nodes,
+      "edges": flow_edges,
+    },
+    "liveInputs": live_input_cards,
+    "protocol": {
+      "summary": research_protocol.get("summary", ""),
+      "factors": research_protocol.get("factors", [])[:5],
+      "practices": research_protocol.get("practices", [])[:4],
+    },
+    "researchCards": research_overview.get("cards", [])[:4],
+    "graphCoverage": {
+      "nodes": len(graph.get("nodes") or []),
+      "links": len(graph.get("links") or []),
+      "coverage": ((graph.get("projectMeta") or {}).get("coverage") or 0),
+    },
+    "vault": {
+      "conceptsPath": "vault/market-map/concepts",
+      "workflowPath": "vault/market-map/workflows",
+      "mode": "Obsidian-friendly markdown",
+    },
   }
 
 
@@ -3723,11 +4985,19 @@ def build_watchlist_implications(region_key: str, watchlist: list[dict], bonds: 
   slope = float((bonds.get("curve") or {}).get("slope2s10s") or 0)
   real_yield = float(bonds.get("realYield") or 0)
   cards = []
-  graph_nodes = [{"id": "bonds", "label": "Bond yields", "group": "macro"}]
+  graph_nodes = [
+    {
+      "id": "bonds",
+      "label": "Bond yields",
+      "group": "macro",
+      "summary": f"{bonds.get('label', 'Bond market')} is the anchor for the region-level read.",
+      "detail": f"Curve shape {((bonds.get('curve') or {}).get('shape') or 'mixed')} • real yield {float(bonds.get('realYield') or 0):.2f}%",
+    }
+  ]
   graph_links = []
-  graph_nodes.append({"id": "inflation", "label": "Inflation", "group": "macro"})
-  graph_nodes.append({"id": "policy", "label": "Policy", "group": "macro"})
-  graph_nodes.append({"id": "equities", "label": "Equities", "group": "market"})
+  graph_nodes.append({"id": "inflation", "label": "Inflation", "group": "macro", "summary": f"Headline {float(inflation.get('headline') or 0):.2f}% • core {float(inflation.get('core') or 0):.2f}%"})
+  graph_nodes.append({"id": "policy", "label": "Policy", "group": "macro", "summary": f"{notes['regionCentralBank'] or 'Central-bank context'}"})
+  graph_nodes.append({"id": "equities", "label": "Equities", "group": "market", "summary": "Sector and style leadership receives the macro shock after bonds and inflation."})
   for item in relevant:
     meta = fallback_meta(item["symbol"])
     label = meta.get("name", item["symbol"])
@@ -3735,6 +5005,31 @@ def build_watchlist_implications(region_key: str, watchlist: list[dict], bonds: 
     is_bank = "BANK" in label.upper() or "BANK" in symbol_upper or symbol_upper.startswith("SBIN")
     is_duration = any(token in symbol_upper for token in {"AAPL", "MSFT", "NVDA", "TCS", "INFY"})
     direction_score = (-1 if real_yield > 1.8 and is_duration else 1 if slope > 0 and is_bank else 0)
+    projects = company_projects_for_symbol(item["symbol"])
+    supplier_count = sum(len(project.get("suppliers") or []) for project in projects)
+    top_projects = []
+    for project in projects[:3]:
+      suppliers = project.get("suppliers") or []
+      top_projects.append(
+        {
+          "title": project.get("title", "Project"),
+          "theme": project.get("theme", ""),
+          "worthLabel": project.get("worthLabel", "Undisclosed"),
+          "status": project.get("status", ""),
+          "summary": project.get("summary", ""),
+          "asOf": project.get("asOf", ""),
+          "sourceLabel": project.get("sourceLabel", ""),
+          "sourceUrl": project.get("sourceUrl", ""),
+          "suppliers": [
+            {
+              "label": supplier.get("label", "Supplier"),
+              "role": supplier.get("role", ""),
+              "impact": supplier.get("impact", "Medium"),
+            }
+            for supplier in suppliers[:4]
+          ],
+        }
+      )
     cards.append(
       {
         "symbol": item["symbol"],
@@ -3744,9 +5039,23 @@ def build_watchlist_implications(region_key: str, watchlist: list[dict], bonds: 
         "confidence": "Medium",
         "why": company_note_for_symbol(item["symbol"]) or notes["company"] or notes["sector"],
         "marketMapNote": load_market_map_note(item["symbol"]),
+        "projectCount": len(projects),
+        "supplierCount": supplier_count,
+        "projects": top_projects,
       }
     )
-    graph_nodes.append({"id": item["symbol"], "label": item["symbol"], "group": "stock"})
+    graph_nodes.append(
+      {
+        "id": item["symbol"],
+        "label": item["symbol"],
+        "group": "stock",
+        "entityType": "company",
+        "subtitle": label,
+        "summary": cards[-1]["scenario"],
+        "detail": cards[-1]["why"],
+        "confidence": cards[-1]["confidence"],
+      }
+    )
     graph_links.append(
       {
         "source": "bonds",
@@ -3755,6 +5064,62 @@ def build_watchlist_implications(region_key: str, watchlist: list[dict], bonds: 
         "direction": "negative" if direction_score < 0 else "positive" if direction_score > 0 else "neutral",
       }
     )
+    for project in projects[:4]:
+      suppliers = project.get("suppliers") or []
+      project_id = f"{item['symbol']}::{project.get('id') or slugify_note_name(project.get('title', 'project'))}"
+      worth_label = project.get("worthLabel") or "Undisclosed"
+      graph_nodes.append(
+        {
+          "id": project_id,
+          "label": project.get("title", "Project"),
+          "group": "project",
+          "entityType": project.get("theme", "project"),
+          "subtitle": worth_label,
+          "summary": project.get("summary", ""),
+          "detail": f"{project.get('status', '')} • {project.get('theme', '')}".strip(" •"),
+          "status": project.get("status", ""),
+          "sourceUrl": project.get("sourceUrl", ""),
+          "sourceLabel": project.get("sourceLabel", ""),
+          "worthLabel": worth_label,
+          "worthValue": project.get("worthValue"),
+          "asOf": project.get("asOf", ""),
+        }
+      )
+      graph_links.append(
+        {
+          "source": item["symbol"],
+          "target": project_id,
+          "value": clamp(1.4 + (len(suppliers) * 0.22), 1.4, 3.8),
+          "direction": "positive" if direction_score >= 0 else "negative",
+          "relation": "project",
+          "worthLabel": worth_label,
+        }
+      )
+      for supplier in suppliers[:5]:
+        supplier_id = supplier.get("id") or f"{project_id}::{slugify_note_name(supplier.get('label', 'entity'))}"
+        impact = (supplier.get("impact") or "Medium").capitalize()
+        graph_nodes.append(
+          {
+            "id": supplier_id,
+            "label": supplier.get("label", "Supplier"),
+            "group": "entity",
+            "entityType": supplier.get("type", "entity"),
+            "subtitle": supplier.get("role", ""),
+            "impact": impact,
+            "summary": f"{supplier.get('type', 'entity').replace('-', ' ')} dependency",
+            "detail": supplier.get("role", ""),
+          }
+        )
+        graph_links.append(
+          {
+            "source": project_id,
+            "target": supplier_id,
+            "value": 3.6 if impact == "High" else 2.8 if impact == "Medium" else 2.1,
+            "direction": "neutral",
+            "relation": supplier.get("role") or supplier.get("type") or "supplier",
+            "impact": impact,
+          }
+        )
     company_network = company_network_for_symbol(item["symbol"])
     for entity in company_network.get("entities", [])[:5]:
       graph_nodes.append(
@@ -3763,6 +5128,8 @@ def build_watchlist_implications(region_key: str, watchlist: list[dict], bonds: 
           "label": entity.get("label", entity.get("id", "Entity")),
           "group": "entity",
           "entityType": entity.get("type", "entity"),
+          "subtitle": entity.get("role", "") or entity.get("theme", ""),
+          "summary": entity.get("theme", "") or entity.get("type", "entity"),
         }
       )
     for link in company_network.get("links", [])[:6]:
@@ -3792,11 +5159,20 @@ def build_watchlist_implications(region_key: str, watchlist: list[dict], bonds: 
       "nodes": dedupe_graph_nodes(graph_nodes),
       "links": graph_links,
       "relationMeta": relation_meta,
+      "projectMeta": {
+        "source": "Curated company project map",
+        "coverage": sum(1 for item in relevant if company_projects_for_symbol(item["symbol"])),
+      },
       "factorSchedule": factor_schedule,
       "papers": paper_set,
       "vault": {
         "path": "vault/market-map",
         "mode": "Obsidian-friendly markdown",
+      },
+      "graphMeta": {
+        "layout": "Hierarchical dependency graph",
+        "maxNodes": len(dedupe_graph_nodes(graph_nodes)),
+        "maxLinks": len(graph_links),
       },
     },
   }
@@ -3815,6 +5191,7 @@ def build_region_payload(region_key: str, watchlist: list[dict], active_snapshot
     equity = equity_future.result()
   calendar = build_region_calendar(config["key"])
   analysis = build_region_analysis(config["key"], bonds, inflation, policy, events, equity)
+  research_protocol = build_region_research_protocol(config["key"], bonds, inflation)
   watchlist_implications = build_watchlist_implications(config["key"], watchlist, bonds, inflation)
   return {
     "region": config["key"],
@@ -3827,6 +5204,7 @@ def build_region_payload(region_key: str, watchlist: list[dict], active_snapshot
     "calendar": calendar,
     "equity": equity,
     "analysis": analysis,
+    "researchProtocol": research_protocol,
     "watchlistImplications": watchlist_implications,
     "notes": notes,
   }
@@ -3921,6 +5299,11 @@ def build_dashboard(symbols: list[str], active: str | None, chart_range: str = "
       "us": us_future.result(),
       "india": india_future.result(),
     }
+  active_region_key = selected_region["key"]
+  active_snapshot["researchOverview"] = build_active_research_overview(active_snapshot, regions[active_region_key])
+  active_snapshot["decisionInputs"] = build_market_decision_overview(active_snapshot, regions[active_region_key])
+  active_snapshot["decisionCockpit"] = build_decision_cockpit(active_snapshot, regions[active_region_key], radar)
+  methodology = build_methodology_payload(active_snapshot, regions[active_region_key])
 
   return {
     "provider": load_config().get("provider", "yahoo"),
@@ -3932,8 +5315,10 @@ def build_dashboard(symbols: list[str], active: str | None, chart_range: str = "
     "macroPulse": macro_pulse,
     "radar": radar,
     "headlines": list(dict.fromkeys(banner))[:6],
+    "discovery": build_market_discovery(watchlist),
     "regions": regions,
     "comparison": build_region_comparison(regions),
+    "methodology": methodology,
   }
 
 
@@ -4018,6 +5403,25 @@ def build_overview_payload(symbols: list[str], active: str | None, region_key: s
 
 
 class FinancialBoardHandler(BaseHTTPRequestHandler):
+  def write_security_headers(self) -> None:
+    self.send_header("X-Content-Type-Options", "nosniff")
+    self.send_header("X-Frame-Options", "DENY")
+    self.send_header("Referrer-Policy", "same-origin")
+    self.send_header("Cross-Origin-Opener-Policy", "same-origin")
+    self.send_header("Cross-Origin-Resource-Policy", "same-origin")
+    self.send_header(
+      "Content-Security-Policy",
+      "default-src 'self'; "
+      "script-src 'self'; "
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+      "font-src 'self' https://fonts.gstatic.com; "
+      "img-src 'self' data: https:; "
+      "connect-src 'self'; "
+      "frame-ancestors 'none'; "
+      "base-uri 'self'; "
+      "form-action 'self'",
+    )
+
   def do_GET(self) -> None:
     parsed = urllib.parse.urlparse(self.path)
     if parsed.path in {"/", "/index.html"}:
@@ -4137,6 +5541,8 @@ class FinancialBoardHandler(BaseHTTPRequestHandler):
 
   def read_json(self) -> dict | None:
     length = int(self.headers.get("Content-Length", "0") or "0")
+    if length > 262144:
+      return None
     if length <= 0:
       return None
     raw = self.rfile.read(length).decode("utf-8")
@@ -4152,6 +5558,7 @@ class FinancialBoardHandler(BaseHTTPRequestHandler):
       return
     data = path.read_bytes()
     self.send_response(HTTPStatus.OK)
+    self.write_security_headers()
     self.send_header("Content-Type", content_type)
     self.send_header("Content-Length", str(len(data)))
     self.end_headers()
@@ -4160,6 +5567,7 @@ class FinancialBoardHandler(BaseHTTPRequestHandler):
   def send_json(self, payload: dict) -> None:
     data = json.dumps(payload).encode("utf-8")
     self.send_response(HTTPStatus.OK)
+    self.write_security_headers()
     self.send_header("Content-Type", "application/json; charset=utf-8")
     self.send_header("Cache-Control", "no-store")
     self.send_header("Content-Length", str(len(data)))
@@ -4168,6 +5576,7 @@ class FinancialBoardHandler(BaseHTTPRequestHandler):
 
   def stream_quotes(self, symbols: list[str], active: str | None) -> None:
     self.send_response(HTTPStatus.OK)
+    self.write_security_headers()
     self.send_header("Content-Type", "text/event-stream")
     self.send_header("Cache-Control", "no-cache")
     self.send_header("Connection", "keep-alive")

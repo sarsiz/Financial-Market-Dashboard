@@ -8,3 +8,5 @@
 - When live data is missing, return documented fallback/mock data with source notes instead of blank panels or invented “live” claims.
 - Use the local historical cache as the source of truth for older data. Fetch the live edge, then persist the older series and reuse it rather than scraping the same back history repeatedly.
 - Keep universe/history/relations pipelines scriptable and deterministic. Prefer plain JSON manifests plus resumable backfill jobs over hidden one-off logic.
+- Treat `vault/market-map/` as the local agent memory system. Durable notes go in stable folders like `companies/`, `concepts/`, `papers/`, `playbooks/`, `research/`, and `workflows/`; temporary captures should stay in `inbox/` or `sessions/` until promoted.
+- Keep Obsidian-friendly memory simple: plain markdown, frontmatter where helpful, wiki-linkable notes, and generated indexes/manifests from scripts rather than hand-maintained sprawl.
