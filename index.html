@@ -385,6 +385,8 @@
 
         <section id="methodology" class="tab-panel">
           <div class="macro-grid methodology-grid">
+
+            <!-- Row 1: Pipeline flow + cockpit (full width) -->
             <article class="glass-panel macro-panel methodology-panel methodology-panel-wide">
               <div class="section-heading">
                 <h3>Methodology Flow</h3>
@@ -396,8 +398,36 @@
               <div class="methodology-flow-shell">
                 <svg id="methodology-flowchart" class="methodology-flowchart" viewBox="0 0 900 360" preserveAspectRatio="xMidYMid meet"></svg>
               </div>
+            </article>
+
+            <!-- Row 2: Signal Pattern Charts (educational SVG visualisations) -->
+            <article class="glass-panel macro-panel methodology-panel methodology-panel-wide" id="methodology-signal-charts-panel">
+              <div class="section-heading">
+                <h3>Signal Pattern Library</h3>
+                <span>Educational visualisations of the pattern families this dashboard monitors — actual thresholds stay private</span>
+              </div>
+              <div id="methodology-signal-charts" class="methodology-signal-charts"></div>
+            </article>
+
+            <!-- Row 3 left: Signal layer map -->
+            <article class="glass-panel macro-panel methodology-panel">
+              <div class="section-heading">
+                <h3>Signal Layer Map</h3>
+                <span>How each signal family is guarded and used</span>
+              </div>
               <div id="methodology-signal-map" class="methodology-signal-map"></div>
             </article>
+
+            <!-- Row 3 right: Academic papers -->
+            <article class="glass-panel macro-panel methodology-panel">
+              <div class="section-heading">
+                <h3>Research Basis</h3>
+                <span>Academic papers behind the signal and forecast layers</span>
+              </div>
+              <div id="methodology-papers" class="methodology-papers"></div>
+            </article>
+
+            <!-- Row 4 left: Live Inputs -->
             <article class="glass-panel macro-panel methodology-panel">
               <div class="section-heading">
                 <h3>Live Inputs</h3>
@@ -405,14 +435,17 @@
               </div>
               <div id="methodology-live-inputs" class="macro-summary-grid"></div>
             </article>
+
+            <!-- Row 4 right: Quant Concepts + Formulas -->
             <article class="glass-panel macro-panel methodology-panel">
               <div class="section-heading">
-                <h3>Quant Concepts</h3>
-                <span>Popular concepts, formulas, and use in this dashboard</span>
+                <h3>Quant Concepts &amp; Formulas</h3>
+                <span>Popular concepts, derivations, and use in this dashboard</span>
               </div>
               <div id="methodology-concepts" class="macro-analysis-list methodology-concepts"></div>
               <div id="methodology-formulas" class="methodology-formulas"></div>
             </article>
+
           </div>
         </section>
 

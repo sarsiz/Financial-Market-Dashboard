@@ -2142,7 +2142,6 @@ function renderMethodology() {
     )
     .join("");
   inputsNode.innerHTML = (methodology.liveInputs || [])
-    .slice(0, 4)
     .map(
       (item) => `
         <div class="metric-card methodology-input-card">
@@ -2155,29 +2154,29 @@ function renderMethodology() {
     )
     .join("");
   conceptsNode.innerHTML = (methodology.concepts || [])
-    .slice(0, 3)
     .map(
       (item) => `
         <div class="research-card methodology-card">
-          <span>${item.family} • ${item.phase}</span>
-          <strong>${item.label}</strong>
+          <div class="methodology-card-header">
+            <div>
+              <span class="methodology-card-family">${item.family}</span>
+              <strong>${item.label}</strong>
+            </div>
+            ${item.liveValue ? `<span class="methodology-card-live">${item.liveValue}</span>` : ""}
+          </div>
           <code>${item.formula}</code>
           <p>${item.whyItMatters || item.impactPath}</p>
           <div class="methodology-card-meta">
-            <span>Used in: ${item.useWhere}</span>
-            <span>Updates: ${item.cadence}</span>
-            ${item.liveValue ? `<span>Live ${item.liveValue}</span>` : ""}
+            ${item.useWhere ? `<span>${item.useWhere}</span>` : ""}
+            ${item.cadence ? `<span>${item.cadence}</span>` : ""}
+            ${item.phase ? `<span>${item.phase}</span>` : ""}
           </div>
-          ${item.url ? `<a href="${item.url}" target="_blank" rel="noreferrer">Source: ${item.sourceTitle || "Reference"}</a>` : `<small>${item.sourceTitle || ""}</small>`}
+          ${item.url ? `<a class="methodology-card-source" href="${item.url}" target="_blank" rel="noreferrer">↗ ${item.sourceTitle || "Source"}</a>` : (item.sourceTitle ? `<small class="methodology-card-source-text">${item.sourceTitle}</small>` : "")}
         </div>
       `,
     )
     .join("");
   signalMapNode.innerHTML = `
-    <div class="methodology-safety-note">
-      <strong>${methodology.safetyNote?.title || "Sensitive signal handling"}</strong>
-      <p>${methodology.safetyNote?.body || "Private trading playbooks stay in ignored local vault paths. The dashboard exposes educational pattern families, not proprietary triggers."}</p>
-    </div>
     <div class="methodology-signal-grid">
       ${(methodology.signalLayers || []).map((item) => `
         <article>
@@ -2202,6 +2201,308 @@ function renderMethodology() {
     `).join("")}
   `;
   drawMethodologyFlow(flowNode, methodology.flow || {});
+  renderMethodologySignalCharts();
+  renderMethodologyPapers(methodology.tradingPapers || []);
+}
+
+// ── Signal Pattern Library ─────────────────────────────────────────────────
+// Purely educational SVG illustrations. Actual thresholds stay in gitignored
+// data/factors/prediction_formulas.json and vault/.
+const SIGNAL_PATTERNS = [
+  {
+    id: "rsi",
+    family: "Momentum",
+    badge: "badge-momentum",
+    kicker: "Oscillator · Overbought / Oversold",
+    title: "Relative Strength Index (RSI)",
+    formula: "RSI = 100 − 100 / (1 + RS)\nRS = Avg Gain₁₄ / Avg Loss₁₄",
+    description: "Measures the speed and magnitude of recent price changes on a 0–100 scale. Readings above the upper zone signal exhausted buying; readings below the lower zone signal exhausted selling. Divergences from price are often more predictive than the level itself.",
+    cadence: "Intraday / Daily",
+    phase: "Trend confirmation",
+    paper: "Wilder, 1978",
+    drawChart(w, h) {
+      // Price line (top half) + RSI indicator (bottom half)
+      const pts = [18,14,22,20,28,18,35,24,44,30,56,38,62,42,70,48,78,52,84,55,90,51,96,46,102,40,108,34,114,28,118,22,122,18,126,16,130,18,136,22,142,28,148,34,154,40,160,46,166,52,172,56,176,58];
+      const priceH = h * 0.42;
+      const rsiH = h * 0.42;
+      const rsiY = h * 0.56;
+      const px = (i) => (i / 176) * w;
+      const py = (v) => priceH - (v / 60) * priceH + 4;
+      const rsiVals = [42,46,52,55,60,66,71,76,80,82,79,74,68,62,55,48,40,34,28,25,28,33,40,46,52];
+      const rx = (i) => (i / (rsiVals.length - 1)) * w;
+      const ry = (v) => rsiY + rsiH - ((v / 100) * rsiH);
+      const priceD = pts.reduce((acc, v, i) => i % 2 === 0 ? acc + (acc ? " L" : "M") + px(v) : acc + "," + py(v), "");
+      const rsiD = rsiVals.map((v, i) => (i === 0 ? "M" : "L") + rx(i) + "," + ry(v)).join(" ");
+      const ob = ry(70); const os = ry(30);
+      return `
+        <rect width="${w}" height="${h}" rx="8" fill="rgba(0,0,0,0.18)"/>
+        <!-- OB zone -->
+        <rect x="0" y="${rsiY}" width="${w}" height="${ob - rsiY}" fill="rgba(255,107,107,0.07)"/>
+        <!-- OS zone -->
+        <rect x="0" y="${os}" width="${w}" height="${rsiY + rsiH - os}" fill="rgba(63,224,142,0.07)"/>
+        <!-- Price area -->
+        <path d="${priceD}" fill="none" stroke="rgba(255,176,0,0.55)" stroke-width="1.6"/>
+        <!-- Divider -->
+        <line x1="0" y1="${h*0.52}" x2="${w}" y2="${h*0.52}" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>
+        <!-- RSI line -->
+        <path d="${rsiD}" fill="none" stroke="#7dd6ff" stroke-width="1.8"/>
+        <!-- OB/OS labels -->
+        <text x="${w-28}" y="${ob - 3}" fill="rgba(255,107,107,0.72)" font-size="8" font-family="Azeret Mono,monospace">OB</text>
+        <text x="${w-28}" y="${os + 10}" fill="rgba(63,224,142,0.72)" font-size="8" font-family="Azeret Mono,monospace">OS</text>
+        <!-- OB/OS lines -->
+        <line x1="0" y1="${ob}" x2="${w}" y2="${ob}" stroke="rgba(255,107,107,0.22)" stroke-width="1" stroke-dasharray="4,3"/>
+        <line x1="0" y1="${os}" x2="${w}" y2="${os}" stroke="rgba(63,224,142,0.22)" stroke-width="1" stroke-dasharray="4,3"/>
+        <text x="6" y="14" fill="rgba(255,176,0,0.55)" font-size="8" font-family="Azeret Mono,monospace">PRICE</text>
+        <text x="6" y="${rsiY + 12}" fill="rgba(125,214,255,0.6)" font-size="8" font-family="Azeret Mono,monospace">RSI</text>
+      `;
+    },
+  },
+  {
+    id: "macd",
+    family: "Momentum",
+    badge: "badge-momentum",
+    kicker: "Trend · Signal Line Crossover",
+    title: "MACD — Moving Avg Convergence/Divergence",
+    formula: "MACD = EMA₁₂ − EMA₂₆\nSignal = EMA₉(MACD)  |  Histogram = MACD − Signal",
+    description: "Tracks the gap between two exponential moving averages. When the MACD line crosses above the signal line, trend momentum is shifting up — the histogram turns positive. Histogram shrinkage before the cross often gives early warning.",
+    cadence: "Daily / Intraday",
+    phase: "Trend + momentum",
+    paper: "Appel, 1979",
+    drawChart(w, h) {
+      const macdVals = [-6,-5,-3,-1,0,2,4,5,6,5,4,2,0,-1,-3,-5,-4,-2,0,2,4,6,7,6,4];
+      const sigVals  = [-5,-5,-4,-3,-2,-1,1,2,4,5,4,3,2,1,-1,-2,-3,-2,0,1,3,4,6,6,5];
+      const n = macdVals.length;
+      const cx = (i) => (i / (n-1)) * w;
+      const cy = (v) => h/2 - (v / 8) * (h * 0.38);
+      const macdD = macdVals.map((v,i) => (i===0?"M":"L") + cx(i)+","+cy(v)).join(" ");
+      const sigD  = sigVals.map((v,i) => (i===0?"M":"L") + cx(i)+","+cy(v)).join(" ");
+      const bars = macdVals.map((v,i) => {
+        const diff = v - sigVals[i];
+        const barH = Math.abs(diff / 8) * (h * 0.36);
+        const col = diff >= 0 ? "rgba(63,224,142,0.5)" : "rgba(255,107,107,0.5)";
+        const barW = Math.max(4, w/n - 3);
+        return `<rect x="${cx(i) - barW/2}" y="${diff>=0 ? h/2-barH : h/2}" width="${barW}" height="${barH}" fill="${col}" rx="2"/>`;
+      }).join("");
+      return `
+        <rect width="${w}" height="${h}" rx="8" fill="rgba(0,0,0,0.18)"/>
+        <line x1="0" y1="${h/2}" x2="${w}" y2="${h/2}" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>
+        ${bars}
+        <path d="${macdD}" fill="none" stroke="rgba(255,176,0,0.8)" stroke-width="1.8"/>
+        <path d="${sigD}"  fill="none" stroke="#ff8fa3" stroke-width="1.4" stroke-dasharray="5,3"/>
+        <text x="6" y="13" fill="rgba(255,176,0,0.6)" font-size="8" font-family="Azeret Mono,monospace">MACD</text>
+        <text x="${w*0.42}" y="13" fill="rgba(255,143,163,0.6)" font-size="8" font-family="Azeret Mono,monospace">SIGNAL</text>
+        <text x="${w*0.72}" y="13" fill="rgba(63,224,142,0.6)" font-size="8" font-family="Azeret Mono,monospace">HIST</text>
+      `;
+    },
+  },
+  {
+    id: "bollinger",
+    family: "Volatility",
+    badge: "badge-volatility",
+    kicker: "Volatility · Band Squeeze / Expansion",
+    title: "Bollinger Bands",
+    formula: "Upper = SMA₂₀ + 2σ\nLower = SMA₂₀ − 2σ\nBandwidth = (Upper − Lower) / SMA",
+    description: "Envelopes price at a standard deviation distance from a moving average. A squeeze (bands converging) signals compressed volatility before a potential breakout. Price tagging the upper band is not a sell signal — it means strong trend, not exhaustion.",
+    cadence: "Intraday / Daily",
+    phase: "Volatility state",
+    paper: "Bollinger, 1983",
+    drawChart(w, h) {
+      const mid = [30,32,33,34,35,36,37,38,38,39,40,41,42,44,46,47,48,49,50,51,52,54,56,58,60];
+      const n = mid.length;
+      const bw = (i) => i < 10 ? 12 - i*0.8 : i < 14 ? 4 + (i-10)*0.5 : 6 + (i-14)*2;
+      const scale = (v) => h - (v / 75) * h * 0.88 + h * 0.06;
+      const cx = (i) => (i / (n-1)) * w;
+      const upperD = mid.map((v,i) => (i===0?"M":"L") + cx(i)+","+scale(v+bw(i))).join(" ");
+      const lowerD = mid.map((v,i) => (i===0?"M":"L") + cx(i)+","+scale(v-bw(i))).join(" ");
+      const midD   = mid.map((v,i) => (i===0?"M":"L") + cx(i)+","+scale(v)).join(" ");
+      // band fill
+      const bandFill = upperD + " " + mid.map((v,i) => (i===0?"L":"L") + cx(n-1-i)+","+scale(mid[n-1-i]-bw(n-1-i))).join(" ") + " Z";
+      // price (hugs upper then crosses lower)
+      const price = [31,33,34,36,38,40,43,46,50,53,54,52,50,47,44,42,40,39,38,38,40,44,52,60,66];
+      const priceD = price.map((v,i) => (i===0?"M":"L") + cx(i)+","+scale(v)).join(" ");
+      return `
+        <rect width="${w}" height="${h}" rx="8" fill="rgba(0,0,0,0.18)"/>
+        <path d="${bandFill}" fill="rgba(88,214,255,0.05)"/>
+        <path d="${upperD}" fill="none" stroke="rgba(88,214,255,0.4)" stroke-width="1.2" stroke-dasharray="4,3"/>
+        <path d="${lowerD}" fill="none" stroke="rgba(88,214,255,0.4)" stroke-width="1.2" stroke-dasharray="4,3"/>
+        <path d="${midD}"   fill="none" stroke="rgba(88,214,255,0.2)" stroke-width="1"/>
+        <path d="${priceD}" fill="none" stroke="rgba(255,220,130,0.85)" stroke-width="1.8"/>
+        <text x="6" y="13" fill="rgba(88,214,255,0.6)" font-size="8" font-family="Azeret Mono,monospace">BB ±2σ</text>
+        <text x="${w*0.55}" y="13" fill="rgba(255,220,130,0.6)" font-size="8" font-family="Azeret Mono,monospace">PRICE</text>
+        <!-- squeeze annotation -->
+        <rect x="${w*0.3}" y="${h*0.04}" width="${w*0.18}" height="${h*0.92}" fill="rgba(200,180,255,0.04)" rx="4"/>
+        <text x="${w*0.31}" y="${h-5}" fill="rgba(200,180,255,0.55)" font-size="7.5" font-family="Azeret Mono,monospace">SQUEEZE</text>
+      `;
+    },
+  },
+  {
+    id: "zscore",
+    family: "Mean Reversion",
+    badge: "badge-reversion",
+    kicker: "Statistical · Deviation from Mean",
+    title: "Z-Score Mean Reversion",
+    formula: "Z = (Pₜ − MA₂₀) / σ₂₀\nReversion signal when |Z| > threshold",
+    description: "Measures how far current price sits from its rolling mean in standard deviation units. High positive Z = stretched above mean, likely to revert. Pairs with a trend filter — reversion trades against trend carry higher failure rate in strong momentum regimes.",
+    cadence: "Intraday / Daily",
+    phase: "Entry timing",
+    paper: "Lo & MacKinlay, 1988",
+    drawChart(w, h) {
+      const zVals = [0.2,0.5,0.9,1.4,1.9,2.2,1.8,1.2,0.6,0.1,-0.3,-0.7,-1.1,-1.8,-2.1,-1.6,-1.0,-0.4,0.2,0.7,1.1,1.5,1.2,0.7,0.2];
+      const n = zVals.length;
+      const cx = (i) => (i / (n-1)) * w;
+      const cy = (v) => h/2 - (v/2.5) * (h*0.4);
+      const zD = zVals.map((v,i) => (i===0?"M":"L") + cx(i)+","+cy(v)).join(" ");
+      const ob = cy(1.8); const os = cy(-1.8);
+      return `
+        <rect width="${w}" height="${h}" rx="8" fill="rgba(0,0,0,0.18)"/>
+        <rect x="0" y="${h*0.06}" width="${w}" height="${ob - h*0.06}" fill="rgba(255,107,107,0.06)"/>
+        <rect x="0" y="${os}" width="${w}" height="${h*0.94 - os}" fill="rgba(63,224,142,0.06)"/>
+        <line x1="0" y1="${h/2}" x2="${w}" y2="${h/2}" stroke="rgba(255,255,255,0.09)" stroke-width="1"/>
+        <line x1="0" y1="${ob}"  x2="${w}" y2="${ob}"  stroke="rgba(255,107,107,0.22)" stroke-dasharray="4,3" stroke-width="1"/>
+        <line x1="0" y1="${os}"  x2="${w}" y2="${os}"  stroke="rgba(63,224,142,0.22)"  stroke-dasharray="4,3" stroke-width="1"/>
+        <path d="${zD}" fill="none" stroke="#ff8fa3" stroke-width="1.8"/>
+        <text x="6" y="13" fill="rgba(255,143,163,0.6)" font-size="8" font-family="Azeret Mono,monospace">Z-SCORE</text>
+        <text x="${w-42}" y="${ob-3}" fill="rgba(255,107,107,0.65)" font-size="7.5" font-family="Azeret Mono,monospace">+1.8σ</text>
+        <text x="${w-42}" y="${os+10}" fill="rgba(63,224,142,0.65)" font-size="7.5" font-family="Azeret Mono,monospace">−1.8σ</text>
+        <text x="6" y="${h/2+10}" fill="rgba(255,255,255,0.2)" font-size="7.5" font-family="Azeret Mono,monospace">0</text>
+      `;
+    },
+  },
+  {
+    id: "yieldcurve",
+    family: "Macro",
+    badge: "badge-macro",
+    kicker: "Rates · Curve Shape Signal",
+    title: "Yield Curve 2s10s Spread",
+    formula: "Spread = Y₁₀ − Y₂\nInversion: Spread < 0\nSteepening: ΔSpread > 0",
+    description: "The gap between 10-year and 2-year treasury yields is the most-watched leading indicator for credit conditions and recession probability. Inversion (negative spread) has preceded every US recession since 1955. Steepening after inversion is often the confirmation phase.",
+    cadence: "Daily / Intraday",
+    phase: "Macro regime",
+    paper: "Estrella & Mishkin, 1996",
+    drawChart(w, h) {
+      const spread = [1.6,1.4,1.1,0.8,0.5,0.2,-0.1,-0.3,-0.5,-0.6,-0.4,-0.2,0.1,0.3,0.6,0.9,1.1,1.3,1.2,1.0,0.8,0.7,0.6,0.5,0.7];
+      const n = spread.length;
+      const cx = (i) => (i/(n-1))*w;
+      const cy = (v) => h*0.45 - (v/1.8)*(h*0.38);
+      const zero = cy(0);
+      const spreadD = spread.map((v,i) => (i===0?"M":"L")+cx(i)+","+cy(v)).join(" ");
+      const areaAbove = spread.map((v,i) => (i===0?"M":"L")+cx(i)+","+cy(Math.max(0,v))).join(" ")
+        + ` L${w},${zero} L0,${zero} Z`;
+      const areaBelow = spread.map((v,i) => (i===0?"M":"L")+cx(i)+","+cy(Math.min(0,v))).join(" ")
+        + ` L${w},${zero} L0,${zero} Z`;
+      return `
+        <rect width="${w}" height="${h}" rx="8" fill="rgba(0,0,0,0.18)"/>
+        <path d="${areaAbove}" fill="rgba(63,224,142,0.08)"/>
+        <path d="${areaBelow}" fill="rgba(255,107,107,0.1)"/>
+        <line x1="0" y1="${zero}" x2="${w}" y2="${zero}" stroke="rgba(255,255,255,0.14)" stroke-width="1"/>
+        <path d="${spreadD}" fill="none" stroke="rgba(200,180,255,0.9)" stroke-width="2"/>
+        <text x="6" y="13" fill="rgba(200,180,255,0.6)" font-size="8" font-family="Azeret Mono,monospace">2s10s SPREAD</text>
+        <text x="${w*0.28}" y="${h-6}" fill="rgba(255,107,107,0.6)" font-size="7.5" font-family="Azeret Mono,monospace">INVERTED</text>
+        <text x="${w*0.62}" y="13" fill="rgba(63,224,142,0.6)" font-size="7.5" font-family="Azeret Mono,monospace">NORMAL</text>
+      `;
+    },
+  },
+  {
+    id: "momentum",
+    family: "Momentum",
+    badge: "badge-momentum",
+    kicker: "Price · Rate of Change + Participation",
+    title: "Trend + Volume Participation",
+    formula: "Score = 0.45·MOM₅ + 0.35·MOM₂₀ + 0.20·log(1+VR)\nVR = Volume / Avg Volume₂₀",
+    description: "Combines short- and medium-term momentum with volume participation. A large price move on thin volume is down-weighted — markets are more likely to sustain a move when breadth and participation confirm it. The log transform keeps the volume term from dominating.",
+    cadence: "Intraday",
+    phase: "Trend confirmation",
+    paper: "Jegadeesh & Titman, 1993",
+    drawChart(w, h) {
+      const price = [38,39,40,39,40,42,44,46,48,50,51,52,51,50,49,51,54,57,61,65,68,70,72,73,74];
+      const vols  = [20,22,18,25,30,35,28,40,45,50,30,25,22,28,20,35,55,65,70,80,60,50,42,35,30];
+      const n = price.length;
+      const cx = (i) => (i/(n-1))*w;
+      const py = (v) => h*0.56 - ((v-36)/42)*(h*0.5);
+      const vy = (v) => h - (v/90)*(h*0.34);
+      const priceD = price.map((v,i)=>(i===0?"M":"L")+cx(i)+","+py(v)).join(" ");
+      const bars = vols.map((v,i) => {
+        const strong = v > 45;
+        return `<rect x="${cx(i)-w/n/2+1}" y="${vy(v)}" width="${w/n-2}" height="${h-vy(v)}" fill="${strong?"rgba(255,176,0,0.45)":"rgba(255,176,0,0.18)"}" rx="2"/>`;
+      }).join("");
+      return `
+        <rect width="${w}" height="${h}" rx="8" fill="rgba(0,0,0,0.18)"/>
+        ${bars}
+        <line x1="0" y1="${h*0.6}" x2="${w}" y2="${h*0.6}" stroke="rgba(255,255,255,0.05)" stroke-width="1"/>
+        <path d="${priceD}" fill="none" stroke="rgba(255,220,100,0.9)" stroke-width="2"/>
+        <text x="6" y="13" fill="rgba(255,220,100,0.6)" font-size="8" font-family="Azeret Mono,monospace">PRICE + TREND</text>
+        <text x="${w*0.55}" y="13" fill="rgba(255,176,0,0.55)" font-size="8" font-family="Azeret Mono,monospace">VOLUME</text>
+      `;
+    },
+  },
+];
+
+function renderMethodologySignalCharts() {
+  const node = document.getElementById("methodology-signal-charts");
+  if (!node) return;
+  node.innerHTML = `
+    <div class="signal-private-note">
+      <span class="signal-private-note-icon">🔒</span>
+      <div>
+        <strong>Educational patterns only</strong>
+        <p>These diagrams show how each pattern family works conceptually. Actual detection thresholds, weights, and signal triggers for this dashboard are stored in gitignored local files and never uploaded.</p>
+      </div>
+    </div>
+    <div class="methodology-signal-chart-grid">
+      ${SIGNAL_PATTERNS.map((pat) => {
+        const W = 360; const H = 120;
+        return `
+          <div class="signal-chart-card ${pat.id === "yieldcurve" ? "signal-neutral" : pat.id === "zscore" ? "signal-negative" : "signal-positive"}">
+            <div class="signal-chart-head">
+              <div class="signal-chart-head-text">
+                <span class="signal-chart-kicker">${pat.kicker}</span>
+                <span class="signal-chart-title">${pat.title}</span>
+              </div>
+              <span class="signal-chart-badge ${pat.badge}">${pat.family}</span>
+            </div>
+            <div class="signal-chart-canvas">
+              <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">
+                ${pat.drawChart(W, H)}
+              </svg>
+            </div>
+            <p class="signal-chart-desc">${pat.description}</p>
+            <code class="signal-chart-formula">${pat.formula}</code>
+            <div class="signal-chart-meta">
+              <span>${pat.cadence}</span>
+              <span>${pat.phase}</span>
+              <span>Basis: ${pat.paper}</span>
+            </div>
+          </div>
+        `;
+      }).join("")}
+    </div>
+  `;
+}
+
+// ── Academic Research Papers ───────────────────────────────────────────────
+function renderMethodologyPapers(papers) {
+  const node = document.getElementById("methodology-papers");
+  if (!node) return;
+  const list = papers.length ? papers : [];
+  if (!list.length) {
+    node.innerHTML = `<p class="micro-note">Research index loading.</p>`;
+    return;
+  }
+  node.innerHTML = list.map((p) => `
+    <div class="methodology-paper-card">
+      <div class="methodology-paper-meta">
+        <span class="methodology-paper-year">${p.year}</span>
+        <span class="methodology-paper-type">${p.type}</span>
+        <span class="methodology-paper-cadence">${p.updateCadence}</span>
+      </div>
+      <div class="methodology-paper-title">${p.title}</div>
+      <p class="methodology-paper-why">${p.whyItMatters}</p>
+      <div class="methodology-paper-factors">
+        ${(p.factors || []).map((f) => `<span>${f}</span>`).join("")}
+      </div>
+      ${p.url ? `<a class="methodology-paper-link" href="${p.url}" target="_blank" rel="noreferrer">↗ arxiv / doi</a>` : ""}
+    </div>
+  `).join("");
 }
 
 function buildImpactGraphElements(graph = {}) {

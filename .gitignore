@@ -13,19 +13,55 @@ config.json
 
 .playwright-cli/
 
-# Local/private research memory and proprietary signal notes.
+# ── Proprietary signal data & trading playbooks ──────────────────────────────
+# Any file in here could directly reveal edge or decision logic.
+# Educational content in app.js / methodology tab is intentionally generic.
+
 vault/market-map/private/
 vault/market-map/secrets/
 vault/market-map/sessions/private/
+vault/market-map/playbooks/
+vault/market-map/research/
+vault/market-map/workflows/
+
 data/private/
 data/secrets/
+data/macro/
+data/company_projects.json
+
+# Factor / signal engine — specific weights, thresholds, and decision inputs
 data/factors/*secret*.json
 data/factors/*proprietary*.json
 data/factors/prediction_formulas.json
 data/factors/market_decision_inputs.json
 data/factors/factor_registry.json
 data/factors/methodology_flow.json
+
+# Paper annotations with proprietary notes
 data/papers/dashboard_practices.json
 data/papers/quant_concepts.json
-data/company_projects.json
-data/macro/
+
+# KB regions, playbooks, macro — private research notes
+kb/macro/
+kb/playbooks/
+kb/regions/
+
+# Vault concept files (may contain private signal triggers)
+vault/market-map/concepts/
+vault/market-map/companies/
+
+# Session recordings
+vault/market-map/sessions/
+
+# Any local strategy override config
+strategy_config.json
+signal_override.json
+*.signal.json
+*.playbook.json
+*.private.json
+*.secret.json
+
+# Python / Node local build artifacts
+node_modules/.cache/
+dist/
+*.log

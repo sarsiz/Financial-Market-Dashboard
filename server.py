@@ -5222,6 +5222,7 @@ def build_methodology_payload(snapshot: dict, region_payload: dict) -> dict:
       "practices": research_protocol.get("practices", [])[:4],
     },
     "researchCards": research_overview.get("cards", [])[:4],
+    "tradingPapers": load_trading_papers(),
     "graphCoverage": {
       "nodes": len(graph.get("nodes") or []),
       "links": len(graph.get("links") or []),

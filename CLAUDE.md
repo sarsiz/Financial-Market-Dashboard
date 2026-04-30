@@ -1,0 +1,70 @@
+# CLAUDE.md — Financial Board
+
+Coding guidelines for this project, integrating Karpathy's LLM coding principles.
+
+---
+
+## Project Stack
+
+- `server.py` — backend API, data fetching, computation
+- `app.js` — client state, render layer (~180k lines; section by section)
+- `index.html` + `styles.css` — UI shell
+- `data/` — JSON configs and factor definitions
+- `vault/market-map/` — local agent memory (Obsidian-friendly markdown)
+
+---
+
+## 1. Think Before Coding
+
+**Don't assume. Don't hide confusion. Surface tradeoffs.**
+
+- State assumptions explicitly. If uncertain, ask.
+- If multiple interpretations exist, present them — don't pick silently.
+- If a simpler approach exists, say so. Push back when warranted.
+- If something is unclear, stop. Name what's confusing. Ask.
+
+## 2. Simplicity First
+
+**Minimum code that solves the problem. Nothing speculative.**
+
+- No features beyond what was asked.
+- No abstractions for single-use code.
+- No "flexibility" or "configurability" that wasn't requested.
+- No error handling for impossible scenarios.
+- If you write 200 lines and it could be 50, rewrite it.
+
+Ask: "Would a senior engineer say this is overcomplicated?" If yes, simplify.
+
+## 3. Surgical Changes
+
+**Touch only what you must. Clean up only your own mess.**
+
+- Don't "improve" adjacent code, comments, or formatting.
+- Don't refactor things that aren't broken.
+- Match existing style, even if you'd do it differently.
+- If you notice unrelated dead code, mention it — don't delete it.
+- Every changed line should trace directly to the request.
+
+## 4. Goal-Driven Execution
+
+**Define success criteria. Loop until verified.**
+
+Transform tasks into verifiable goals:
+- "Add a chart" → "Chart renders correct data, no console errors, matches design"
+- "Fix the bug" → "Write a test that reproduces it, then make it pass"
+- "Refactor X" → "Ensure tests pass before and after"
+
+## 5. Project-Specific Rules
+
+- **Bonds first.** Inflation, policy, equity context, and implications derive from bonds — not from standalone stock heuristics.
+- **Factual decision support only.** Show facts, interpretation, risks, confidence, unknowns, timestamps, source labels. No direct buy/sell advice.
+- **Fallbacks over blanks.** Return documented mock data with source notes rather than empty panels or invented "live" claims.
+- **Additive API shapes.** Expand response objects with new keys — never rename or remove existing keys.
+- **Historical cache is truth.** Fetch the live edge, persist the older series, reuse rather than re-scrape.
+- **Vault is private memory.** Never commit `vault/market-map/playbooks/`, `private/`, `secrets/`, or `sessions/`. See `.gitignore`.
+- **Methodology tab = educational only.** Signal pattern families and formulas are public domain. Proprietary triggers, weights, and thresholds belong in `data/factors/` (gitignored) and `vault/`.
+- **Region-aware first.** Extend shared region adapters — never add one-off country logic.
+
+---
+
+*Derived from: Karpathy LLM coding guidelines (forrestchang/andrej-karpathy-skills)*
