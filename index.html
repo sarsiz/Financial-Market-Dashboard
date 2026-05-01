@@ -6,6 +6,11 @@
     <title>Financial Board</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <!-- DNS prefetch for data providers — resolves DNS early on cold load -->
+    <link rel="dns-prefetch" href="https://query1.finance.yahoo.com" />
+    <link rel="dns-prefetch" href="https://query2.finance.yahoo.com" />
+    <link rel="dns-prefetch" href="https://finance.yahoo.com" />
+    <link rel="dns-prefetch" href="https://api.stlouisfed.org" />
     <link
       href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Sora:wght@500;600;700;800&family=Azeret+Mono:wght@400;500;600;700&display=swap"
       rel="stylesheet"
@@ -91,10 +96,6 @@
         </nav>
 
         <header class="topbar">
-          <div class="topbar-copy">
-            <p class="eyebrow">Live Markets</p>
-            <h2>NASDAQ, S&amp;P 500, NSE, and global market coverage</h2>
-          </div>
           <div class="topbar-side">
             <div class="live-cluster">
               <div class="live-dot"></div>
@@ -199,6 +200,12 @@
                   </div>
                 </div>
                 <div class="chart-toolbar">
+                  <div class="chart-mode-tabs" id="chart-mode-tabs" aria-label="Chart display mode">
+                    <button class="chart-mode-tab active" type="button" data-chart-type="line">Line</button>
+                    <button class="chart-mode-tab" type="button" data-chart-type="area">Area</button>
+                    <button class="chart-mode-tab" type="button" data-chart-type="candles">Candles</button>
+                    <button class="chart-mode-tab" type="button" data-chart-type="bars">Bars</button>
+                  </div>
                   <div class="chart-features">
                     <label class="check-row compact"><input id="feature-sma20" type="checkbox" checked /> SMA 20</label>
                     <label class="check-row compact"><input id="feature-sma50" type="checkbox" checked /> SMA 50</label>

@@ -2438,13 +2438,15 @@ button[type="submit"],
 }
 
 .chart-range-tabs,
+.chart-mode-tabs,
 .chart-features {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
 }
 
-.range-tab {
+.range-tab,
+.chart-mode-tab {
   min-width: 0;
   height: 30px;
   min-height: 30px;
@@ -2454,20 +2456,36 @@ button[type="submit"],
   background: rgba(255, 255, 255, 0.025);
 }
 
-.range-tab.active {
+.range-tab.active,
+.chart-mode-tab.active {
   background: rgba(255, 176, 0, 0.18);
   border-color: rgba(255, 176, 0, 0.34);
   color: #fff0c8;
 }
 
+.chart-mode-tab {
+  border-color: rgba(84, 210, 255, 0.16);
+  color: rgba(216, 244, 255, 0.74);
+}
+
+.chart-mode-tab.active {
+  background: rgba(84, 210, 255, 0.16);
+  border-color: rgba(84, 210, 255, 0.36);
+  color: #d8f4ff;
+}
+
 .chart-toolbar {
   display: flex;
-  justify-content: space-between;
-  gap: 12px;
+  justify-content: flex-start;
+  gap: 10px;
   align-items: center;
   flex-wrap: wrap;
   margin-bottom: 10px;
 }
+
+.chart-toolbar > .chart-mode-tabs { flex: 0 0 auto; }
+.chart-toolbar > .chart-features  { flex: 0 0 auto; }
+.chart-toolbar > .buy-sell-card   { flex: 0 0 auto; margin-left: auto; }
 
 .check-row.compact {
   font-size: 0.76rem;
@@ -4394,7 +4412,8 @@ svg {
 
 .impact-graph-canvas {
   width: 100%;
-  min-height: 620px;
+  height: clamp(520px, 62vh, 680px);
+  min-height: 520px;
   border-radius: 18px;
   border: 1px solid rgba(255, 176, 0, 0.08);
   background: radial-gradient(circle at top, rgba(255,176,0,0.06), transparent 52%), rgba(255, 255, 255, 0.014);
@@ -4404,7 +4423,8 @@ svg {
 .impact-graph-fallback {
   display: grid;
   place-items: center;
-  min-height: 620px;
+  min-height: 520px;
+  height: 100%;
   color: rgba(221, 210, 188, 0.72);
 }
 
@@ -5111,7 +5131,8 @@ body.app-ready .pulse-card {
 }
 
 /* ── 7. Range tabs — pill pill pill ── */
-.chart-range-tabs {
+.chart-range-tabs,
+.chart-mode-tabs {
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid rgba(255, 176, 0, 0.1);
   border-radius: 10px;
@@ -5119,7 +5140,8 @@ body.app-ready .pulse-card {
   gap: 3px;
 }
 
-.range-tab {
+.range-tab,
+.chart-mode-tab {
   background: transparent;
   border-color: transparent;
   font-size: 0.72rem;
@@ -5133,13 +5155,15 @@ body.app-ready .pulse-card {
   transition: background 150ms, color 150ms;
 }
 
-.range-tab:hover {
+.range-tab:hover,
+.chart-mode-tab:hover {
   color: var(--text);
   background: rgba(255, 255, 255, 0.05);
   border-color: transparent;
 }
 
-.range-tab.active {
+.range-tab.active,
+.chart-mode-tab.active {
   background: rgba(255, 176, 0, 0.2);
   border-color: rgba(255, 176, 0, 0.3);
   color: #fff0c8;
@@ -5254,65 +5278,76 @@ body.app-ready .pulse-card {
 
 /* ── 16. Sector performance strip (above tabbar) ── */
 .sector-overview-strip {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-  padding: 7px 10px;
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid rgba(255, 176, 0, 0.1);
-  border-radius: 12px;
-  overflow-x: auto;
-  scrollbar-width: none;
-  flex-wrap: nowrap;
+  display: grid;
+  grid-template-columns: minmax(86px, 0.55fr) repeat(auto-fit, minmax(142px, 1fr));
+  gap: 9px;
+  align-items: stretch;
+  padding: 10px;
+  background:
+    radial-gradient(circle at top left, rgba(255, 176, 0, 0.08), transparent 38%),
+    rgba(255, 255, 255, 0.024);
+  border: 1px solid rgba(255, 176, 0, 0.12);
+  border-radius: 16px;
+  overflow: visible;
 }
 
 .sector-overview-strip::-webkit-scrollbar { display: none; }
 
 .sector-strip-label {
-  font-size: 0.58rem;
+  display: grid;
+  place-items: center;
+  min-height: 54px;
+  border-radius: 12px;
+  background: rgba(255, 176, 0, 0.07);
+  border: 1px solid rgba(255, 176, 0, 0.12);
+  font-size: 0.72rem;
+  font-weight: 800;
   text-transform: uppercase;
-  letter-spacing: 0.14em;
-  color: var(--muted);
+  letter-spacing: 0.12em;
+  color: #fff0c8;
   white-space: nowrap;
-  flex-shrink: 0;
-  padding-right: 8px;
-  border-right: 1px solid rgba(255, 255, 255, 0.08);
-  margin-right: 2px;
 }
 
 .sector-strip-chip {
   display: inline-flex;
-  flex-direction: column;
   align-items: center;
-  gap: 1px;
-  padding: 4px 9px;
-  border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  background: rgba(255, 255, 255, 0.025);
-  white-space: nowrap;
-  flex-shrink: 0;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 54px;
+  padding: 10px 12px;
+  border-radius: 13px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.058), rgba(255, 255, 255, 0.02));
+  min-width: 0;
   cursor: default;
-  transition: border-color 160ms ease, background 160ms ease, transform 160ms ease;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.05);
+  transition: border-color 160ms ease, background 160ms ease, transform 160ms ease, box-shadow 160ms ease;
 }
 
 .sector-strip-chip:hover {
   border-color: rgba(255, 176, 0, 0.2);
   background: rgba(255, 176, 0, 0.06);
   transform: translateY(-1px);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 12px 26px rgba(0,0,0,0.14);
 }
 
 .sector-strip-chip-name {
-  font-size: 0.58rem;
-  color: rgba(255, 255, 255, 0.5);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  min-width: 0;
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 0.86rem;
+  font-weight: 800;
+  line-height: 1.1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .sector-strip-chip-pct {
-  font-size: 0.72rem;
-  font-weight: 700;
+  font-size: 0.96rem;
+  font-weight: 900;
   font-family: var(--font-mono);
   line-height: 1;
+  white-space: nowrap;
 }
 
 .sector-strip-chip-pct.up   { color: var(--positive); }
@@ -5326,6 +5361,16 @@ body.app-ready .pulse-card {
 @keyframes stripPulse {
   0%, 100% { opacity: 0.4; }
   50%       { opacity: 1; }
+}
+
+@media (max-width: 720px) {
+  .sector-overview-strip {
+    grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+  }
+  .sector-strip-label {
+    grid-column: 1 / -1;
+    min-height: 38px;
+  }
 }
 
 /* ── 17. Buy/sell signal colour states ── */
@@ -5406,4 +5451,166 @@ body.app-ready .pulse-card {
 .event-panel {
   overflow-y: auto;
   scrollbar-width: thin;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   § LAYOUT OVERHAUL — professional grid density
+   ══════════════════════════════════════════════════════════════ */
+
+/* ── Signal grid: 4 equal columns (1 row for the 4 KPI cards) ── */
+.signal-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+/* ── Pulse grid: 3 columns at normal width ── */
+.pulse-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+/* ── Factor cards: 3 columns (11 cards = 4 rows, not 6) ── */
+.analysis-flow-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+/* ── Catalyst / trigger / reason cards: 2-column row-fill ── */
+.catalyst-list,
+.trigger-reasons {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+/* ── Macro analysis lists: 2-column (bond, inflation, equity text cards) ── */
+.macro-analysis-list {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+/* ── Driver card stack: 2-column ── */
+.driver-card-stack {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+/* ── Buy-sell breakdown: colored token row ── */
+#buy-sell-breakdown {
+  display: flex;
+  gap: 10px;
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+}
+
+.bsb-buy  { color: var(--positive); font-weight: 600; }
+.bsb-hold { color: var(--muted);    font-weight: 500; }
+.bsb-sell { color: var(--negative); font-weight: 600; }
+
+/* ── Chart section-heading: range tabs wrap to their own row gracefully ── */
+.hero-chart-card .section-heading {
+  flex-wrap: wrap;
+  row-gap: 8px;
+}
+
+.chart-range-tabs {
+  flex: 1 1 auto;
+  justify-content: flex-end;
+}
+
+/* ── Chart toolbar: ensured via flex overrides in base rule above ── */
+
+/* ── Content grid: give Factor Relationships slightly more room ── */
+.content-grid {
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+}
+
+/* ── Dossier: allow span-6 cards to fill their row on wide screens ── */
+.dossier-card.span-6 {
+  grid-column: span 2;
+}
+
+.dossier-card.span-12,
+.dossier-card-band {
+  grid-column: 1 / -1;
+}
+
+/* ── Event list single column (cards can be verbose — don't clip) ── */
+.compact-event-list {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* ── Macro summary grid: 3 columns for data-dense panels ── */
+.macro-summary-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+/* ── Responsive: restore 2-col on narrower windows ── */
+@media (max-width: 1520px) {
+  .signal-grid    { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pulse-grid     { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .macro-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 1380px) {
+  .analysis-flow-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .catalyst-list,
+  .trigger-reasons,
+  .macro-analysis-list,
+  .driver-card-stack  { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 900px) {
+  .signal-grid    { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .analysis-flow-grid { grid-template-columns: minmax(0, 1fr); }
+  .chart-toolbar  { grid-template-columns: 1fr; }
+}
+
+/* ══════════════════════════════════════════════════════════════
+   § RENDERING PERFORMANCE — GPU hints & layout containment
+   ══════════════════════════════════════════════════════════════ */
+
+/* Flash animations: promote to composited layer so colour/opacity
+   transitions don't trigger a full repaint cascade              */
+.flash-up,
+.flash-down {
+  will-change: transform, opacity;
+}
+
+/* Live pulse dot: continuous animation — own layer prevents it
+   from dirtying sibling elements every tick                     */
+.live-dot {
+  will-change: transform;
+}
+
+/* Scroll-reveal elements: hint compositor before the transition
+   fires so there's no first-frame stutter                       */
+.reveal-on-scroll {
+  will-change: transform, opacity;
+}
+/* Clean up the hint after the element has settled              */
+.reveal-on-scroll.revealed {
+  will-change: auto;
+}
+
+/* Heavy grid containers: layout containment stops recalculations
+   inside these grids from propagating up to the document root   */
+.signal-grid,
+.analysis-flow-grid,
+.macro-summary-grid,
+.pulse-grid,
+.methodology-signal-charts,
+.methodology-papers,
+.macro-analysis-list {
+  contain: layout style;
+}
+
+/* Individual cards: isolate paint so hover/flash on one card
+   doesn't repaint its siblings                                  */
+.factor-card,
+.signal-card,
+.pulse-card,
+.formula-card,
+.operator-check-card,
+.reason-card {
+  contain: layout style paint;
+}
+
+/* Sidebar and fixed-position elements: paint containment so
+   dashboard scroll doesn't invalidate the sidebar              */
+.sidebar {
+  contain: layout style paint;
 }

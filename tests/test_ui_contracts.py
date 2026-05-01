@@ -51,6 +51,11 @@ class HtmlContractTests(unittest.TestCase):
     tabs = re.findall(r'data-tab="([^"]+)"', self.index_html)
     self.assertEqual(tabs, ["overview", "bond-market", "inflation", "equity-context", "events-calendar", "methodology", "watchlist-implications", "comparison"])
 
+  def test_topbar_macro_title_and_live_market_header_removed(self):
+    self.assertNotIn("Live Markets", self.index_html)
+    self.assertNotIn("macro, bonds, inflation, equities, and watchlist context", self.app_js)
+    self.assertNotIn("NASDAQ, S&amp;P 500, NSE, and global market coverage", self.index_html)
+
   def test_frontend_contains_key_renderers_and_handlers(self):
     expected_snippets = [
       "function nextFrame(",
@@ -85,6 +90,10 @@ class HtmlContractTests(unittest.TestCase):
       "sector-matrix-benchmark",
       "sector-tile-top",
       "sector-tile-meta",
+      "chart-mode-tab",
+      "function buildSyntheticCandles(",
+      "function relayoutImpactGraph(",
+      "pendingImpactGraph",
       "formatAxisDate",
     ]
     for snippet in expected_snippets:
@@ -115,6 +124,27 @@ class HtmlContractTests(unittest.TestCase):
     self.assertIn("min-height: 132px", styles)
     self.assertIn("font-size: 1.42rem", styles)
     self.assertIn("grid-template-columns: 1fr", styles)
+
+  def test_overview_chart_modes_and_sector_strip_are_readable(self):
+    styles = (ROOT / "styles.css").read_text()
+
+    for chart_type in ["line", "area", "candles", "bars"]:
+      self.assertIn(f'data-chart-type="{chart_type}"', self.index_html)
+    self.assertIn("chartType: \"line\"", self.app_js)
+    self.assertIn("chartType === \"candles\"", self.app_js)
+    self.assertIn("chartType === \"bars\"", self.app_js)
+    self.assertIn("repeat(auto-fit, minmax(142px, 1fr))", styles)
+    self.assertIn("font-size: 0.86rem", styles)
+    self.assertIn("Financial Services", self.app_js)
+
+  def test_watchlist_graph_defers_until_visible(self):
+    styles = (ROOT / "styles.css").read_text()
+
+    self.assertIn("state.pendingImpactGraph = graph", self.app_js)
+    self.assertIn("panel?.classList.contains(\"active\")", self.app_js)
+    self.assertIn("renderWatchlistImplications();", self.app_js)
+    self.assertIn("relayoutImpactGraph();", self.app_js)
+    self.assertIn("height: clamp(520px, 62vh, 680px)", styles)
 
 
 if __name__ == "__main__":

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gzip
 import json
 import html
 import math
@@ -626,6 +627,9 @@ RADAR_REGION_KEYWORDS = {
 
 USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123 Safari/537.36"
 DB_LOCK = threading.Lock()
+_DB_INITIALIZED = False
+_DB_INITIALIZED_PATH: Path | None = None
+_DB_INIT_LOCK = threading.Lock()
 OUTBOUND_LOCK = threading.Lock()
 OUTBOUND_LAST_REQUEST_AT: dict[str, float] = {}
 OUTBOUND_RESPONSE_CACHE: dict[str, tuple[float, object]] = {}
@@ -737,72 +741,93 @@ def save_config(config: dict) -> dict:
   return payload
 
 
+def _configure_connection(conn: sqlite3.Connection) -> None:
+  """Apply performance PRAGMAs to a SQLite connection."""
+  conn.execute("PRAGMA journal_mode=WAL")
+  conn.execute("PRAGMA synchronous=NORMAL")
+  conn.execute("PRAGMA cache_size=-8192")    # 8 MB page cache
+  conn.execute("PRAGMA temp_store=MEMORY")
+  conn.execute("PRAGMA mmap_size=134217728") # 128 MB memory-mapped I/O
+
+
 def init_db() -> None:
-  with DB_LOCK:
-    connection = sqlite3.connect(DB_PATH)
-    try:
-      connection.execute(
-        """
-        CREATE TABLE IF NOT EXISTS watchlists (
-          name TEXT PRIMARY KEY,
-          symbols_json TEXT NOT NULL,
-          updated_at TEXT NOT NULL
+  global _DB_INITIALIZED, _DB_INITIALIZED_PATH
+  current_path = Path(DB_PATH)
+  # Fast path — already initialised (no lock needed for read)
+  if _DB_INITIALIZED and _DB_INITIALIZED_PATH == current_path:
+    return
+  # Slow path — one-time setup with double-checked locking
+  with _DB_INIT_LOCK:
+    if _DB_INITIALIZED and _DB_INITIALIZED_PATH == current_path:
+      return
+    with DB_LOCK:
+      connection = sqlite3.connect(DB_PATH)
+      try:
+        _configure_connection(connection)
+        connection.execute(
+          """
+          CREATE TABLE IF NOT EXISTS watchlists (
+            name TEXT PRIMARY KEY,
+            symbols_json TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+          )
+          """
         )
-        """
-      )
-      connection.execute(
-        """
-        CREATE TABLE IF NOT EXISTS history_cache (
-          symbol TEXT NOT NULL,
-          chart_range TEXT NOT NULL,
-          closes_json TEXT NOT NULL,
-          meta_json TEXT NOT NULL,
-          source TEXT NOT NULL,
-          updated_at TEXT NOT NULL,
-          PRIMARY KEY(symbol, chart_range)
+        connection.execute(
+          """
+          CREATE TABLE IF NOT EXISTS history_cache (
+            symbol TEXT NOT NULL,
+            chart_range TEXT NOT NULL,
+            closes_json TEXT NOT NULL,
+            meta_json TEXT NOT NULL,
+            source TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY(symbol, chart_range)
+          )
+          """
         )
-        """
-      )
-      connection.execute(
-        """
-        CREATE TABLE IF NOT EXISTS payload_cache (
-          cache_key TEXT PRIMARY KEY,
-          payload_json TEXT NOT NULL,
-          source TEXT NOT NULL,
-          updated_at TEXT NOT NULL
+        connection.execute(
+          """
+          CREATE TABLE IF NOT EXISTS payload_cache (
+            cache_key TEXT PRIMARY KEY,
+            payload_json TEXT NOT NULL,
+            source TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+          )
+          """
         )
-        """
-      )
-      connection.execute(
-        """
-        CREATE TABLE IF NOT EXISTS historical_records (
-          symbol TEXT NOT NULL,
-          interval TEXT NOT NULL,
-          timestamp TEXT NOT NULL,
-          close REAL NOT NULL,
-          volume REAL,
-          source TEXT NOT NULL,
-          updated_at TEXT NOT NULL,
-          PRIMARY KEY(symbol, interval, timestamp)
+        connection.execute(
+          """
+          CREATE TABLE IF NOT EXISTS historical_records (
+            symbol TEXT NOT NULL,
+            interval TEXT NOT NULL,
+            timestamp TEXT NOT NULL,
+            close REAL NOT NULL,
+            volume REAL,
+            source TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY(symbol, interval, timestamp)
+          )
+          """
         )
-        """
-      )
-      connection.execute(
-        """
-        CREATE TABLE IF NOT EXISTS derived_insights (
-          symbol TEXT NOT NULL,
-          interval TEXT NOT NULL,
-          insight_key TEXT NOT NULL,
-          payload_json TEXT NOT NULL,
-          source TEXT NOT NULL,
-          updated_at TEXT NOT NULL,
-          PRIMARY KEY(symbol, interval, insight_key)
+        connection.execute(
+          """
+          CREATE TABLE IF NOT EXISTS derived_insights (
+            symbol TEXT NOT NULL,
+            interval TEXT NOT NULL,
+            insight_key TEXT NOT NULL,
+            payload_json TEXT NOT NULL,
+            source TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY(symbol, interval, insight_key)
+          )
+          """
         )
-        """
-      )
-      connection.commit()
-    finally:
-      connection.close()
+        connection.commit()
+      finally:
+        connection.close()
+    _DB_INITIALIZED = True
+    _DB_INITIALIZED_PATH = current_path
 
 
 def save_watchlist(name: str, symbols: list[str]) -> None:
@@ -1197,18 +1222,14 @@ def get_or_refresh_cached_payload(cache_kind: str, cache_key: str, builder) -> d
 
   if payload:
     source = payload.get("source", "Computed")
+    now_iso = datetime.now(timezone.utc).isoformat()
     save_payload_cache(cache_key, payload, source)
-    cached_after_save = load_cached_payload(cache_key)
-    if cached_after_save:
-      cached_payload, cached_source, updated_at = cached_after_save
-      cached_payload["cacheSource"] = cached_source
-      cached_payload["cacheUpdatedAt"] = updated_at
-      cached_payload["cacheState"] = "fresh"
-      return cached_payload
-    payload["cacheSource"] = source
-    payload["cacheUpdatedAt"] = datetime.now(timezone.utc).isoformat()
-    payload["cacheState"] = "fresh"
-    return payload
+    # Return in-memory copy directly — no read-back round-trip needed
+    cached_payload = dict(payload)
+    cached_payload["cacheSource"] = source
+    cached_payload["cacheUpdatedAt"] = now_iso
+    cached_payload["cacheState"] = "fresh"
+    return cached_payload
 
   if cached:
     payload, source, updated_at = cached
@@ -4350,27 +4371,53 @@ def build_triggers(inputs: dict, stress: str) -> list[dict]:
     )
 
   rsi = float(inputs.get("rsi") or 50)
-  if rsi <= 35 or rsi >= 65:
+  if rsi < 30:
     add(
-      "RSI stretch",
-      f"Wilder RSI is {rsi:.1f}; extremes are treated as a mean-reversion warning rather than a standalone instruction.",
+      f"RSI oversold — {rsi:.0f}",
+      f"Wilder RSI(14) at {rsi:.1f}. Deeply oversold — mean-reversion odds improve historically, though oversold can persist in structural downtrends. The model applies a positive carry from this signal.",
+      "RSI",
+      inputs.get("rsiSignal") or 0,
+    )
+  elif rsi > 70:
+    add(
+      f"RSI overbought — {rsi:.0f}",
+      f"Wilder RSI(14) at {rsi:.1f}. Overbought territory — reward/risk deteriorates on the buy side. The model reduces momentum weighting and adds a negative lean to slow continuation odds.",
+      "RSI",
+      inputs.get("rsiSignal") or 0,
+    )
+  elif rsi <= 40 or rsi >= 60:
+    add(
+      f"RSI elevated — {rsi:.0f}",
+      f"Wilder RSI(14) at {rsi:.1f}. Approaching {'oversold' if rsi <= 40 else 'overbought'} territory. The continuous signal is applying a partial {'bullish' if rsi <= 40 else 'bearish'} mean-reversion adjustment.",
       "RSI",
       inputs.get("rsiSignal") or 0,
     )
 
-  macd_signal = float(inputs.get("macdSignal") or 0)
-  if abs(macd_signal) > 0.004 or abs(float(inputs.get("macdHistogram") or 0)) > 0:
+  macd_crossover = float(inputs.get("macdCrossover") or 0)
+  macd_histogram = float(inputs.get("macdHistogram") or 0)
+  macd_sig = float(inputs.get("macdSignal") or 0)
+  if abs(macd_sig) > 0.003 or abs(macd_crossover) >= 0.8:
+    if macd_crossover > 0.8:
+      crossover_note = "Bullish crossover confirmed — MACD crossed above signal line. "
+    elif macd_crossover < -0.8:
+      crossover_note = "Bearish crossover confirmed — MACD crossed below signal line. "
+    else:
+      crossover_note = ""
+    hist_dir = "building" if macd_histogram >= 0 else "fading"
     add(
-      "MACD momentum",
-      "Aligned MACD and signal-line spread are active in the scenario blend, normalized against recent price range.",
+      f"MACD {'bullish' if macd_crossover >= 0 else 'bearish'} — histogram {macd_histogram:+.4f}",
+      f"{crossover_note}Histogram at {macd_histogram:+.4f} ({hist_dir} momentum). ATR-normalized signal blended into both classic and modern stacks with different weights.",
       "MACD",
-      macd_signal,
+      macd_sig,
     )
 
   if bool(inputs.get("bollSqueeze")) or abs(float(inputs.get("breakoutPressure") or 0)) > 0.01:
+    squeeze_note = "Bollinger bandwidth contracted below 2% — volatility compression signals an impending directional breakout. " if bool(inputs.get("bollSqueeze")) else ""
+    boll_pos = float(inputs.get("bollPosition") or 0.5)
+    band_note = f"Price at {boll_pos:.0%} of the 20-day band range."
     add(
-      "Breakout pressure",
-      "Bollinger compression or range pressure is active; volatility expansion can dominate slower factors.",
+      "Bollinger squeeze / breakout pressure" if bool(inputs.get("bollSqueeze")) else "Range breakout pressure",
+      f"{squeeze_note}{band_note} Volatility expansion can dominate slower trend factors when this signal is active.",
       "Volatility",
       (inputs.get("breakoutPressure") or 0) + (inputs.get("bollBandwidth") or 0),
     )
@@ -4499,15 +4546,14 @@ def build_forecast(symbol: str, quote: dict, summary: dict, history: list[float]
   macro_score = build_macro_score(region, enriched["beta"], enriched["pe"], stress)
   quality_lift = (enriched["qualityScore"] - 0.5) * 0.4
 
-  # ── RSI factor: <30 = oversold (bullish), >70 = overbought (bearish)
+  # ── RSI factor: continuous mean-reversion oscillator (Wilder RSI, period 14)
+  # Research basis: Wilder (1978) — RSI as continuous signal, not binary threshold.
+  # (50 - rsi)/50 * scale: RSI=20 → +0.0108, RSI=50 → 0, RSI=80 → -0.0108
   rsi = calc_rsi(history, period=14)
-  rsi_signal = 0.0
-  if rsi < 30:
-    rsi_signal = (30 - rsi) / 30 * 0.018   # up to +0.018 for deeply oversold
-  elif rsi > 70:
-    rsi_signal = -(rsi - 70) / 30 * 0.018  # down to -0.018 for overbought
-  # Dampen momentum when RSI is extreme (prevents chasing overbought momentum)
-  rsi_momentum_dampen = clamp(1.0 - abs(rsi - 50) / 100, 0.5, 1.0)
+  rsi_signal = clamp((50.0 - rsi) / 50.0 * 0.018, -0.018, 0.018)
+  # Momentum dampening strengthens at extremes: RSI=70 → 0.75×, RSI=80 → 0.625×
+  # Prevents chasing overbought momentum or adding to oversold falls
+  rsi_momentum_dampen = clamp(1.0 - abs(rsi - 50.0) / 80.0, 0.40, 1.0)
 
   # ── Volume trend: rising volume confirms signals; falling volume weakens them
   vol_list = [float(v) for v in (summary.get("_volumeHistory") or []) if v]
@@ -4691,42 +4737,67 @@ def build_backtest(symbol: str, history: list[float], quote: dict, summary: dict
 
 
 def build_recommendation(forecast: dict) -> dict:
+  """
+  Build buy/sell/hold probabilities from an unbiased 33/33/33 base.
+
+  Research basis:
+  - Starts at equal 1/3 distribution — no a-priori directional bias.
+  - Directional edge (expected return + fair-value gap) shifts weight toward buy/sell
+    proportional to signal strength × analyst conviction.
+  - Low conviction (confidence < 35%) and weak signal → hold expands (uncertainty = wait).
+  - Event pressure raises sell risk premium and hold, cuts buy headroom.
+  - Scale: edge_strength maxes at |directional_edge| = 8%; above that, conviction caps the shift.
+  """
   confidence = float(forecast.get("confidence") or 0)
   expected_return = float(forecast.get("expectedReturn") or 0)
   fair_value_gap = float(forecast.get("fairValueGap") or 0)
   event_pressure = float(forecast.get("eventPressure") or 0)
 
-  directional_edge = clamp((expected_return * 0.72) + (fair_value_gap * 0.28), -12, 12)
-  edge_strength = clamp(abs(directional_edge) / 8.0, 0.0, 1.0)
+  # ── Directional edge: primary from 10-day expected return, secondary from fair-value gap
+  # fair_value_gap is a raw fraction (e.g. 0.06 = 6 pp gap); scale to same % units
+  directional_edge = clamp(expected_return * 0.72 + fair_value_gap * 100 * 0.28, -15.0, 15.0)
+
+  # ── Conviction: how much to trust the signal (0 when conf ≤ 35%, 1.0 at 90%)
   conviction = clamp((confidence - 35.0) / 55.0, 0.0, 1.0)
-  event_risk = clamp(event_pressure, 0.0, 1.2)
-  directional_weight = edge_strength * (0.45 + conviction * 0.55)
 
-  buy = 18.0
-  sell = 18.0
-  hold = 64.0
-  if directional_edge > 0:
-    buy += directional_weight * 42.0
-    hold -= directional_weight * 20.0
-    sell -= directional_weight * 12.0
-  elif directional_edge < 0:
-    sell += directional_weight * 42.0
-    hold -= directional_weight * 20.0
-    buy -= directional_weight * 12.0
+  # ── Edge strength: magnitude of directional signal (0 flat → 1 max at ±8%)
+  edge_strength = clamp(abs(directional_edge) / 8.0, 0.0, 1.0)
 
-  sell += event_risk * 9.0
-  hold += event_risk * 6.0
-  buy -= event_risk * 5.0
-  if edge_strength < 0.18:
-    hold += 10.0 * (1 - edge_strength)
+  # ── Combined signal: both conviction AND edge must be present
+  direction = 1.0 if directional_edge >= 0 else -1.0
+  signal_strength = edge_strength * conviction  # 0–1
 
-  buy = clamp(buy, 2, 86)
-  sell = clamp(sell, 2, 86)
-  hold = clamp(hold, 8, 92)
-  total = buy + sell + hold or 1.0
-  buy = round((buy / total) * 100)
-  sell = round((sell / total) * 100)
+  # ── Start from equal distribution
+  buy_raw = 33.3
+  sell_raw = 33.3
+  hold_raw = 33.4
+
+  # ── Directional shift: signal_strength moves weight from neutral to buy/sell
+  # At signal_strength=1.0: buy gains +42, sell loses -7, hold loses -35 (for bullish)
+  buy_raw  += direction * signal_strength * 42.0
+  sell_raw -= direction * signal_strength * 35.0
+  hold_raw -= signal_strength * 7.0
+
+  # ── Uncertainty expansion: low conviction + weak signal → hold grows
+  uncertainty = (1.0 - conviction) * (1.0 - edge_strength)
+  hold_raw += uncertainty * 22.0
+  buy_raw  -= uncertainty * 11.0
+  sell_raw -= uncertainty * 11.0
+
+  # ── Event risk: raises sell risk premium + hold, cuts buy headroom
+  hold_raw += event_pressure * 8.0
+  sell_raw += event_pressure * 6.0
+  buy_raw  -= event_pressure * 8.0
+
+  # ── Floor + normalise
+  buy_raw  = max(2.0, buy_raw)
+  sell_raw = max(2.0, sell_raw)
+  hold_raw = max(5.0, hold_raw)
+  total = buy_raw + sell_raw + hold_raw
+  buy  = round((buy_raw  / total) * 100)
+  sell = round((sell_raw / total) * 100)
   hold = max(0, 100 - buy - sell)
+
   signal = "Buy bias" if buy >= max(sell, hold) else "Sell bias" if sell >= max(buy, hold) else "Hold bias"
   return {
     "buy": buy,
@@ -6821,14 +6892,28 @@ class FinancialBoardHandler(BaseHTTPRequestHandler):
     self.wfile.write(data)
 
   def send_json(self, payload: dict) -> None:
-    data = json.dumps(payload).encode("utf-8")
-    self.send_response(HTTPStatus.OK)
-    self.write_security_headers()
-    self.send_header("Content-Type", "application/json; charset=utf-8")
-    self.send_header("Cache-Control", "no-store, max-age=0")
-    self.send_header("Content-Length", str(len(data)))
-    self.end_headers()
-    self.wfile.write(data)
+    raw = json.dumps(payload).encode("utf-8")
+    accept_encoding = self.headers.get("Accept-Encoding", "")
+    # Gzip payloads larger than 860 bytes when the client supports it
+    if "gzip" in accept_encoding and len(raw) > 860:
+      data = gzip.compress(raw, compresslevel=6)
+      self.send_response(HTTPStatus.OK)
+      self.write_security_headers()
+      self.send_header("Content-Type", "application/json; charset=utf-8")
+      self.send_header("Content-Encoding", "gzip")
+      self.send_header("Vary", "Accept-Encoding")
+      self.send_header("Cache-Control", "no-store, max-age=0")
+      self.send_header("Content-Length", str(len(data)))
+      self.end_headers()
+      self.wfile.write(data)
+    else:
+      self.send_response(HTTPStatus.OK)
+      self.write_security_headers()
+      self.send_header("Content-Type", "application/json; charset=utf-8")
+      self.send_header("Cache-Control", "no-store, max-age=0")
+      self.send_header("Content-Length", str(len(raw)))
+      self.end_headers()
+      self.wfile.write(raw)
 
   def stream_quotes(self, symbols: list[str], active: str | None) -> None:
     self.send_response(HTTPStatus.OK)

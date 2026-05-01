@@ -199,6 +199,7 @@ const state = {
   impactGraphPositions: {},
   impactGraphCy: null,
   impactResizeTimer: null,
+  pendingImpactGraph: null,
   revealObserver: null,
   lastOverviewChartRefreshAt: 0,
   historyWarmupKeys: new Set(),
@@ -228,13 +229,14 @@ function loadStoredRecentTickers() {
 function loadStoredChartFeatures() {
   try {
     return {
+      chartType: "line",
       sma20: true,
       sma50: true,
       bands: false,
       ...(JSON.parse(localStorage.getItem(STORAGE_KEYS.chartFeatures) || "{}") || {}),
     };
   } catch {
-    return { sma20: true, sma50: true, bands: false };
+    return { chartType: "line", sma20: true, sma50: true, bands: false };
   }
 }
 
@@ -1023,7 +1025,7 @@ function patchOverviewLiveSurface(active, forecast, { redrawChart = false } = {}
   bsEl.textContent = bsText;
   const bsDir = forecast.direction?.toLowerCase() || "";
   bsEl.className = bsDir === "bullish" ? "bullish" : bsDir === "bearish" ? "bearish" : "neutral";
-  document.getElementById("buy-sell-breakdown").textContent = `Upside ${recommendation.buy ?? 0}% · Base ${recommendation.hold ?? 100}% · Downside ${recommendation.sell ?? 0}%`;
+  document.getElementById("buy-sell-breakdown").innerHTML = `<span class="bsb-buy">▲ ${recommendation.buy ?? 0}%</span><span class="bsb-hold">― ${recommendation.hold ?? 100}%</span><span class="bsb-sell">▼ ${recommendation.sell ?? 0}%</span>`;
   document.getElementById("model-agreement-note").textContent = `${agreement.summary} Score ${Number(agreement.score || 0).toFixed(0)}/100.`;
   document.getElementById("quote-source-note").textContent = active.asOf
     ? `Quote source: ${formatSourceLabel(active.dataSource)} • ${quoteFreshnessText(active)} • ${new Date(active.asOf).toLocaleString()}`
@@ -1666,6 +1668,35 @@ function formatTooltipDate(timestamp, range = "1M") {
   return date.toLocaleString([], options);
 }
 
+function stdDev(values) {
+  const clean = (values || []).map(Number).filter(Number.isFinite);
+  if (clean.length < 2) return 0;
+  const avg = clean.reduce((sum, value) => sum + value, 0) / clean.length;
+  const variance = clean.reduce((sum, value) => sum + ((value - avg) ** 2), 0) / clean.length;
+  return Math.sqrt(variance);
+}
+
+function buildSyntheticCandles(historySeries) {
+  if (!Array.isArray(historySeries) || !historySeries.length) return [];
+  const closes = historySeries.map((item) => Number(item.value)).filter(Number.isFinite);
+  const typicalMove = Math.max(stdDev(closes.slice(-20)) || 0, Math.abs(closes[closes.length - 1] || 0) * 0.002);
+  return historySeries.map((item, index) => {
+    const close = Number(item.value);
+    const open = index > 0 ? Number(historySeries[index - 1].value) : close;
+    const prior = index > 1 ? Number(historySeries[index - 2].value) : open;
+    const next = index < historySeries.length - 1 ? Number(historySeries[index + 1].value) : close;
+    const wick = Math.max(Math.abs(close - open) * 0.32, typicalMove * 0.2, Math.abs(next - prior) * 0.08);
+    return {
+      open,
+      close,
+      high: Math.max(open, close) + wick,
+      low: Math.min(open, close) - wick,
+      timestamp: item.timestamp,
+      synthetic: true,
+    };
+  });
+}
+
 function drawProjection(svg, historyInput, projectedInput, features = {}, options = {}) {
   if (!svg) return;
   const historySeries = normalizeHistorySeries(historyInput, options.range || "1M");
@@ -1692,7 +1723,10 @@ function drawProjection(svg, historyInput, projectedInput, features = {}, option
   const width = 640;
   const height = 240;
   const margin = { top: 12, right: 12, bottom: 34, left: 56 };
-  const values = [...historySeries.map((item) => item.value), ...projectedSeries.map((item) => item.value)];
+  const chartType = features.chartType || "line";
+  const candles = chartType === "candles" ? buildSyntheticCandles(historySeries) : [];
+  const candleScaleValues = candles.flatMap((candle) => [candle.high, candle.low]);
+  const values = [...historySeries.map((item) => item.value), ...projectedSeries.map((item) => item.value), ...candleScaleValues];
   const min = Math.min(...values);
   const max = Math.max(...values);
   const range = max - min || 1;
@@ -1705,15 +1739,17 @@ function drawProjection(svg, historyInput, projectedInput, features = {}, option
 
   const historyValues = historySeries.map((item) => item.value);
   const projectedValues = projectedSeries.map((item) => item.value);
-  const historicalPoints = historyValues.map((value, index) => toPoint(value, index, values.length)).join(" ");
+  const pointTotal = historyValues.length + projectedValues.length;
+  const historicalPoints = historyValues.map((value, index) => toPoint(value, index, pointTotal)).join(" ");
   const projectedPoints = projectedValues
-    .map((value, index) => toPoint(value, historyValues.length + index, values.length))
+    .map((value, index) => toPoint(value, historyValues.length + index, pointTotal))
     .join(" ");
+  const candleWidth = clamp((width - margin.left - margin.right) / Math.max(historySeries.length, 1) * 0.58, 3, 15);
 
   const overlays = [];
   const drawSeries = (series, stroke, dash = "", width = 2, opacity = 0.8) => {
     const points = series
-      .map((value, index) => (Number.isFinite(value) ? toPoint(value, index, values.length) : ""))
+      .map((value, index) => (Number.isFinite(value) ? toPoint(value, index, pointTotal) : ""))
       .filter(Boolean)
       .join(" ");
     if (!points) return;
@@ -1746,12 +1782,12 @@ function drawProjection(svg, historyInput, projectedInput, features = {}, option
     Array.from({ length: xTickCount }, (_, i) => Math.round(i * (historySeries.length - 1) / Math.max(xTickCount - 1, 1)))
   )).filter((index) => index >= 0 && index < historySeries.length);
   const xTicks = xTickIndices.map((index) => ({
-    x: margin.left + ((index / (values.length - 1 || 1)) * (width - margin.left - margin.right)),
+    x: margin.left + ((index / (pointTotal - 1 || 1)) * (width - margin.left - margin.right)),
     label: formatAxisDate(historySeries[index]?.timestamp, options.range || "1M"),
   }));
 
   const hoverPoints = historySeries.map((item, index) => {
-    const [x, y] = toPoint(item.value, index, values.length).split(",");
+    const [x, y] = toPoint(item.value, index, pointTotal).split(",");
     return {
       x: Number(x),
       y: Number(y),
@@ -1760,14 +1796,48 @@ function drawProjection(svg, historyInput, projectedInput, features = {}, option
     };
   });
   const hoverOverlayId = options.overlayId || "";
+  const candleLayer = candles.map((candle, index) => {
+    const x = margin.left + ((index / (pointTotal - 1 || 1)) * (width - margin.left - margin.right));
+    const [openY, closeY, highY, lowY] = [candle.open, candle.close, candle.high, candle.low].map((value) => {
+      const [, y] = toPoint(value, index, pointTotal).split(",");
+      return Number(y);
+    });
+    const up = candle.close >= candle.open;
+    const bodyY = Math.min(openY, closeY);
+    const bodyHeight = Math.max(2, Math.abs(closeY - openY));
+    const color = up ? "rgba(63,224,142,0.88)" : "rgba(255,107,107,0.88)";
+    return `
+      <line x1="${x}" y1="${highY}" x2="${x}" y2="${lowY}" stroke="${color}" stroke-width="1.4" opacity="0.82"></line>
+      <rect x="${x - candleWidth / 2}" y="${bodyY}" width="${candleWidth}" height="${bodyHeight}" rx="2" fill="${color}" opacity="0.72"></rect>
+    `;
+  }).join("");
+  const barLayer = chartType === "bars" ? historyValues.map((value, index) => {
+    const [x, y] = toPoint(value, index, pointTotal).split(",").map(Number);
+    return `<line x1="${x}" y1="${height - margin.bottom}" x2="${x}" y2="${y}" stroke="rgba(84,210,255,0.58)" stroke-width="${Math.max(2, candleWidth * 0.72)}" stroke-linecap="round"></line>`;
+  }).join("") : "";
+  const areaLayer = chartType === "area"
+    ? `<polygon points="${margin.left},${height - margin.bottom} ${historicalPoints} ${margin.left + (((historyValues.length - 1) / (pointTotal - 1 || 1)) * (width - margin.left - margin.right))},${height - margin.bottom}" fill="url(#chart-area-fill)" opacity="0.8"></polygon>`
+    : "";
+  const lineLayer = chartType === "candles" || chartType === "bars"
+    ? `<polyline fill="none" stroke="rgba(84,210,255,0.34)" stroke-width="2" points="${historicalPoints}" stroke-linecap="round"></polyline>`
+    : `<polyline fill="none" stroke="#54d2ff" stroke-width="3.5" points="${historicalPoints}" stroke-linecap="round"></polyline>`;
 
   svg.innerHTML = `
+    <defs>
+      <linearGradient id="chart-area-fill" x1="0%" x2="0%" y1="0%" y2="100%">
+        <stop offset="0%" stop-color="rgba(84,210,255,0.28)" />
+        <stop offset="100%" stop-color="rgba(84,210,255,0.02)" />
+      </linearGradient>
+    </defs>
     ${yTicks.map((tick) => `<line x1="${margin.left}" y1="${tick.y}" x2="${width - margin.right}" y2="${tick.y}" stroke="rgba(255,255,255,0.08)"></line>`).join("")}
     ${yTicks.map((tick) => `<text x="${margin.left - 8}" y="${tick.y + 4}" text-anchor="end" fill="rgba(255,255,255,0.55)" font-size="11">${formatCurrency(tick.value, options.currency || "USD")}</text>`).join("")}
     <line x1="${margin.left}" y1="${height - margin.bottom}" x2="${width - margin.right}" y2="${height - margin.bottom}" stroke="rgba(255,255,255,0.12)"></line>
     <line x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${height - margin.bottom}" stroke="rgba(255,255,255,0.12)"></line>
     ${xTicks.map((tick) => `<text x="${tick.x}" y="${height - 10}" text-anchor="middle" fill="rgba(255,255,255,0.55)" font-size="11">${tick.label}</text>`).join("")}
-    <polyline fill="none" stroke="#54d2ff" stroke-width="3.5" points="${historicalPoints}" stroke-linecap="round"></polyline>
+    ${areaLayer}
+    ${barLayer}
+    ${candleLayer}
+    ${lineLayer}
     ${overlays.join("")}
     <polyline fill="none" stroke="#f3b85f" stroke-width="3.5" stroke-dasharray="8 8" points="${projectedPoints}" stroke-linecap="round"></polyline>
     <g id="chart-hover-layer">
@@ -2304,7 +2374,10 @@ function buildImpactGraphElements(graph = {}) {
       asOf: node.asOf || "",
     },
   }));
-  const links = (graph.links || []).map((link, index) => ({
+  const nodeIds = new Set(nodes.map((node) => node.data.id));
+  const links = (graph.links || [])
+    .filter((link) => nodeIds.has(link.source) && nodeIds.has(link.target))
+    .map((link, index) => ({
     data: {
       id: `${link.source}->${link.target}->${index}`,
       source: link.source,
@@ -2356,6 +2429,13 @@ function renderImpactGraphWorkspace(graph = {}) {
   const container = document.getElementById("impact-graph");
   if (!container) return;
   const noteNode = document.getElementById("impact-graph-note");
+  const panel = document.getElementById("watchlist-implications");
+  const isVisible = panel?.classList.contains("active");
+  if (!isVisible) {
+    state.pendingImpactGraph = graph;
+    return;
+  }
+  state.pendingImpactGraph = null;
   if (!window.cytoscape) {
     container.innerHTML = `<div class="impact-graph-fallback">Graph engine unavailable.</div>`;
     if (noteNode) noteNode.textContent = "Graph engine unavailable.";
@@ -2372,7 +2452,6 @@ function renderImpactGraphWorkspace(graph = {}) {
     state.impactGraphCy = window.cytoscape({
       container,
       elements,
-      wheelSensitivity: 0.18,
       minZoom: 0.45,
       maxZoom: 1.8,
       boxSelectionEnabled: false,
@@ -2437,15 +2516,7 @@ function renderImpactGraphWorkspace(graph = {}) {
     state.impactGraphCy.elements().remove();
     state.impactGraphCy.add(elements);
   }
-  state.impactGraphCy.layout({
-    name: "breadthfirst",
-    directed: true,
-    padding: 34,
-    spacingFactor: 1.1,
-    animate: true,
-    roots: ["#bonds", "#inflation", "#policy"],
-  }).run();
-  state.impactGraphCy.fit(undefined, 34);
+  relayoutImpactGraph();
   const firstNode = state.impactGraphCy.nodes()[0];
   renderImpactGraphDetail(firstNode ? firstNode.data() : null);
   if (noteNode) {
@@ -2461,6 +2532,20 @@ function renderImpactGraphWorkspace(graph = {}) {
     ].filter(Boolean);
     noteNode.textContent = noteBits.join(" • ");
   }
+}
+
+function relayoutImpactGraph() {
+  if (!state.impactGraphCy) return;
+  state.impactGraphCy.resize();
+  state.impactGraphCy.layout({
+    name: "breadthfirst",
+    directed: true,
+    padding: 34,
+    spacingFactor: 1.1,
+    animate: true,
+    roots: ["#bonds", "#inflation", "#policy"],
+  }).run();
+  window.setTimeout(() => state.impactGraphCy?.fit(undefined, 34), 140);
 }
 
 function renderSearchResults(results = []) {
@@ -2916,7 +3001,7 @@ function renderOverview() {
   bsEl2.textContent = recommendation.signal ? recommendation.signal.replace("bias", "scenario") : "Balanced scenario";
   const bsDir2 = forecast.direction?.toLowerCase() || "";
   bsEl2.className = bsDir2 === "bullish" ? "bullish" : bsDir2 === "bearish" ? "bearish" : "neutral";
-  document.getElementById("buy-sell-breakdown").textContent = `Upside ${recommendation.buy ?? 0}% · Base ${recommendation.hold ?? 100}% · Downside ${recommendation.sell ?? 0}%`;
+  document.getElementById("buy-sell-breakdown").innerHTML = `<span class="bsb-buy">▲ ${recommendation.buy ?? 0}%</span><span class="bsb-hold">― ${recommendation.hold ?? 100}%</span><span class="bsb-sell">▼ ${recommendation.sell ?? 0}%</span>`;
   document.getElementById("model-agreement-note").textContent = `${agreement.summary} Score ${Number(agreement.score || 0).toFixed(0)}/100.`;
   const overviewMetaItems = [
     {
@@ -2992,15 +3077,18 @@ function renderOverview() {
     .join("");
 
   drawSparkline(document.getElementById("hero-sparkline"), (active.history || []).slice(-24));
-  drawTimeline(
-    document.getElementById("hero-projection-chart"),
-    active.historySeries?.length ? active.historySeries : (active.history || []),
-    forecast.projected || [],
-    state.chartFeatures,
-    { currency: active.currency, range: state.chartRange, overlayId: "hero-chart-hover" },
-  );
+  // Defer the heavy SVG chart render so hero text & stats paint first
+  const _chartSvg = document.getElementById("hero-projection-chart");
+  const _chartHistory = active.historySeries?.length ? active.historySeries : (active.history || []);
+  const _chartProjected = forecast.projected || [];
+  const _chartFeatures = state.chartFeatures;
+  const _chartOpts = { currency: active.currency, range: state.chartRange, overlayId: "hero-chart-hover" };
+  nextFrame(() => drawTimeline(_chartSvg, _chartHistory, _chartProjected, _chartFeatures, _chartOpts));
   document.querySelectorAll(".range-tab").forEach((button) => {
     button.classList.toggle("active", button.dataset.range === state.chartRange);
+  });
+  document.querySelectorAll(".chart-mode-tab").forEach((button) => {
+    button.classList.toggle("active", button.dataset.chartType === (state.chartFeatures.chartType || "line"));
   });
   document.getElementById("feature-sma20").checked = Boolean(state.chartFeatures.sma20);
   document.getElementById("feature-sma50").checked = Boolean(state.chartFeatures.sma50);
@@ -3680,13 +3768,6 @@ function renderTopbar() {
   setStatus(state.dashboard?.updatedAt ? "Live now" : "Loading data");
   document.body.classList.toggle("app-ready", state.bootReady);
   document.body.classList.toggle("app-booting", !state.bootReady);
-  const heading = document.querySelector(".topbar-copy h2");
-  if (heading) {
-    const region = selectedRegionMeta();
-    heading.textContent = region
-      ? `${region.label} macro, bonds, inflation, equities, and watchlist context`
-      : "US and India macro, bond, inflation, and market context";
-  }
   renderGlobalMarketOverview();
 }
 
@@ -3788,11 +3869,17 @@ function activateTab(target) {
   const run = () => {
     document.querySelectorAll(".tab").forEach((node) => node.classList.toggle("active", node.dataset.tab === target));
     document.querySelectorAll(".tab-panel").forEach((panel) => panel.classList.toggle("active", panel.id === target));
-    if (target === "watchlist-implications" && state.impactGraphCy) {
+    if (target === "watchlist-implications") {
+      renderWatchlistImplications();
       window.setTimeout(() => {
-        state.impactGraphCy.resize();
-        state.impactGraphCy.fit(undefined, 34);
-      }, 80);
+        if (state.pendingImpactGraph) {
+          const pending = state.pendingImpactGraph;
+          state.pendingImpactGraph = null;
+          renderImpactGraphWorkspace(pending);
+        } else {
+          relayoutImpactGraph();
+        }
+      }, 120);
     }
   };
   if (document.startViewTransition) {
@@ -3819,17 +3906,20 @@ function renderCorePanels() {
   renderBanner();
   renderBoard();
   renderPulse();
-  renderOverview();
-  renderBondMarket();
-  renderInflationView();
-  renderEquityContext();
-  renderMacroEvents();
-  renderMethodology();
-  renderWatchlistImplications();
-  renderComparison();
+  renderOverview();     // critical — renders synchronously so hero paints first
   renderTopbar();
   renderCompactMenu();
-  setupScrollReveal();
+  // Defer hidden-tab renders to idle time so Overview paints before them
+  deferWork(() => {
+    renderBondMarket();
+    renderInflationView();
+    renderEquityContext();
+    renderMacroEvents();
+    renderMethodology();
+    renderWatchlistImplications();
+    renderComparison();
+    setupScrollReveal();
+  }, 200);
 }
 
 function renderDeferredPanels() {
@@ -4405,16 +4495,6 @@ function initSectorMatrix() {
 }
 
 // ── Sector Overview Strip — compact always-visible row above tabbar ──────────
-const STRIP_ABBREV = {
-  "Nifty 50": "NIFTY", "Nifty Bank": "BANK", "IT": "IT", "Pharma": "PHARMA",
-  "Auto": "AUTO", "FMCG": "FMCG", "Metal": "METAL", "Energy": "ENERGY",
-  "Realty": "REALTY", "Media": "MEDIA", "PSU Bank": "PSUBNK", "Financial Svcs": "FIN",
-  "Technology": "TECH", "Financials": "FIN", "Health Care": "HLTH", "Industrials": "INDU",
-  "Consumer Disc.": "DISC", "Consumer Staples": "STPL", "Materials": "MATL",
-  "Utilities": "UTIL", "Real Estate": "REIT", "Communication": "COMM",
-  "Energy (US)": "ENRG",
-};
-
 function renderSectorStrip(sectors) {
   const strip = document.getElementById("sector-overview-strip");
   if (!strip) return;
@@ -4424,9 +4504,9 @@ function renderSectorStrip(sectors) {
     const dir = pct > 0.05 ? "up" : pct < -0.05 ? "down" : "flat";
     const sign = pct > 0 ? "+" : "";
     const label = s.name || s.label || s.symbol || "Sector";
-    const abbr = STRIP_ABBREV[label] || s.symbol || label.slice(0, 5).toUpperCase() || "—";
+    const displayLabel = label.replace(/\s*\(US\)\s*/i, "").replace("Financial Svcs", "Financial Services");
     return `<div class="sector-strip-chip" title="${label} ${sign}${pct.toFixed(2)}%">
-      <span class="sector-strip-chip-name">${abbr}</span>
+      <span class="sector-strip-chip-name">${displayLabel}</span>
       <span class="sector-strip-chip-pct ${dir}">${sign}${pct.toFixed(2)}%</span>
     </div>`;
   }).join("");
@@ -4478,6 +4558,14 @@ function bindEvents() {
       persistWatchlist();
       scheduleHistoryWarmup({ immediate: true });
       refreshDashboard();
+    });
+  });
+
+  document.querySelectorAll(".chart-mode-tab").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.chartFeatures.chartType = button.dataset.chartType || "line";
+      persistWatchlist();
+      renderOverview();
     });
   });
 
@@ -4533,7 +4621,7 @@ function bindEvents() {
       state.impactGraphCy?.resize();
       state.impactGraphCy?.fit(undefined, 34);
     }, 120);
-  });
+  }, { passive: true });
 
   const settingsDialog = document.getElementById("settings-dialog");
   document.getElementById("open-settings").addEventListener("click", () => settingsDialog.showModal());
@@ -4544,16 +4632,7 @@ function bindEvents() {
   });
   document.getElementById("impact-fit")?.addEventListener("click", () => state.impactGraphCy?.fit(undefined, 34));
   document.getElementById("impact-reset")?.addEventListener("click", () => {
-    if (!state.impactGraphCy) return;
-    state.impactGraphCy.layout({
-      name: "breadthfirst",
-      directed: true,
-      padding: 34,
-      spacingFactor: 1.1,
-      animate: true,
-      roots: ["#bonds", "#inflation", "#policy"],
-    }).run();
-    window.setTimeout(() => state.impactGraphCy?.fit(undefined, 34), 320);
+    relayoutImpactGraph();
   });
   document.getElementById("impact-zoom-in")?.addEventListener("click", () => {
     if (!state.impactGraphCy) return;
