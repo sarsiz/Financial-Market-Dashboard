@@ -83,6 +83,8 @@ class HtmlContractTests(unittest.TestCase):
       "dossier-card-band",
       "Market discovery",
       "sector-matrix-benchmark",
+      "sector-tile-top",
+      "sector-tile-meta",
       "formatAxisDate",
     ]
     for snippet in expected_snippets:
@@ -105,6 +107,14 @@ class HtmlContractTests(unittest.TestCase):
     self.assertIn("auto-masonry card layout", self.readme)
     self.assertIn("Sector matrix", self.readme)
     self.assertIn("Wilder RSI", self.readme)
+
+  def test_sector_matrix_uses_readable_responsive_tiles(self):
+    styles = (ROOT / "styles.css").read_text()
+
+    self.assertIn("minmax(min(100%, 190px), 1fr)", styles)
+    self.assertIn("min-height: 132px", styles)
+    self.assertIn("font-size: 1.42rem", styles)
+    self.assertIn("grid-template-columns: 1fr", styles)
 
 
 if __name__ == "__main__":

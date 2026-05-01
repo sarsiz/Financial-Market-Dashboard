@@ -579,6 +579,48 @@ class ForecastAndLabTests(unittest.TestCase):
       self.assertIn("title", paper)
       self.assertIn("year", paper)
 
+  def test_research_participation_signal_is_centered_on_normal_volume(self):
+    snapshot = {
+      "symbol": "ICICIBANK.NS",
+      "name": "ICICI Bank",
+      "volume": 2_000_000,
+      "stats": [{"label": "Avg volume", "value": "2.00M"}],
+      "forecast": {
+        "factorsRaw": {"fastMomentum": 0.0, "slowMomentum": 0.0},
+        "eventPressure": 0.0,
+        "models": {"classic": {"confidence": 60}},
+      },
+      "classicQuant": {"cards": [{"title": "Price z-score", "value": "+0.00"}]},
+      "eventFocus": {"label": "None"},
+      "sentiment": {"label": "Balanced"},
+    }
+    region = {
+      "bonds": {"realYield": 1.2, "curve": {"slope2s10s": 0.1}},
+      "inflation": {},
+      "policy": {"centralBank": "RBI"},
+    }
+
+    overview = server.build_active_research_overview(snapshot, region)
+    trend_card = next(card for card in overview["cards"] if card["label"] == "Trend + participation")
+
+    self.assertEqual(server.parse_compact_number("2.00M"), 2_000_000)
+    self.assertEqual(server.centered_volume_participation(1.0), 0.0)
+    self.assertEqual(trend_card["value"], "+0.00")
+    self.assertIn("VR 1.00x", trend_card["note"])
+
+  def test_research_practices_report_implementation_coverage(self):
+    annotated = server.annotate_practice_coverage(
+      {
+        "title": "Example paper",
+        "requiredFactors": ["price history", "turnover", "nonexistent factor"],
+      }
+    )
+
+    self.assertEqual(annotated["implementationStatus"], "Partial")
+    self.assertIn("price history", annotated["implementedFactors"])
+    self.assertIn("turnover", annotated["partialFactors"])
+    self.assertIn("nonexistent factor", annotated["missingFactors"])
+
   def test_build_backtest_produces_samples_with_short_real_history(self):
     history = [100 + index for index in range(20)]
     quote = {"regularMarketPrice": history[-1], "regularMarketPreviousClose": history[-2]}

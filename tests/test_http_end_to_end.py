@@ -37,6 +37,14 @@ class HttpRouteTests(unittest.TestCase):
     with urllib.request.urlopen(request, timeout=5) as response:
       return json.loads(response.read().decode("utf-8"))
 
+  def test_vendor_graph_asset_is_served(self):
+    with urllib.request.urlopen(self.url("/vendor/cytoscape.min.js"), timeout=5) as response:
+      body = response.read(80).decode("utf-8", errors="ignore")
+
+    self.assertEqual(response.status, 200)
+    self.assertIn("javascript", response.headers.get("Content-Type", ""))
+    self.assertTrue(body)
+
   def test_dashboard_and_academy_routes_return_expected_payloads(self):
     dashboard_payload = {
       "provider": "yahoo",

@@ -2188,7 +2188,7 @@ const SIGNAL_PATTERNS = [
     badge: "badge-momentum",
     kicker: "Price · Rate of Change + Participation",
     title: "Trend + Volume Participation",
-    formula: "Score = 0.45·MOM₅ + 0.35·MOM₂₀ + 0.20·log(1+VR)\nVR = Volume / Avg Volume₂₀",
+    formula: "Score = 0.45·MOM₅ + 0.35·MOM₂₀ + 0.20·log(VR)\nVR = Volume / Avg Volume₂₀",
     description: "Combines short- and medium-term momentum with volume participation. A large price move on thin volume is down-weighted — markets are more likely to sustain a move when breadth and participation confirm it. The log transform keeps the volume term from dominating.",
     cadence: "Intraday",
     phase: "Trend confirmation",
@@ -4295,16 +4295,26 @@ function renderSectorMatrix(sectors, updatedAt, meta = {}) {
   const sorted = [...sectors].sort((a, b) => b.changePct - a.changePct);
   grid.innerHTML = sorted.map((s) => {
     const pct = Number(s.changePct || 0);
+    const relativePct = Number(s.relativePct || 0);
     const color = sectorHeatColor(pct);
     const sign = pct >= 0 ? "+" : "";
+    const relativeSign = relativePct >= 0 ? "+" : "";
     const intensity = Math.min(Math.abs(pct) / 3, 1);
     return `
-      <div class="sector-tile" style="--heat:${color}; --intensity:${intensity.toFixed(2)}">
-        <span class="sector-tile-label">${s.label}</span>
-        <strong class="sector-tile-pct ${pct >= 0 ? "positive" : "negative"}">${sign}${pct.toFixed(2)}%</strong>
-        <small class="sector-tile-relative">vs ${meta.benchmark?.label || "benchmark"} ${formatPercent(s.relativePct || 0)}</small>
-        ${s.price ? `<em class="sector-tile-price">${s.price.toLocaleString()}</em>` : ""}
-      </div>
+      <article class="sector-tile" style="--heat:${color}; --intensity:${intensity.toFixed(2)}" title="${s.label}: ${sign}${pct.toFixed(2)}%">
+        <div class="sector-tile-top">
+          <span class="sector-tile-label">${s.label}</span>
+          <strong class="sector-tile-pct ${pct >= 0 ? "positive" : "negative"}">${sign}${pct.toFixed(2)}%</strong>
+        </div>
+        <div class="sector-tile-relative">
+          <span>vs ${meta.benchmark?.label || "benchmark"}</span>
+          <strong class="${relativePct >= 0 ? "positive" : "negative"}">${relativeSign}${relativePct.toFixed(2)}%</strong>
+        </div>
+        <div class="sector-tile-meta">
+          <span>${s.source || meta.source || "market data"}</span>
+          ${s.price ? `<em class="sector-tile-price">${s.price.toLocaleString()}</em>` : ""}
+        </div>
+      </article>
     `;
   }).join("");
   if (footer && updatedAt) {

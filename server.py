@@ -2203,6 +2203,30 @@ def format_large_number(value: float | int | None) -> str:
   return f"{number:.0f}"
 
 
+def parse_compact_number(value) -> float:
+  if value in (None, ""):
+    return 0.0
+  if isinstance(value, (int, float)):
+    return float(value)
+  text = str(value).strip().replace(",", "")
+  match = re.match(r"^([-+]?\d+(?:\.\d+)?)\s*([KMBT])?$", text, flags=re.IGNORECASE)
+  if not match:
+    numeric = re.sub(r"[^0-9.+-]", "", text)
+    try:
+      return float(numeric) if numeric else 0.0
+    except ValueError:
+      return 0.0
+  number = float(match.group(1))
+  suffix = (match.group(2) or "").upper()
+  multiplier = {"K": 1e3, "M": 1e6, "B": 1e9, "T": 1e12}.get(suffix, 1.0)
+  return number * multiplier
+
+
+def centered_volume_participation(volume_ratio: float) -> float:
+  """Log participation centered at 1.0x volume so normal volume adds no directional edge."""
+  return clamp(math.log(max(float(volume_ratio or 0.0), 0.05)), -1.5, 1.5)
+
+
 def fetch_yahoo_quotes(symbols: list[str]) -> dict[str, dict]:
   cleaned = [symbol for symbol in symbols if symbol]
   if not cleaned:
@@ -5533,7 +5557,7 @@ def build_region_equity_context(region_key: str, active_snapshot: dict | None, b
 
 def build_region_research_protocol(region_key: str, bonds: dict, inflation: dict) -> dict:
   registry = load_factor_registry()
-  practices = load_dashboard_practices()
+  practices = [annotate_practice_coverage(item) for item in load_dashboard_practices()]
   macro_manifest = load_macro_dataset_manifest()
   region_manifest = (macro_manifest.get("regions") or {}).get(region_key, {})
   curve_shape = ((bonds.get("curve") or {}).get("shape") or "Mixed").lower()
@@ -5571,6 +5595,62 @@ def build_region_research_protocol(region_key: str, bonds: dict, inflation: dict
   }
 
 
+IMPLEMENTED_RESEARCH_FACTORS = {
+  "price history",
+  "time ordering",
+  "clean historical series",
+  "multi-horizon windows",
+  "momentum",
+  "trend",
+  "reversal",
+  "price path",
+  "volume",
+  "liquidity regime",
+  "mean reversion",
+  "sector context",
+  "concept graph",
+  "shared information",
+  "company relations",
+}
+
+
+PARTIAL_RESEARCH_FACTORS = {
+  "uncertainty estimates",
+  "long-context history",
+  "normalized scale",
+  "stable cadence",
+  "turnover",
+  "spread history",
+  "co-movement",
+}
+
+
+def annotate_practice_coverage(practice: dict) -> dict:
+  required = [str(item).lower() for item in (practice.get("requiredFactors") or [])]
+  implemented = [item for item in required if item in IMPLEMENTED_RESEARCH_FACTORS]
+  partial = [item for item in required if item in PARTIAL_RESEARCH_FACTORS]
+  missing = [item for item in required if item not in IMPLEMENTED_RESEARCH_FACTORS and item not in PARTIAL_RESEARCH_FACTORS]
+  if missing:
+    status = "Partial"
+  elif partial:
+    status = "Partial"
+  else:
+    status = "Implemented"
+  note = (
+    f"{len(implemented)}/{len(required) or 1} required factors fully wired"
+    + (f"; {len(partial)} partial" if partial else "")
+    + (f"; {len(missing)} missing" if missing else "")
+  )
+  return {
+    **practice,
+    "implementationStatus": status,
+    "implementedFactors": implemented,
+    "partialFactors": partial,
+    "missingFactors": missing,
+    "coverageNote": note,
+  }
+
+
 def bond_equity_duration_flag(symbol: str) -> float:
   upper = (symbol or "").upper()
   if any(token in upper for token in {"AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META", "TCS", "INFY"}):
@@ -5598,7 +5678,7 @@ def compute_project_dependency_pressure(symbol: str) -> tuple[float, int, int]:
 
 def build_active_research_overview(snapshot: dict, region_payload: dict) -> dict:
   formulas = load_prediction_formulas()
-  papers = load_dashboard_practices()
+  papers = [annotate_practice_coverage(item) for item in load_dashboard_practices()]
   forecast = snapshot.get("forecast") or {}
   factors_raw = forecast.get("factorsRaw") or {}
   bonds = region_payload.get("bonds") or {}
@@ -5608,11 +5688,11 @@ def build_active_research_overview(snapshot: dict, region_payload: dict) -> dict
   avg_volume_value = 0.0
   for stat in snapshot.get("stats") or []:
     if stat.get("label") == "Avg volume":
-      avg_volume_value = float(re.sub(r"[^0-9.+-]", "", str(stat.get("value") or "0")) or 0)
+      avg_volume_value = parse_compact_number(stat.get("value"))
   volume_ratio = (volume / avg_volume_value) if avg_volume_value else 1.0
   fast_momentum = float(factors_raw.get("fastMomentum") or 0.0)
   slow_momentum = float(factors_raw.get("slowMomentum") or 0.0)
-  trend_participation = (0.45 * fast_momentum) + (0.35 * slow_momentum) + (0.20 * math.log1p(max(volume_ratio, 0.0)))
+  trend_participation = (0.45 * fast_momentum) + (0.35 * slow_momentum) + (0.20 * centered_volume_participation(volume_ratio))
   duration_pressure = max(float(bonds.get("realYield") or 0.0) - 1.5, 0.0) * float((snapshot.get("forecast") or {}).get("models", {}).get("classic", {}).get("confidence", 0.0) / 100 or 0.5) * bond_equity_duration_flag(snapshot.get("symbol"))
   curve_impulse = float((bonds.get("curve") or {}).get("slope2s10s") or 0.0) * (1.0 if "BANK" in (snapshot.get("symbol") or "").upper() or "BANK" in (snapshot.get("name") or "").upper() else 0.35)
   project_pressure, high_impact_count, supplier_count = compute_project_dependency_pressure(snapshot.get("symbol", ""))
@@ -5677,18 +5757,7 @@ def build_market_decision_overview(snapshot: dict, region_payload: dict) -> dict
   avg_volume = 0.0
   for stat in snapshot.get("stats") or []:
     if stat.get("label") == "Avg volume":
-      compact = str(stat.get("value") or "")
-      if compact.endswith("K"):
-        avg_volume = float(compact[:-1]) * 1e3
-      elif compact.endswith("M"):
-        avg_volume = float(compact[:-1]) * 1e6
-      elif compact.endswith("B"):
-        avg_volume = float(compact[:-1]) * 1e9
-      else:
-        try:
-          avg_volume = float(compact)
-        except ValueError:
-          avg_volume = 0.0
+      avg_volume = parse_compact_number(stat.get("value"))
   if avg_volume:
     volume_ratio = raw_volume / avg_volume
   inputs = []
@@ -5717,7 +5786,7 @@ def build_market_decision_overview(snapshot: dict, region_payload: dict) -> dict
     elif key == "trend_participation_live":
       fast_momentum = float(factors_raw.get("fastMomentum") or 0.0)
       slow_momentum = float(factors_raw.get("slowMomentum") or 0.0)
-      signal = (0.45 * fast_momentum) + (0.35 * slow_momentum) + (0.20 * math.log1p(max(volume_ratio, 0.0)))
+      signal = (0.45 * fast_momentum) + (0.35 * slow_momentum) + (0.20 * centered_volume_participation(volume_ratio))
       value_display = f"{signal:+.2f}"
       note = f"MOM5 {fast_momentum:+.3f} • MOM20 {slow_momentum:+.3f} • VR {volume_ratio:.2f}x"
     elif key == "supplier_project_pressure":
@@ -5865,7 +5934,7 @@ def build_methodology_payload(snapshot: dict, region_payload: dict) -> dict:
       {
         "label": "Participation",
         "title": "Momentum with volume confirmation",
-        "formula": "TP = 0.45 * MOM_5 + 0.35 * MOM_20 + 0.20 * ln(1 + volume / avg_volume)",
+        "formula": "TP = 0.45 * MOM_5 + 0.35 * MOM_20 + 0.20 * ln(volume / avg_volume)",
         "interpretation": "Positive values suggest trend and participation are aligned; low or negative values warn that price movement may lack breadth.",
       },
       {
@@ -6578,7 +6647,7 @@ class FinancialBoardHandler(BaseHTTPRequestHandler):
 
   def do_HEAD(self) -> None:
     parsed = urllib.parse.urlparse(self.path)
-    if parsed.path in {"/", "/index.html", "/app.js", "/styles.css", "/api/health"}:
+    if parsed.path in {"/", "/index.html", "/app.js", "/styles.css", "/vendor/cytoscape.min.js", "/api/health"}:
       self.send_response(HTTPStatus.OK)
       self.write_security_headers()
       self.end_headers()
@@ -6598,6 +6667,8 @@ class FinancialBoardHandler(BaseHTTPRequestHandler):
       return self.serve_file("styles.css", "text/css; charset=utf-8")
     if parsed.path == "/app.js":
       return self.serve_file("app.js", "application/javascript; charset=utf-8")
+    if parsed.path == "/vendor/cytoscape.min.js":
+      return self.serve_file("vendor/cytoscape.min.js", "application/javascript; charset=utf-8")
     if parsed.path == "/api/health":
       return self.send_json({"status": "ok"})
     if parsed.path == "/api/config":
