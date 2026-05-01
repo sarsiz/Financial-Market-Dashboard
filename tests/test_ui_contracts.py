@@ -15,7 +15,6 @@ class HtmlContractTests(unittest.TestCase):
 
   def test_index_contains_core_dashboard_targets(self):
     required_ids = [
-      "radar-floats",
       "radar-hotspots",
       "radar-source-note",
       "overview-board",
@@ -72,8 +71,6 @@ class HtmlContractTests(unittest.TestCase):
       "event-card-header",
       "dashboardRequestId",
       "selectedRegion",
-      "function buildRadarFloatItems",
-      "state.radarFloatOpenId",
       "function renderImpactGraphWorkspace(",
       "decision-cockpit-card",
       "function logNonAbort(",
@@ -85,9 +82,19 @@ class HtmlContractTests(unittest.TestCase):
       "Peer comparison",
       "dossier-card-band",
       "Market discovery",
+      "sector-matrix-benchmark",
+      "formatAxisDate",
     ]
     for snippet in expected_snippets:
       self.assertIn(snippet, self.app_js)
+
+  def test_cloud_controls_removed_but_news_ticker_remains(self):
+    self.assertNotIn("pop-radar-clouds", self.index_html)
+    self.assertNotIn("cloud-puff", self.index_html)
+    self.assertNotIn("radar-floats", self.index_html)
+    self.assertNotIn("cloud-puff", self.app_js)
+    self.assertIn("headline-track", self.index_html)
+    self.assertIn("ticker-track", self.index_html)
 
   def test_readme_documents_architecture_and_test_entrypoint(self):
     self.assertIn("## Technical Summary", self.readme)

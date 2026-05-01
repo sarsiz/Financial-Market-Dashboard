@@ -9,6 +9,7 @@ const STORAGE_KEYS = {
   benchmarksCollapsed: "financial-board-benchmarks-collapsed",
   region: "financial-board-region",
   dossierOrder: "financial-board-dossier-order",
+  sectorMatrix: "financial-board-sector-matrix",
 };
 
 const RESEARCH_REFERENCES = [
@@ -179,11 +180,7 @@ const state = {
   liveQuoteMemory: {},
   alerts: [],
   alertCooldowns: {},
-  radarFloatOpenId: "",
   radarHeadlineDetail: null,
-  radarFloatPositions: {},
-  radarDismissedFloatIds: [],
-  radarFloatDrag: null,
   marketSessionTimer: null,
   dashboardRequestId: 0,
   overviewRequestId: 0,
@@ -193,14 +190,11 @@ const state = {
   academyCache: {},
   bootReady: false,
   radarTimer: null,
-  radarGlobalPointerCleanupBound: false,
   boardHidden: localStorage.getItem(STORAGE_KEYS.boardHidden) === "1",
   benchmarksCollapsed: localStorage.getItem(STORAGE_KEYS.benchmarksCollapsed) === "1",
-  radarFloatsCollapsed: false,
   eventCategoryPinned: false,
   recentLastAdded: "",
   recentAddTimer: null,
-  radarFreshFloatIds: [],
   visualValueMemory: {},
   impactGraphPositions: {},
   impactGraphCy: null,
@@ -799,12 +793,28 @@ function setupDossierDrag(container) {
     event.preventDefault();
     const dragging = container.querySelector(".dossier-card.dragging");
     if (!dragging || !(event.target instanceof Element)) return;
-    const target = event.target.closest("[data-dossier-card]");
-    if (!target || target === dragging || !container.contains(target)) return;
 
-    const rect = target.getBoundingClientRect();
-    const shouldInsertBefore = event.clientY < rect.top + rect.height / 2;
-    container.insertBefore(dragging, shouldInsertBefore ? target : target.nextSibling);
+    // Find all non-dragging cards; pick closest by center distance
+    const siblings = Array.from(container.querySelectorAll("[data-dossier-card]:not(.dragging)"));
+    if (!siblings.length) return;
+
+    let closest = null;
+    let closestDist = Infinity;
+    for (const sibling of siblings) {
+      const rect = sibling.getBoundingClientRect();
+      const centerX = rect.left + rect.width / 2;
+      const centerY = rect.top + rect.height / 2;
+      const dist = Math.hypot(event.clientX - centerX, event.clientY - centerY);
+      if (dist < closestDist) { closestDist = dist; closest = sibling; }
+    }
+    if (!closest) return;
+
+    const rect = closest.getBoundingClientRect();
+    // Use Y position primarily; for same-row cards use X
+    const midY = rect.top + rect.height / 2;
+    const midX = rect.left + rect.width / 2;
+    const insertBefore = event.clientY < midY || (Math.abs(event.clientY - midY) < 24 && event.clientX < midX);
+    container.insertBefore(dragging, insertBefore ? closest : closest.nextSibling);
   };
 
   container.ondrop = (event) => {
@@ -1008,7 +1018,11 @@ function patchOverviewLiveSurface(active, forecast, { redrawChart = false } = {}
   const forecastRangeNode = document.getElementById("forecast-range");
   forecastRangeNode.textContent = `10D projection ${formatPercent(forecast.expectedReturn)}`;
   forecastRangeNode.className = `forecast-range live-number ${liveValueClass(`hero:${active.symbol}:projection`, forecast.expectedReturn)}`;
-  document.getElementById("buy-sell-signal").textContent = recommendation.signal ? recommendation.signal.replace("bias", "scenario") : "Balanced scenario";
+  const bsEl = document.getElementById("buy-sell-signal");
+  const bsText = recommendation.signal ? recommendation.signal.replace("bias", "scenario") : "Balanced scenario";
+  bsEl.textContent = bsText;
+  const bsDir = forecast.direction?.toLowerCase() || "";
+  bsEl.className = bsDir === "bullish" ? "bullish" : bsDir === "bearish" ? "bearish" : "neutral";
   document.getElementById("buy-sell-breakdown").textContent = `Upside ${recommendation.buy ?? 0}% · Base ${recommendation.hold ?? 100}% · Downside ${recommendation.sell ?? 0}%`;
   document.getElementById("model-agreement-note").textContent = `${agreement.summary} Score ${Number(agreement.score || 0).toFixed(0)}/100.`;
   document.getElementById("quote-source-note").textContent = active.asOf
@@ -1274,277 +1288,8 @@ function buildClientMarketSession(exchange, marketState = "", region = "") {
   };
 }
 
-function buildRadarFloatItems(radar = {}) {
-  const items = radar.items || [];
-  const hotspots = radar.hotspots || [];
-  const fromItems = items
-    .map((item, index) => ({
-      id: item.url || `radar-float-item-${index}`,
-      title: item.title || "Market event",
-      url: item.url || "",
-      source: extractDomainLabel(item.url) || "Live scan",
-      region: formatRegionLabel(hotspots[index]?.region || "world"),
-      when: formatEventDateTime(item.publishedAt),
-      bubble: item.title || "Market event",
-      summary: item.source || extractDomainLabel(item.url) || "",
-      cta: item.url ? "View full" : "View detail",
-    }));
-  if (fromItems.length) {
-    return fromItems;
-  }
-
-  const fallbackHeadlines = (radar.headlines || [])
-    .filter(Boolean)
-    .map((headline, index) => ({
-      id: `radar-float-headline-${index}`,
-      title: headline,
-      url: "",
-      source: "Radar brief",
-      region: formatRegionLabel(hotspots[index]?.region || "world"),
-      when: "Latest",
-      bubble: headline,
-      summary: "",
-      cta: "View detail",
-    }));
-  if (fallbackHeadlines.length) {
-    return fallbackHeadlines;
-  }
-
-  const hotspotItems = hotspots.map((item, index) => ({
-    id: `radar-float-hotspot-${index}`,
-    title: item.headline || `${formatRegionLabel(item.region)} market signal`,
-    url: "",
-    source: "Radar zone",
-    region: formatRegionLabel(item.region || "world"),
-    when: "Live",
-    bubble: item.headline || `${formatRegionLabel(item.region)} signal`,
-    summary: "",
-    cta: "View detail",
-  }));
-  if (hotspotItems.length) return hotspotItems;
-  return [];
-}
-
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
-}
-
-function getDefaultRadarFloatSlots() {
-  return [{ x: 12, y: 14 }];
-}
-
-function buildRadarFloatSlots(floatNode, count) {
-  if (!floatNode || count <= 0) return [];
-  const width = Math.max(260, floatNode.clientWidth || 0);
-  const height = Math.max(92, floatNode.clientHeight || 0);
-  const leftPad = 18;
-  const rightPad = 20;
-  const topPad = 14;
-  const bottomPad = 10;
-  const rows = count <= 3 ? 1 : 2;
-  const usableWidth = Math.max(188, width - leftPad - rightPad);
-  const usableHeight = Math.max(52, height - topPad - bottomPad);
-  const cols = Math.max(1, Math.ceil(count / rows));
-  const approxChipWidth = 196;
-  const capacity = Math.max(1, rows * cols);
-  const slots = [];
-  for (let index = 0; index < Math.min(count, capacity); index += 1) {
-    const row = Math.floor(index / cols);
-    const col = index % cols;
-    const itemsInRow = row === rows - 1 ? Math.max(1, count - (row * cols)) : Math.min(cols, count);
-    const rowSpan = Math.max(approxChipWidth, usableWidth);
-    const availableLeft = Math.max(0, rowSpan - approxChipWidth);
-    const xStep = itemsInRow > 1 ? availableLeft / (itemsInRow - 1) : 0;
-    const yStep = rows > 1 ? usableHeight / (rows - 1) : 0;
-    slots.push({
-      x: leftPad + (itemsInRow > 1 ? col * xStep : availableLeft / 2),
-      y: topPad + (rows > 1 ? row * yStep : 10),
-    });
-  }
-  return slots;
-}
-
-function hydrateRadarFloatPositions(floatItems) {
-  const floatNode = document.getElementById("radar-floats");
-  const slots = buildRadarFloatSlots(floatNode, floatItems.length);
-  const next = {};
-  floatItems.forEach((item, index) => {
-    const saved = state.radarFloatPositions[item.id];
-    next[item.id] = saved || slots[index] || slots[slots.length - 1];
-  });
-  state.radarFloatPositions = next;
-}
-
-function syncRadarFloatExpansion(floatNode) {
-  if (!floatNode) return;
-  floatNode.querySelectorAll("[data-radar-float]").forEach((card) => {
-    const isActive = card.dataset.radarFloat === state.radarFloatOpenId;
-    card.classList.toggle("active", isActive);
-    card.setAttribute("aria-expanded", isActive ? "true" : "false");
-  });
-}
-
-function bindRadarFloatInteractions(floatNode, floatItems) {
-  if (!floatNode) return;
-  const clearDrag = (pointerId = null) => {
-    const drag = state.radarFloatDrag;
-    if (!drag) return;
-    if (pointerId !== null && drag.pointerId !== pointerId) return;
-    if (drag.holdTimer) {
-      window.clearTimeout(drag.holdTimer);
-    }
-    const activeCard = document.querySelector(`[data-radar-float="${drag.id}"]`);
-    if (activeCard) {
-      activeCard.classList.remove("dragging");
-      activeCard.style.removeProperty("--drag-rotate");
-      activeCard.style.removeProperty("--drag-skew");
-      activeCard.style.removeProperty("--drag-scale-x");
-      activeCard.style.removeProperty("--drag-scale-y");
-      if (activeCard.hasPointerCapture?.(drag.pointerId)) {
-        activeCard.releasePointerCapture(drag.pointerId);
-      }
-    }
-    state.radarFloatDrag = null;
-  };
-  const bounds = () => ({
-    width: floatNode.clientWidth || 340,
-    height: floatNode.clientHeight || 188,
-  });
-
-  floatNode.querySelectorAll("[data-radar-float]").forEach((card) => {
-    const id = card.dataset.radarFloat;
-    card.addEventListener("pointerdown", (event) => {
-      if (!event.isPrimary || event.button !== 0) return;
-      if (event.target.closest("[data-radar-detail]")) return;
-      clearDrag();
-      const rect = card.getBoundingClientRect();
-      const holdTimer = window.setTimeout(() => {
-        const drag = state.radarFloatDrag;
-        if (!drag || drag.id !== id || drag.pointerId !== event.pointerId) return;
-        drag.dragReady = true;
-      }, 180);
-      state.radarFloatDrag = {
-        id,
-        pointerId: event.pointerId,
-        startX: event.clientX,
-        startY: event.clientY,
-        originX: state.radarFloatPositions[id]?.x ?? rect.left,
-        originY: state.radarFloatPositions[id]?.y ?? rect.top,
-        moved: false,
-        dragging: false,
-        startedAt: performance.now(),
-        lastX: event.clientX,
-        lastY: event.clientY,
-        lastAt: performance.now(),
-        velocityX: 0,
-        velocityY: 0,
-        dragReady: false,
-        holdTimer,
-      };
-    });
-
-    card.addEventListener("pointermove", (event) => {
-      const drag = state.radarFloatDrag;
-      if (!drag || drag.id !== id || drag.pointerId !== event.pointerId) return;
-      if (event.buttons !== 1) {
-        clearDrag(event.pointerId);
-        return;
-      }
-      const area = bounds();
-      const dx = event.clientX - drag.startX;
-      const dy = event.clientY - drag.startY;
-      if (!drag.dragReady && Math.abs(dx) < 14 && Math.abs(dy) < 14) {
-        return;
-      }
-      drag.dragReady = true;
-      if (!drag.dragging) {
-        drag.dragging = true;
-        if (drag.holdTimer) {
-          window.clearTimeout(drag.holdTimer);
-          drag.holdTimer = null;
-        }
-        card.setPointerCapture(event.pointerId);
-        card.classList.add("dragging");
-      }
-      const nextX = clamp(drag.originX + dx, 0, area.width - card.offsetWidth);
-      const nextY = clamp(drag.originY + dy, 0, area.height - card.offsetHeight);
-      drag.moved = drag.moved || Math.abs(dx) > 5 || Math.abs(dy) > 5;
-      drag.velocityX = event.clientX - drag.lastX;
-      drag.velocityY = event.clientY - drag.lastY;
-      drag.lastX = event.clientX;
-      drag.lastY = event.clientY;
-      drag.lastAt = performance.now();
-      state.radarFloatPositions[id] = { x: nextX, y: nextY };
-      card.style.left = `${nextX}px`;
-      card.style.top = `${nextY}px`;
-      card.style.setProperty("--drag-rotate", `${clamp(drag.velocityX * 0.8, -16, 16)}deg`);
-      card.style.setProperty("--drag-skew", `${clamp(drag.velocityX * 0.12, -8, 8)}deg`);
-      card.style.setProperty("--drag-scale-x", `${1 + clamp(Math.abs(drag.velocityX) / 80, 0, 0.14)}`);
-      card.style.setProperty("--drag-scale-y", `${1 - clamp(Math.abs(drag.velocityX) / 180, 0, 0.08)}`);
-    });
-
-    const finishDrag = (event) => {
-      const drag = state.radarFloatDrag;
-      if (!drag || drag.id !== id || (event && drag.pointerId !== event.pointerId)) return;
-      if (drag.holdTimer) {
-        window.clearTimeout(drag.holdTimer);
-        drag.holdTimer = null;
-      }
-      if (drag.dragging) {
-        card.classList.remove("dragging");
-        if (card.hasPointerCapture?.(drag.pointerId)) {
-          card.releasePointerCapture(drag.pointerId);
-        }
-      }
-      const speed = Math.hypot(drag.velocityX, drag.velocityY);
-      const shouldDismiss = drag.dragging && drag.moved && speed > 20;
-      if (shouldDismiss) {
-        card.classList.add("popping");
-        card.style.setProperty("--pop-x", `${drag.velocityX * 2.4}px`);
-        card.style.setProperty("--pop-y", `${drag.velocityY * 2.4}px`);
-        window.setTimeout(() => {
-          state.radarDismissedFloatIds = [...new Set(state.radarDismissedFloatIds.concat(id))];
-          if (state.radarFloatOpenId === id) {
-            state.radarFloatOpenId = "";
-          }
-          renderBanner();
-        }, 260);
-      } else if (drag.dragging) {
-        card.style.removeProperty("--drag-rotate");
-        card.style.removeProperty("--drag-skew");
-        card.style.removeProperty("--drag-scale-x");
-        card.style.removeProperty("--drag-scale-y");
-      }
-
-      if (!drag.moved && !shouldDismiss) {
-        state.radarFloatOpenId = state.radarFloatOpenId === id ? "" : id;
-        syncRadarFloatExpansion(floatNode);
-      }
-      state.radarFloatDrag = null;
-    };
-
-    card.addEventListener("pointerup", finishDrag);
-    card.addEventListener("pointercancel", finishDrag);
-    card.addEventListener("lostpointercapture", () => {
-      clearDrag();
-    });
-    card.addEventListener("pointerleave", (event) => {
-      if (event.buttons !== 1) {
-        clearDrag();
-      }
-    });
-  });
-
-  if (!state.radarGlobalPointerCleanupBound) {
-    window.addEventListener(
-      "pointerup",
-      (event) => {
-        clearDrag(event.pointerId);
-      },
-      { passive: true },
-    );
-    state.radarGlobalPointerCleanupBound = true;
-  }
 }
 
 async function loadRadar({ silent = false } = {}) {
@@ -1634,7 +1379,9 @@ function buildPendingActive(symbol) {
     name: nextName,
     regime: "Refreshing active view",
     history: watchItem?.symbol === previous.symbol ? previous.history || [] : [],
-    historySeries: watchItem?.symbol === previous.symbol ? previous.historySeries || [] : [],
+    historySeries: watchItem?.symbol === previous.symbol
+      ? previous.historySeries || []
+      : (loadChartCache(symbol, state.chartRange) || []),
     relationshipCards: [],
     driverCards: [],
     stats: watchItem?.symbol === previous.symbol ? previous.stats || [] : [],
@@ -1810,6 +1557,36 @@ function drawSparkline(svg, values, strokeA = "#54d2ff", strokeB = "#5af2c5") {
   animateSvgRefresh(svg);
 }
 
+// ── Client-side chart history cache (localStorage) ───────────────────────────
+const CHART_CACHE_KEY_PREFIX = "fb-chart-v1:";
+const CHART_CACHE_MAX_AGE_MS = {
+  "1D": 90_000, "3D": 300_000, "5D": 600_000,
+  "1M": 3_600_000, "1Y": 21_600_000,
+  "2Y": 43_200_000, "3Y": 86_400_000, "5Y": 86_400_000, "MAX": 86_400_000,
+};
+
+function saveChartCache(symbol, range, historySeries) {
+  if (!symbol || !range || !Array.isArray(historySeries) || !historySeries.length) return;
+  try {
+    const key = `${CHART_CACHE_KEY_PREFIX}${symbol}:${range}`;
+    localStorage.setItem(key, JSON.stringify({ ts: Date.now(), series: historySeries }));
+  } catch (_) { /* quota exceeded — silent */ }
+}
+
+function loadChartCache(symbol, range) {
+  if (!symbol || !range) return null;
+  try {
+    const key = `${CHART_CACHE_KEY_PREFIX}${symbol}:${range}`;
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const { ts, series } = JSON.parse(raw);
+    const maxAge = CHART_CACHE_MAX_AGE_MS[range.toUpperCase()] || 3_600_000;
+    if (Date.now() - ts > maxAge) { localStorage.removeItem(key); return null; }
+    return Array.isArray(series) && series.length ? series : null;
+  } catch (_) { return null; }
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 function buildFallbackHistorySeries(history, range = "1M") {
   const values = (history || []).map((value) => Number(value)).filter((value) => Number.isFinite(value));
   if (!values.length) return [];
@@ -1820,6 +1597,10 @@ function buildFallbackHistorySeries(history, range = "1M") {
     "5D": 24 * 60 * 60 * 1000,
     "1M": 24 * 60 * 60 * 1000,
     "1Y": 7 * 24 * 60 * 60 * 1000,
+    "2Y": 14 * 24 * 60 * 60 * 1000,
+    "3Y": 30 * 24 * 60 * 60 * 1000,
+    "5Y": 30 * 24 * 60 * 60 * 1000,
+    "MAX": 30 * 24 * 60 * 60 * 1000,
   };
   const step = stepMap[range] || stepMap["1M"];
   const start = now.getTime() - ((values.length - 1) * step);
@@ -1852,6 +1633,10 @@ function buildProjectedSeries(historySeries, projected, range = "1M") {
     "5D": 24 * 60 * 60 * 1000,
     "1M": 24 * 60 * 60 * 1000,
     "1Y": 7 * 24 * 60 * 60 * 1000,
+    "2Y": 14 * 24 * 60 * 60 * 1000,
+    "3Y": 30 * 24 * 60 * 60 * 1000,
+    "5Y": 30 * 24 * 60 * 60 * 1000,
+    "MAX": 30 * 24 * 60 * 60 * 1000,
   };
   const step = stepMap[range] || stepMap["1M"];
   return values.map((value, index) => ({
@@ -1863,9 +1648,10 @@ function buildProjectedSeries(historySeries, projected, range = "1M") {
 function formatAxisDate(timestamp, range = "1M") {
   if (!timestamp) return "";
   const date = new Date(timestamp);
+  const longRanges = new Set(["2Y", "3Y", "5Y", "MAX"]);
   const options = range === "1D"
     ? { hour: "2-digit", minute: "2-digit" }
-    : range === "1Y"
+    : (range === "1Y" || longRanges.has(range))
       ? { month: "short", year: "2-digit" }
       : { day: "2-digit", month: "short" };
   return date.toLocaleString([], options);
@@ -2695,8 +2481,9 @@ function renderSearchResults(results = []) {
             <p>${item.name || item.exchange || "Market listing"}</p>
           </div>
           <div class="search-result-right">
+            <span>${item.matchType || "Match"}</span>
             ${sectorLabel}
-            <span>${item.exchange || item.region || "Global"}</span>
+            <em>${item.matchReason || item.exchange || item.region || "Global"}</em>
           </div>
         </button>
       `;
@@ -2888,14 +2675,8 @@ function renderBanner() {
   const hotspotNode = document.getElementById("radar-hotspots");
   const sourceNote = document.getElementById("radar-source-note");
   const sentimentBox = document.getElementById("radar-sentiment-box");
-  const floatNode = document.getElementById("radar-floats");
-  const floatDetailNode = document.getElementById("radar-float-detail");
-  const radarPanel = document.getElementById("market-radar");
-  const popButton = document.getElementById("pop-radar-clouds");
-  const popLabel = document.getElementById("radar-cloud-toggle-label");
   const footerNode = document.querySelector(".radar-footer");
   const radar = state.dashboard?.radar || {};
-  const allLiveFloatItems = buildRadarFloatItems(radar);
   const headlines = radar.headlines?.length
     ? radar.headlines
     : radar.items?.length
@@ -2905,43 +2686,6 @@ function renderBanner() {
       : ["Live radar updates are loading."];
   const signature = headlines.join(" | ");
   const useStaticLoadingHeadline = headlines.length === 1 && headlines[0] === "Live radar updates are loading.";
-  const radarSignature = `${signature}::${state.dashboard?.radarUpdatedAt || ""}::${allLiveFloatItems.map((item) => item.id).join("|")}`;
-  if (floatNode && floatNode.dataset.radarSignature !== radarSignature) {
-    const previousIds = (floatNode.dataset.radarIds || "").split("|").filter(Boolean);
-    const nextIds = allLiveFloatItems.map((item) => item.id);
-    state.radarFreshFloatIds = nextIds.filter((id) => !previousIds.includes(id));
-    state.radarDismissedFloatIds = state.radarDismissedFloatIds.filter((id) => nextIds.includes(id) && !state.radarFreshFloatIds.includes(id));
-    state.radarFloatPositions = Object.fromEntries(
-      Object.entries(state.radarFloatPositions).filter(([id]) => nextIds.includes(id)),
-    );
-    if (state.radarFloatOpenId && !nextIds.includes(state.radarFloatOpenId)) {
-      state.radarFloatOpenId = "";
-    }
-    if (state.radarFreshFloatIds.length) {
-      state.radarDismissedFloatIds = state.radarDismissedFloatIds.filter((id) => !state.radarFreshFloatIds.includes(id));
-      state.radarFloatsCollapsed = false;
-    }
-    floatNode.dataset.radarSignature = radarSignature;
-    floatNode.dataset.radarIds = nextIds.join("|");
-  }
-  const floatItemsAll = allLiveFloatItems.filter((item) => !state.radarDismissedFloatIds.includes(item.id));
-  if (radarPanel) {
-    radarPanel.classList.toggle("floats-collapsed", state.radarFloatsCollapsed || floatItemsAll.length === 0);
-  }
-  const floatSlots = floatNode ? buildRadarFloatSlots(floatNode, floatItemsAll.length) : [];
-  const floatItems = state.radarFloatsCollapsed ? [] : floatItemsAll.slice(0, floatSlots.length);
-  if (radarPanel) {
-    radarPanel.classList.toggle("floats-collapsed", state.radarFloatsCollapsed || floatItems.length === 0);
-  }
-  if (popButton) {
-    const hasClouds = floatItemsAll.length > 0;
-    popButton.disabled = !hasClouds;
-    popButton.classList.toggle("is-idle", !hasClouds);
-    popButton.setAttribute("aria-label", state.radarFloatsCollapsed ? "Bring back clouds" : "Hide clouds");
-  }
-  if (popLabel) {
-    popLabel.textContent = state.radarFloatsCollapsed ? "Bring clouds" : "Hide clouds";
-  }
   if (track.dataset.signature !== signature || !track.children.length) {
     const lane = headlines
       .map(
@@ -2968,9 +2712,9 @@ function renderBanner() {
   sourceNote.textContent = radarSources.length
     ? `Radar sources: ${radarSources.join(" • ")}`
     : "Radar sources: live event scan";
-  if (radarPanel && footerNode) {
+  if (footerNode) {
     const footerHeight = Math.ceil(footerNode.getBoundingClientRect().height || 36);
-    radarPanel.style.setProperty("--radar-footer-height", `${footerHeight}px`);
+    document.getElementById("market-radar")?.style.setProperty("--radar-footer-height", `${footerHeight}px`);
   }
   if (sentimentBox) {
     const sentiment = radar.sentiment || { label: "Balanced", score: 0 };
@@ -2985,59 +2729,6 @@ function renderBanner() {
     `;
   }
 
-  hydrateRadarFloatPositions(floatItems);
-  if (floatNode) {
-    floatNode.innerHTML = floatItems
-      .map((item, index) => {
-        const pos = state.radarFloatPositions[item.id] || floatSlots[index] || getDefaultRadarFloatSlots()[0];
-        const size = item.title.length > 120 ? "large" : item.title.length > 72 ? "medium" : "small";
-        const active = state.radarFloatOpenId === item.id;
-        return `
-          <div
-            class="radar-float-chip radar-float-chip-${size} radar-float-shape-${index % 6} ${active ? "active" : ""} ${state.radarFreshFloatIds.includes(item.id) ? "forming" : ""}"
-            data-radar-float="${item.id}"
-            style="left:${pos.x}px; top:${pos.y}px; --float-delay:${index * 1.15}s;"
-            title="${item.title}"
-            role="button"
-            tabindex="0"
-            aria-expanded="${active ? "true" : "false"}"
-          >
-            <i class="cloud-puff cloud-puff-a" aria-hidden="true"></i>
-            <i class="cloud-puff cloud-puff-b" aria-hidden="true"></i>
-            <i class="cloud-puff cloud-puff-c" aria-hidden="true"></i>
-            <span><label>${item.region}</label><b>${item.when || "Live"}</b></span>
-            <strong>${item.bubble}</strong>
-            ${item.summary ? `<p>${item.summary}</p>` : ""}
-            ${
-              item.url
-                ? `<a class="radar-float-link" data-radar-detail="true" href="${item.url}" target="_blank" rel="noreferrer">${item.cta || "View detail"}</a>`
-                : ""
-            }
-          </div>
-        `;
-      })
-      .join("");
-    floatNode.querySelectorAll("[data-radar-detail]").forEach((link) => {
-      link.addEventListener("pointerdown", (event) => {
-        event.stopPropagation();
-      });
-      link.addEventListener("pointerup", (event) => {
-        event.stopPropagation();
-      });
-      link.addEventListener("click", (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        window.open(link.href, "_blank", "noopener,noreferrer");
-      });
-    });
-    syncRadarFloatExpansion(floatNode);
-    bindRadarFloatInteractions(floatNode, floatItems);
-  }
-
-  if (floatDetailNode) {
-    floatDetailNode.hidden = true;
-    floatDetailNode.innerHTML = "";
-  }
 }
 
 function renderEventFeed() {
@@ -3221,7 +2912,10 @@ function renderOverview() {
   document.getElementById("model-error").className = liveValueClass(`hero:${active.symbol}:mae`, forecast.mae);
   document.getElementById("forecast-range").textContent = `10D projection ${formatPercent(forecast.expectedReturn)}`;
   document.getElementById("forecast-range").className = `forecast-range live-number ${liveValueClass(`hero:${active.symbol}:projection`, forecast.expectedReturn)}`;
-  document.getElementById("buy-sell-signal").textContent = recommendation.signal ? recommendation.signal.replace("bias", "scenario") : "Balanced scenario";
+  const bsEl2 = document.getElementById("buy-sell-signal");
+  bsEl2.textContent = recommendation.signal ? recommendation.signal.replace("bias", "scenario") : "Balanced scenario";
+  const bsDir2 = forecast.direction?.toLowerCase() || "";
+  bsEl2.className = bsDir2 === "bullish" ? "bullish" : bsDir2 === "bearish" ? "bearish" : "neutral";
   document.getElementById("buy-sell-breakdown").textContent = `Upside ${recommendation.buy ?? 0}% · Base ${recommendation.hold ?? 100}% · Downside ${recommendation.sell ?? 0}%`;
   document.getElementById("model-agreement-note").textContent = `${agreement.summary} Score ${Number(agreement.score || 0).toFixed(0)}/100.`;
   const overviewMetaItems = [
@@ -3414,15 +3108,20 @@ function renderEquityContext() {
   `;
   sectorNode.innerHTML = (equity.sectors || [])
     .map(
-      (item) => `
-        <div class="factor-card">
+      (item) => {
+        const effectCls = item.effect === "Positive" ? "positive" : item.effect === "Negative" ? "negative" : "neutral";
+        const barW = item.effect === "Positive" ? 80 : item.effect === "Negative" ? 80 : 45;
+        return `
+        <div class="factor-card ${effectCls}">
           <div class="factor-card-header">
             <strong>${item.sector}</strong>
             <span>${item.effect}</span>
           </div>
+          <div class="factor-score-bar"><div class="factor-score-fill ${effectCls}" style="width:${barW}%"></div></div>
           <p>${item.why}</p>
         </div>
-      `,
+      `;
+      },
     )
     .join("");
 }
@@ -3658,6 +3357,7 @@ function renderWatchlistImplications() {
             <strong>${item.symbol}</strong>
             <span>${item.confidence}</span>
           </div>
+          <div class="factor-score-bar"><div class="factor-score-fill ${item.confidence === "High" ? "positive" : item.confidence === "Low" ? "negative" : "neutral"}" style="width:${item.confidence === "High" ? 85 : item.confidence === "Low" ? 30 : 55}%"></div></div>
           <p><strong>Scenario:</strong> ${item.scenario}</p>
           <p><strong>Impact:</strong> ${item.impact}</p>
           <p><strong>Why:</strong> ${item.why}</p>
@@ -4228,39 +3928,6 @@ function render() {
   }
 }
 
-function popAllRadarClouds() {
-  const floatNode = document.getElementById("radar-floats");
-  const liveItems = buildRadarFloatItems(state.dashboard?.radar || {}).filter((item) => !state.radarDismissedFloatIds.includes(item.id));
-  if (!floatNode || !liveItems.length) return;
-  floatNode.querySelectorAll("[data-radar-float]").forEach((card, index) => {
-    card.classList.add("popping");
-    card.style.setProperty("--pop-x", `${(index % 2 === 0 ? -1 : 1) * (34 + index * 7)}px`);
-    card.style.setProperty("--pop-y", `${-38 - index * 9}px`);
-  });
-  window.setTimeout(() => {
-    state.radarDismissedFloatIds = [...new Set(state.radarDismissedFloatIds.concat(liveItems.map((item) => item.id)))];
-    state.radarFloatOpenId = "";
-    state.radarFloatsCollapsed = true;
-    renderBanner();
-  }, 260);
-}
-
-function toggleRadarClouds() {
-  const liveIds = buildRadarFloatItems(state.dashboard?.radar || {}).map((item) => item.id);
-  if (!liveIds.length) return;
-  if (state.radarFloatsCollapsed) {
-    state.radarDismissedFloatIds = state.radarDismissedFloatIds.filter((id) => !liveIds.includes(id));
-    state.radarFloatsCollapsed = false;
-    const radarPanel = document.getElementById("market-radar");
-    if (radarPanel) {
-      radarPanel.classList.remove("floats-collapsed");
-    }
-    renderBanner();
-    return;
-  }
-  popAllRadarClouds();
-}
-
 function startRadarRefresh() {
   window.clearInterval(state.radarTimer);
   state.radarTimer = window.setInterval(() => {
@@ -4357,11 +4024,13 @@ function selectActiveTicker(symbol, { refresh = true } = {}) {
   state.activeTicker = cleaned;
   if (changed) {
     primeActiveTickerSelection(cleaned);
+    // Only pre-add to recent if we already know the name (resolved previously).
+    // New unresolved tickers are added only after refreshDashboard confirms price+name.
     const knownName =
       state.dashboard?.watchlist?.find((item) => item.symbol === cleaned)?.name
       || state.recentTickers.find((item) => item.symbol === cleaned)?.name
       || "";
-    pushRecentTicker(cleaned, knownName);
+    if (knownName) pushRecentTicker(cleaned, knownName);
   }
   persistWatchlist();
   renderWatchlist();
@@ -4383,7 +4052,7 @@ function selectActiveTicker(symbol, { refresh = true } = {}) {
 function scheduleHistoryWarmup({ immediate = false } = {}) {
   const symbols = Array.from(new Set([...(state.watchlist || []), state.activeTicker].filter(Boolean).map((item) => item.toUpperCase())));
   if (!symbols.length) return;
-  const ranges = ["1D", "3D", "5D", "1M", "1Y"];
+  const ranges = ["1D", "3D", "5D", "1M", "1Y", "2Y", "5Y"];
   const key = `${symbols.join(",")}::${ranges.join(",")}`;
   if (state.historyWarmupKeys.has(key)) return;
   state.historyWarmupKeys.add(key);
@@ -4437,7 +4106,14 @@ async function refreshDashboard() {
     state.labResult = payload.active.lab;
   }
   state.academyDetail = state.academyCache[state.activeTicker] || null;
-  pushRecentTicker(payload.active.symbol, payload.active.name);
+  // Cache chart history to localStorage for instant next-load render
+  if (payload.active?.historySeries?.length) {
+    saveChartCache(payload.active.symbol, state.chartRange, payload.active.historySeries);
+  }
+  // Only push to recent after confirmed resolution (name + price present)
+  if (payload.active?.name && payload.active?.price) {
+    pushRecentTicker(payload.active.symbol, payload.active.name);
+  }
   persistWatchlist();
   nextFrame(() => {
     renderCorePanels();
@@ -4503,7 +4179,7 @@ function addTicker(symbol) {
   }
   state.activeTicker = cleaned;
   state.labResult = null;
-  pushRecentTicker(cleaned);
+  // Recent ticker added after refreshDashboard confirms resolution (price + name)
   persistWatchlist();
   refreshDashboard();
 }
@@ -4520,6 +4196,8 @@ function removeTicker(symbol) {
   if (wasActive) {
     state.activeTicker = state.watchlist[0];
     state.labResult = null;
+    renderWatchlist();
+    renderRecentTickers();
     refreshDashboard();
   } else {
     // Non-active delete: just re-render the watchlist instantly, no API call
@@ -4543,23 +4221,57 @@ async function addTickerFromInput() {
 // ── Sector Performance Matrix ─────────────────────────────────────────────────
 
 const SECTOR_MATRIX_STORAGE_KEY = "financial-board-sector-history";
+const SECTOR_BENCHMARK_OPTIONS = {
+  india: [
+    ["^NSEI", "NIFTY 50"],
+    ["^BSESN", "SENSEX"],
+    ["^NSEBANK", "NIFTY Bank"],
+  ],
+  us: [
+    ["^GSPC", "S&P 500"],
+    ["^NDX", "NASDAQ 100"],
+    ["^DJI", "Dow Jones"],
+  ],
+  global: [
+    ["^NSEI", "NIFTY 50"],
+    ["^GSPC", "S&P 500"],
+    ["^N225", "Nikkei 225"],
+  ],
+};
+
+function loadSectorMatrixPrefs() {
+  try {
+    return JSON.parse(localStorage.getItem(STORAGE_KEYS.sectorMatrix) || "{}");
+  } catch {
+    return {};
+  }
+}
+
+function saveSectorMatrixPrefs(prefs) {
+  localStorage.setItem(STORAGE_KEYS.sectorMatrix, JSON.stringify(prefs));
+}
 
 function loadSectorHistory() {
   try { return JSON.parse(localStorage.getItem(SECTOR_MATRIX_STORAGE_KEY) || "{}"); }
   catch { return {}; }
 }
 
-function saveSectorHistory(market, period, sectors) {
+function saveSectorHistory(market, period, benchmark, sectors, meta = {}) {
   try {
     const history = loadSectorHistory();
     if (!history[market]) history[market] = {};
-    if (!history[market][period]) history[market][period] = [];
-    const snap = { ts: Date.now(), sectors };
-    history[market][period].unshift(snap);
+    const key = `${period}:${benchmark || "default"}`;
+    if (!history[market][key]) history[market][key] = [];
+    const snap = { ts: Date.now(), sectors, meta };
+    history[market][key].unshift(snap);
     // Keep last 90 snapshots per market+period
-    history[market][period] = history[market][period].slice(0, 90);
+    history[market][key] = history[market][key].slice(0, 90);
     localStorage.setItem(SECTOR_MATRIX_STORAGE_KEY, JSON.stringify(history));
   } catch { /* quota */ }
+}
+
+function loadSectorSnapshot(market, period, benchmark) {
+  return loadSectorHistory()?.[market]?.[`${period}:${benchmark || "default"}`]?.[0];
 }
 
 function sectorHeatColor(pct) {
@@ -4572,7 +4284,7 @@ function sectorHeatColor(pct) {
   return "rgba(255,255,255,0.1)";
 }
 
-function renderSectorMatrix(sectors, updatedAt) {
+function renderSectorMatrix(sectors, updatedAt, meta = {}) {
   const grid = document.getElementById("sector-matrix-grid");
   const footer = document.getElementById("sector-matrix-updated");
   if (!grid) return;
@@ -4590,31 +4302,33 @@ function renderSectorMatrix(sectors, updatedAt) {
       <div class="sector-tile" style="--heat:${color}; --intensity:${intensity.toFixed(2)}">
         <span class="sector-tile-label">${s.label}</span>
         <strong class="sector-tile-pct ${pct >= 0 ? "positive" : "negative"}">${sign}${pct.toFixed(2)}%</strong>
+        <small class="sector-tile-relative">vs ${meta.benchmark?.label || "benchmark"} ${formatPercent(s.relativePct || 0)}</small>
         ${s.price ? `<em class="sector-tile-price">${s.price.toLocaleString()}</em>` : ""}
       </div>
     `;
   }).join("");
   if (footer && updatedAt) {
     const age = Math.round((Date.now() - new Date(updatedAt).getTime()) / 60000);
-    footer.textContent = `Updated ${age < 1 ? "just now" : `${age}m ago`} · cached 15 min · history saved locally`;
+    const benchmark = meta.benchmark ? `${meta.benchmark.label} ${formatPercent(meta.benchmark.changePct || 0)}` : "selected benchmark";
+    footer.textContent = `${meta.periodLabel || "Selected period"} · ${benchmark} · ${meta.cacheState || "cache"} · updated ${age < 1 ? "just now" : `${age}m ago`}`;
   }
 }
 
-async function fetchSectorMatrix(market, period) {
+async function fetchSectorMatrix(market, period, benchmark) {
   const grid = document.getElementById("sector-matrix-grid");
   if (grid) grid.innerHTML = `<div class="sector-matrix-empty">Fetching ${market} sectors…</div>`;
   try {
-    const data = await api(`/api/sectors?market=${encodeURIComponent(market)}&period=${encodeURIComponent(period)}`);
+    const params = new URLSearchParams({ market, period, benchmark });
+    const data = await api(`/api/sectors?${params.toString()}`);
     if (data?.sectors?.length) {
-      saveSectorHistory(market, period, data.sectors);
-      renderSectorMatrix(data.sectors, data.updatedAt);
+      saveSectorHistory(market, period, benchmark, data.sectors, data);
+      renderSectorMatrix(data.sectors, data.updatedAt, data);
     }
   } catch {
     // Fall back to last cached local history snapshot
-    const history = loadSectorHistory();
-    const snap = history?.[market]?.[period]?.[0];
+    const snap = loadSectorSnapshot(market, period, benchmark);
     if (snap?.sectors) {
-      renderSectorMatrix(snap.sectors, new Date(snap.ts).toISOString());
+      renderSectorMatrix(snap.sectors, new Date(snap.ts).toISOString(), { ...(snap.meta || {}), cacheState: "local fallback" });
     } else if (grid) {
       grid.innerHTML = `<div class="sector-matrix-empty">Sector data unavailable. Server may still be starting.</div>`;
     }
@@ -4623,23 +4337,48 @@ async function fetchSectorMatrix(market, period) {
 
 function initSectorMatrix() {
   const marketSelect = document.getElementById("sector-matrix-market");
+  const benchmarkSelect = document.getElementById("sector-matrix-benchmark");
   const periodTabs = document.querySelectorAll(".sector-period-tab");
   if (!marketSelect) return;
 
-  let currentMarket = marketSelect.value;
-  let currentPeriod = "1D";
+  const prefs = loadSectorMatrixPrefs();
+  let currentMarket = prefs.market || marketSelect.value || "india";
+  let currentPeriod = prefs.period || "1D";
+  let currentBenchmark = prefs.benchmark || SECTOR_BENCHMARK_OPTIONS[currentMarket]?.[0]?.[0] || "^NSEI";
+  const syncBenchmarkOptions = () => {
+    if (!benchmarkSelect) return;
+    const options = SECTOR_BENCHMARK_OPTIONS[currentMarket] || SECTOR_BENCHMARK_OPTIONS.india;
+    benchmarkSelect.innerHTML = options.map(([value, label]) => `<option value="${value}">${label}</option>`).join("");
+    if (!options.some(([value]) => value === currentBenchmark)) {
+      currentBenchmark = options[0][0];
+    }
+    benchmarkSelect.value = currentBenchmark;
+  };
+  const persist = () => saveSectorMatrixPrefs({ market: currentMarket, period: currentPeriod, benchmark: currentBenchmark });
+  marketSelect.value = currentMarket;
+  syncBenchmarkOptions();
+  periodTabs.forEach((tab) => tab.classList.toggle("active", tab.dataset.period === currentPeriod));
 
   // Show last local snapshot immediately while fetching
-  const cachedSnap = loadSectorHistory()?.[currentMarket]?.[currentPeriod]?.[0];
-  if (cachedSnap?.sectors) renderSectorMatrix(cachedSnap.sectors, new Date(cachedSnap.ts).toISOString());
+  const cachedSnap = loadSectorSnapshot(currentMarket, currentPeriod, currentBenchmark);
+  if (cachedSnap?.sectors) renderSectorMatrix(cachedSnap.sectors, new Date(cachedSnap.ts).toISOString(), cachedSnap.meta || {});
 
-  fetchSectorMatrix(currentMarket, currentPeriod);
+  fetchSectorMatrix(currentMarket, currentPeriod, currentBenchmark);
 
   marketSelect.addEventListener("change", () => {
     currentMarket = marketSelect.value;
-    const snap = loadSectorHistory()?.[currentMarket]?.[currentPeriod]?.[0];
-    if (snap?.sectors) renderSectorMatrix(snap.sectors, new Date(snap.ts).toISOString());
-    fetchSectorMatrix(currentMarket, currentPeriod);
+    syncBenchmarkOptions();
+    persist();
+    const snap = loadSectorSnapshot(currentMarket, currentPeriod, currentBenchmark);
+    if (snap?.sectors) renderSectorMatrix(snap.sectors, new Date(snap.ts).toISOString(), snap.meta || {});
+    fetchSectorMatrix(currentMarket, currentPeriod, currentBenchmark);
+  });
+  benchmarkSelect?.addEventListener("change", () => {
+    currentBenchmark = benchmarkSelect.value;
+    persist();
+    const snap = loadSectorSnapshot(currentMarket, currentPeriod, currentBenchmark);
+    if (snap?.sectors) renderSectorMatrix(snap.sectors, new Date(snap.ts).toISOString(), snap.meta || {});
+    fetchSectorMatrix(currentMarket, currentPeriod, currentBenchmark);
   });
 
   periodTabs.forEach((tab) => {
@@ -4647,12 +4386,65 @@ function initSectorMatrix() {
       periodTabs.forEach((t) => t.classList.remove("active"));
       tab.classList.add("active");
       currentPeriod = tab.dataset.period;
-      const snap = loadSectorHistory()?.[currentMarket]?.[currentPeriod]?.[0];
-      if (snap?.sectors) renderSectorMatrix(snap.sectors, new Date(snap.ts).toISOString());
-      fetchSectorMatrix(currentMarket, currentPeriod);
+      persist();
+      const snap = loadSectorSnapshot(currentMarket, currentPeriod, currentBenchmark);
+      if (snap?.sectors) renderSectorMatrix(snap.sectors, new Date(snap.ts).toISOString(), snap.meta || {});
+      fetchSectorMatrix(currentMarket, currentPeriod, currentBenchmark);
     });
   });
 }
+
+// ── Sector Overview Strip — compact always-visible row above tabbar ──────────
+const STRIP_ABBREV = {
+  "Nifty 50": "NIFTY", "Nifty Bank": "BANK", "IT": "IT", "Pharma": "PHARMA",
+  "Auto": "AUTO", "FMCG": "FMCG", "Metal": "METAL", "Energy": "ENERGY",
+  "Realty": "REALTY", "Media": "MEDIA", "PSU Bank": "PSUBNK", "Financial Svcs": "FIN",
+  "Technology": "TECH", "Financials": "FIN", "Health Care": "HLTH", "Industrials": "INDU",
+  "Consumer Disc.": "DISC", "Consumer Staples": "STPL", "Materials": "MATL",
+  "Utilities": "UTIL", "Real Estate": "REIT", "Communication": "COMM",
+  "Energy (US)": "ENRG",
+};
+
+function renderSectorStrip(sectors) {
+  const strip = document.getElementById("sector-overview-strip");
+  if (!strip) return;
+  if (!Array.isArray(sectors) || !sectors.length) return;
+  const chips = sectors.map((s) => {
+    const pct = Number(s.changePct ?? s.changePercent ?? s.change ?? 0);
+    const dir = pct > 0.05 ? "up" : pct < -0.05 ? "down" : "flat";
+    const sign = pct > 0 ? "+" : "";
+    const label = s.name || s.label || s.symbol || "Sector";
+    const abbr = STRIP_ABBREV[label] || s.symbol || label.slice(0, 5).toUpperCase() || "—";
+    return `<div class="sector-strip-chip" title="${label} ${sign}${pct.toFixed(2)}%">
+      <span class="sector-strip-chip-name">${abbr}</span>
+      <span class="sector-strip-chip-pct ${dir}">${sign}${pct.toFixed(2)}%</span>
+    </div>`;
+  }).join("");
+  // Replace everything after the label
+  const label = strip.querySelector(".sector-strip-label");
+  strip.innerHTML = "";
+  if (label) strip.appendChild(label);
+  strip.insertAdjacentHTML("beforeend", chips);
+}
+
+function initSectorStrip() {
+  // Show cached immediately
+  const cached = loadSectorSnapshot("india", "1D", "^NSEI");
+  if (cached?.sectors) renderSectorStrip(cached.sectors);
+
+  // Fetch fresh — reuse the same endpoint as the matrix
+  api("/api/sectors?market=india&period=1D").then((data) => {
+    if (data?.sectors) renderSectorStrip(data.sectors);
+  }).catch(() => {});
+
+  // Refresh every 5 min
+  window.setInterval(() => {
+    api("/api/sectors?market=india&period=1D").then((data) => {
+      if (data?.sectors) renderSectorStrip(data.sectors);
+    }).catch(() => {});
+  }, 5 * 60 * 1000);
+}
+// ─────────────────────────────────────────────────────────────────────────────
 
 function bindEvents() {
   const labTickerInput = document.getElementById("lab-ticker");
@@ -4739,9 +4531,6 @@ function bindEvents() {
     state.boardHidden = !state.boardHidden;
     persistWatchlist();
     renderBoard();
-  });
-  document.getElementById("pop-radar-clouds").addEventListener("click", () => {
-    toggleRadarClouds();
   });
   document.getElementById("impact-fit")?.addEventListener("click", () => state.impactGraphCy?.fit(undefined, 34));
   document.getElementById("impact-reset")?.addEventListener("click", () => {
@@ -4832,7 +4621,7 @@ function bindEvents() {
       }
       state.activeTicker = payload.symbol;
       state.labResult = payload;
-      pushRecentTicker(payload.symbol);
+      // Added to recent after dashboard confirms resolution
       persistWatchlist();
       document.querySelector('[data-tab="lab"]')?.click();
       renderLab();
@@ -4884,6 +4673,7 @@ async function init() {
   setStatus("Loading data");
   bindEvents();
   initSectorMatrix();
+  initSectorStrip();
   render();
   startMarketClockTimer();
   loadOverviewFast({ silent: true }).catch((error) => {

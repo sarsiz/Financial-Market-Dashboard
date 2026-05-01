@@ -233,6 +233,32 @@ SECTOR_INDICES: dict[str, list[dict]] = {
 # In-memory cache: {market_key: {period: {updated_at, sectors}}}
 _sector_cache: dict = {}
 _SECTOR_CACHE_TTL = 900  # 15 minutes
+SECTOR_PERIOD_LABELS = {
+  "1D": "1 day",
+  "5D": "5 days",
+  "1W": "1 week",
+  "1M": "1 month",
+  "3M": "3 months",
+  "6M": "6 months",
+  "1Y": "1 year",
+}
+SECTOR_BENCHMARKS: dict[str, list[dict]] = {
+  "india": [
+    {"label": "NIFTY 50", "symbol": "^NSEI"},
+    {"label": "SENSEX", "symbol": "^BSESN"},
+    {"label": "NIFTY Bank", "symbol": "^NSEBANK"},
+  ],
+  "us": [
+    {"label": "S&P 500", "symbol": "^GSPC"},
+    {"label": "NASDAQ 100", "symbol": "^NDX"},
+    {"label": "Dow Jones", "symbol": "^DJI"},
+  ],
+  "global": [
+    {"label": "NIFTY 50", "symbol": "^NSEI"},
+    {"label": "S&P 500", "symbol": "^GSPC"},
+    {"label": "Nikkei 225", "symbol": "^N225"},
+  ],
+}
 
 MARKET_PRESETS = [
   {
@@ -830,6 +856,10 @@ HISTORY_CACHE_MAX_AGE = {
   "5D": 600,
   "1M": 3600,
   "1Y": 21600,
+  "2Y": 43200,
+  "3Y": 86400,
+  "5Y": 86400,
+  "MAX": 86400,
 }
 
 PAYLOAD_CACHE_MAX_AGE = {
@@ -2057,19 +2087,19 @@ def pct_change(current: float, previous: float) -> float:
 
 
 def calc_rsi(prices: list[float], period: int = 14) -> float:
-  """Calculate RSI(period). Returns 50.0 (neutral) if insufficient data."""
+  """Calculate Wilder RSI(period). Returns 50.0 (neutral) if insufficient data."""
   if len(prices) < period + 1:
     return 50.0
-  window = prices[-(period + 1):]
-  gains, losses = [], []
-  for i in range(1, len(window)):
-    delta = window[i] - window[i - 1]
-    gains.append(max(delta, 0.0))
-    losses.append(max(-delta, 0.0))
-  avg_gain = sum(gains) / period
-  avg_loss = sum(losses) / period
+  deltas = [prices[index] - prices[index - 1] for index in range(1, len(prices))]
+  gains = [max(delta, 0.0) for delta in deltas]
+  losses = [max(-delta, 0.0) for delta in deltas]
+  avg_gain = sum(gains[:period]) / period
+  avg_loss = sum(losses[:period]) / period
+  for index in range(period, len(gains)):
+    avg_gain = ((avg_gain * (period - 1)) + gains[index]) / period
+    avg_loss = ((avg_loss * (period - 1)) + losses[index]) / period
   if avg_loss == 0:
-    return 100.0
+    return 100.0 if avg_gain > 0 else 50.0
   rs = avg_gain / avg_loss
   return round(100.0 - (100.0 / (1.0 + rs)), 2)
 
@@ -2081,6 +2111,79 @@ def calc_volume_trend(volumes: list[float], short: int = 5, long: int = 20) -> f
   short_avg = average(volumes[-short:])
   long_avg = average(volumes[-long:])
   return short_avg / long_avg if long_avg else 1.0
+
+
+def calc_ema(prices: list[float], period: int) -> list[float]:
+  """Exponential moving average."""
+  if not prices:
+    return []
+  k = 2.0 / (period + 1)
+  ema = [prices[0]]
+  for price in prices[1:]:
+    ema.append(price * k + ema[-1] * (1 - k))
+  return ema
+
+
+def calc_macd(prices: list[float], fast: int = 12, slow: int = 26, signal: int = 9) -> dict:
+  """MACD line, signal line, histogram, and crossover direction."""
+  if len(prices) < slow + signal:
+    return {"line": 0.0, "signal": 0.0, "histogram": 0.0, "crossover": 0.0}
+  fast_ema = calc_ema(prices, fast)
+  slow_ema = calc_ema(prices, slow)
+  aligned_line = [fast_value - slow_value for fast_value, slow_value in zip(fast_ema, slow_ema)]
+  macd_line = aligned_line[slow - 1:]
+  if len(macd_line) < signal:
+    return {"line": 0.0, "signal": 0.0, "histogram": 0.0, "crossover": 0.0}
+  signal_line = calc_ema(macd_line, signal)
+  histogram = macd_line[-1] - signal_line[-1]
+  # Crossover: positive = MACD crossed above signal recently, negative = below
+  crossover = 0.0
+  if len(macd_line) >= 2 and len(signal_line) >= 2:
+    prev_diff = macd_line[-2] - signal_line[-2]
+    curr_diff = macd_line[-1] - signal_line[-1]
+    if prev_diff < 0 and curr_diff > 0:
+      crossover = 1.0   # bullish crossover
+    elif prev_diff > 0 and curr_diff < 0:
+      crossover = -1.0  # bearish crossover
+    else:
+      crossover = clamp(curr_diff / (abs(prices[-1]) * 0.01 + 1e-9), -1.0, 1.0)
+  return {
+    "line": round(macd_line[-1], 6),
+    "signal": round(signal_line[-1], 6),
+    "histogram": round(histogram, 6),
+    "crossover": round(crossover, 4),
+  }
+
+
+def calc_bollinger(prices: list[float], period: int = 20, num_std: float = 2.0) -> dict:
+  """Bollinger Band position: 0 = lower band, 0.5 = midline, 1 = upper band."""
+  if len(prices) < period:
+    return {"position": 0.5, "bandwidth": 0.0, "squeeze": False}
+  window = prices[-period:]
+  mid = average(window)
+  sd = std_dev(window)
+  upper = mid + num_std * sd
+  lower = mid - num_std * sd
+  band_range = upper - lower
+  latest = prices[-1]
+  position = clamp((latest - lower) / band_range, 0.0, 1.0) if band_range > 0 else 0.5
+  bandwidth = band_range / mid if mid else 0.0
+  # Squeeze: bandwidth below 2% suggests volatility contraction → breakout imminent
+  squeeze = bandwidth < 0.02
+  return {
+    "position": round(position, 4),
+    "bandwidth": round(bandwidth, 4),
+    "squeeze": squeeze,
+  }
+
+
+def calc_atr(prices: list[float], period: int = 14) -> float:
+  """Average True Range as % of latest price (simplified: using close-to-close)."""
+  if len(prices) < period + 1:
+    return 0.0
+  true_ranges = [abs(prices[i] - prices[i - 1]) for i in range(1, len(prices))]
+  atr = average(true_ranges[-period:])
+  return atr / prices[-1] if prices[-1] else 0.0
 
 
 def raw_value(block: dict, key: str, default=None):
@@ -2155,6 +2258,34 @@ def _sector_matches_query(query_lower: str, meta: dict) -> bool:
   return False
 
 
+def search_match_metadata(query: str, symbol: str, meta: dict) -> dict:
+  cleaned = query.strip().upper()
+  query_lower = query.strip().lower()
+  normalized_query = re.sub(r"[^A-Z0-9]+", " ", cleaned).strip()
+  normalized_name = re.sub(r"[^A-Z0-9]+", " ", meta.get("name", "").upper()).strip()
+  aliases = [alias.upper() for alias in meta.get("aliases", [])]
+  alias_compact = [re.sub(r"[^A-Z0-9]+", " ", alias).strip() for alias in aliases]
+  sector = meta.get("sector", "")
+  tags = [tag.lower() for tag in meta.get("tags", [])]
+  if cleaned == symbol or cleaned == symbol.replace(".NS", "") or cleaned == symbol.replace(".BO", ""):
+    return {"matchType": "Symbol match", "matchReason": "Exact ticker symbol", "score": 100}
+  if symbol.startswith(cleaned):
+    return {"matchType": "Symbol match", "matchReason": "Ticker prefix match", "score": 92}
+  if normalized_name.startswith(normalized_query):
+    return {"matchType": "Company match", "matchReason": f"Company starts with {query.strip()}", "score": 88}
+  if cleaned in meta.get("name", "").upper() or normalized_query in normalized_name:
+    return {"matchType": "Company match", "matchReason": "Company name contains search text", "score": 82}
+  if cleaned in aliases or any(normalized_query in alias for alias in alias_compact):
+    return {"matchType": "Alias match", "matchReason": "Known company alias", "score": 78}
+  for keyword, matched_sectors in SECTOR_KEYWORDS.items():
+    if keyword in query_lower or query_lower in keyword:
+      if any(matched in sector.lower() for matched in matched_sectors):
+        return {"matchType": "Sector match", "matchReason": f"{keyword.title()} maps to {sector}", "score": 72}
+  if query_lower in sector.lower() or any(query_lower in tag or tag in query_lower for tag in tags):
+    return {"matchType": "Sector match", "matchReason": sector or "Tag match", "score": 68}
+  return {"matchType": "Local match", "matchReason": "Local universe match", "score": 50}
+
+
 def local_search_results(query: str) -> list[dict]:
   cleaned = query.strip().upper()
   query_lower = query.strip().lower()
@@ -2186,6 +2317,7 @@ def local_search_results(query: str) -> list[dict]:
           "exchange": meta["exchange"],
           "region": meta["exchange"],
           "sector": meta.get("sector", ""),
+          **search_match_metadata(query, symbol, meta),
         }
       )
   return results
@@ -2201,6 +2333,12 @@ def ranked_results(query: str, remote_results: list[dict]) -> list[dict]:
     if not symbol or symbol in seen:
       return
     seen.add(symbol)
+    if "score" not in item:
+      item["score"] = 45
+    if "matchType" not in item:
+      item["matchType"] = "Remote match"
+    if "matchReason" not in item:
+      item["matchReason"] = "Provider search result"
     ordered.append(item)
 
   cleaned = query.strip().upper()
@@ -2221,6 +2359,7 @@ def ranked_results(query: str, remote_results: list[dict]) -> list[dict]:
       0 if normalized_name.startswith(cleaned) else 1,
       0 if cleaned in normalized_name else 1,
       0 if exchange == "NSE" else 1,
+      -float(item.get("score") or 0),
       symbol,
     )
 
@@ -2246,6 +2385,9 @@ def fetch_yahoo_search(query: str) -> list[dict]:
         "name": item.get("shortname") or item.get("longname") or symbol,
         "exchange": item.get("exchange") or item.get("exchDisp") or "",
         "region": item.get("exchange") or "",
+        "matchType": "Remote match",
+        "matchReason": "Yahoo Finance search result",
+        "score": 45,
       }
     )
   return ranked_results(query, results)
@@ -3320,6 +3462,10 @@ CHART_RANGE_CONFIG = {
   "5D": ("5d", "30m"),
   "1M": ("1mo", "1d"),
   "1Y": ("1y", "1wk"),
+  "2Y": ("2y", "1wk"),
+  "3Y": ("5y", "1mo"),
+  "5Y": ("5y", "1mo"),
+  "MAX": ("max", "1mo"),
 }
 
 HISTORY_PREFETCH_RANGES = ["1D", "3D", "5D", "1M", "1Y"]
@@ -3957,6 +4103,21 @@ def build_factor_cards(inputs: dict) -> list[dict]:
       "score": clamp((inputs.get("volumeTrend", 1.0) - 1.0) * 150, -100, 100),
       "description": "Rising volume relative to 20-session average confirms signal strength; thin volume reduces confidence.",
     },
+    {
+      "title": "MACD",
+      "score": clamp(inputs.get("macdSignal", 0.0) * 4500, -100, 100),
+      "description": f"MACD(12,26,9) crossover: {'bullish crossover' if inputs.get('macdCrossover', 0) > 0.5 else 'bearish crossover' if inputs.get('macdCrossover', 0) < -0.5 else 'trend continuation'}. Histogram measures MACD-signal separation.",
+    },
+    {
+      "title": "Bollinger position",
+      "score": clamp((0.5 - inputs.get("bollPosition", 0.5)) * 200, -100, 100),
+      "description": f"BB(20,2): price at {inputs.get('bollPosition', 0.5):.0%} of band range. {'Squeeze detected — breakout likely.' if inputs.get('bollSqueeze') else 'Normal bandwidth.'}",
+    },
+    {
+      "title": "ATR volatility",
+      "score": clamp(-inputs.get("atrPct", 0.0) * 2000, -100, 0),
+      "description": "ATR(14) as % of price. Higher ATR = wider expected moves = lower signal precision. Acts as a confidence drag.",
+    },
   ]
 
 
@@ -4142,44 +4303,86 @@ def build_driver_cards(signal_map: dict, summary: dict, forecast: dict) -> list[
 
 
 def build_triggers(inputs: dict, stress: str) -> list[dict]:
-  return [
-    {
-      "title": "Trend alignment",
-      "body": (
-        "Short and medium-term trends are both positive, which improves continuation odds."
-        if inputs["fastMomentum"] > 0 and inputs["slowMomentum"] > 0
-        else "Short and medium-term trends disagree, which lowers conviction."
-      ),
-    },
-    {
-      "title": "Macro linkage",
-      "body": (
-        "Current macro conditions support this style exposure and region."
-        if inputs["macroScore"] > 0
-        else "Top-down conditions are acting as a drag, so stock-specific strength is discounted."
-      ),
-    },
-    {
-      "title": "Volatility impact",
-      "body": (
-        "Realized volatility is elevated, so model error and stop-out risk both rise."
-        if inputs["realizedVol"] > 0.025
-        else "Volatility remains contained enough for confidence to stay relatively stable."
-      ),
-    },
-    {
-      "title": "Stretch check",
-      "body": (
-        "Price is materially stretched versus its recent center, increasing snap-back risk."
-        if abs(inputs["meanReversion"]) > 0.04
-        else "Price is not excessively stretched, so continuation remains plausible."
-      ),
-    },
-    {
-      "title": "Stress lens",
-      "body": f"The {stress} scenario changes macro weights without changing the observed price path, separating regime risk from ticker-specific behavior.",
-    },
-  ]
+  triggers: list[dict] = []
+
+  def add(title: str, body: str, tag: str, weight: float) -> None:
+    triggers.append({"title": title, "body": body, "tag": tag, "weight": round(abs(weight), 4)})
+
+  fast = float(inputs.get("fastMomentum") or 0)
+  slow = float(inputs.get("slowMomentum") or 0)
+  if fast * slow > 0 and abs(fast) + abs(slow) > 0.003:
+    add(
+      "Trend alignment",
+      "Short and medium-term trends point the same way, so the model gives continuation more room.",
+      "Trend",
+      fast + slow,
+    )
+  elif abs(fast - slow) > 0.004:
+    add(
+      "Trend disagreement",
+      "Short-term and medium-term trend disagree; scenario confidence is reduced until the tape resolves.",
+      "Trend",
+      fast - slow,
+    )
+
+  rsi = float(inputs.get("rsi") or 50)
+  if rsi <= 35 or rsi >= 65:
+    add(
+      "RSI stretch",
+      f"Wilder RSI is {rsi:.1f}; extremes are treated as a mean-reversion warning rather than a standalone instruction.",
+      "RSI",
+      inputs.get("rsiSignal") or 0,
+    )
+
+  macd_signal = float(inputs.get("macdSignal") or 0)
+  if abs(macd_signal) > 0.004 or abs(float(inputs.get("macdHistogram") or 0)) > 0:
+    add(
+      "MACD momentum",
+      "Aligned MACD and signal-line spread are active in the scenario blend, normalized against recent price range.",
+      "MACD",
+      macd_signal,
+    )
+
+  if bool(inputs.get("bollSqueeze")) or abs(float(inputs.get("breakoutPressure") or 0)) > 0.01:
+    add(
+      "Breakout pressure",
+      "Bollinger compression or range pressure is active; volatility expansion can dominate slower factors.",
+      "Volatility",
+      (inputs.get("breakoutPressure") or 0) + (inputs.get("bollBandwidth") or 0),
+    )
+
+  if abs(float(inputs.get("macroScore") or 0)) > 0.02:
+    add(
+      "Macro linkage",
+      "Top-down bond, policy, valuation, and beta context is materially changing the equity scenario.",
+      "Macro",
+      inputs.get("macroScore") or 0,
+    )
+
+  realized_vol = float(inputs.get("realizedVol") or 0)
+  if realized_vol > 0.025:
+    add(
+      "Volatility impact",
+      "Realized volatility is elevated, so model error and stop-out risk both rise.",
+      "Risk",
+      realized_vol,
+    )
+
+  if abs(float(inputs.get("meanReversion") or 0)) > 0.04:
+    add(
+      "Stretch check",
+      "Price is materially stretched versus its recent center, increasing snap-back risk.",
+      "Reversion",
+      inputs.get("meanReversion") or 0,
+    )
+
+  add(
+    "Stress lens",
+    f"The {stress} scenario changes macro weights without changing the observed price path, separating regime risk from ticker-specific behavior.",
+    "Scenario",
+    0.01,
+  )
+  return sorted(triggers, key=lambda item: item["weight"], reverse=True)[:6]
 
 
 def model_direction(expected_return: float, bullish: float = 2.0, bearish: float = -2.0) -> str:
@@ -4283,21 +4486,37 @@ def build_forecast(symbol: str, quote: dict, summary: dict, history: list[float]
   rsi_momentum_dampen = clamp(1.0 - abs(rsi - 50) / 100, 0.5, 1.0)
 
   # ── Volume trend: rising volume confirms signals; falling volume weakens them
-  raw_volumes = summary.get("summaryDetail", {}).get("volume", None)
   vol_list = [float(v) for v in (summary.get("_volumeHistory") or []) if v]
   volume_trend = calc_volume_trend(vol_list) if len(vol_list) >= 5 else 1.0
   # >1.3 = volume surge (confidence lift), <0.6 = thin volume (confidence drag)
   volume_confidence_lift = clamp((volume_trend - 1.0) * 0.06, -0.04, 0.06)
 
+  # ── MACD: EMA crossover signal (12/26/9). Crossover direction + histogram momentum
+  macd = calc_macd(history, fast=12, slow=26, signal=9)
+  atr_pct = calc_atr(history, period=14)
+  atr_value = max(abs(enriched["latestPrice"]) * max(atr_pct, 0.003), 1e-9)
+  macd_hist_component = clamp(macd["histogram"] / atr_value, -1.0, 1.0)
+  macd_signal = clamp((macd["crossover"] * 0.010) + (macd_hist_component * 0.010), -0.024, 0.024)
+
+  # ── Bollinger Bands: position within bands, squeeze detection
+  boll = calc_bollinger(history, period=20, num_std=2.0)
+  # Near lower band (<0.2) = mean-reversion bullish; near upper band (>0.8) = caution
+  boll_signal = clamp((0.5 - boll["position"]) * 0.016, -0.012, 0.012)
+  # Squeeze = low bandwidth → impending breakout; boost confidence weight of directional signals
+  boll_squeeze_boost = 0.008 if boll["squeeze"] else 0.0
+
   classic_score = (
     fast_momentum * 1.2 * rsi_momentum_dampen  # dampened when overbought
     + slow_momentum * 1.1
-    + ma_spread * 1.0                           # increased weight: clean signal
+    + ma_spread * 1.0
     + ma_slope * 0.75
     + mean_reversion * 0.75
     + macro_score * 0.85
     + quality_lift
     + rsi_signal                                # RSI mean-reversion overlay
+    + macd_signal * 0.7                         # MACD crossover contribution
+    + boll_signal * 0.5                         # Bollinger mean-reversion
+    + boll_squeeze_boost * slow_momentum        # amplify trend in squeeze
     - volatility_penalty
     - event_pressure * 0.04
   )
@@ -4320,6 +4539,8 @@ def build_forecast(symbol: str, quote: dict, summary: dict, history: list[float]
     + breakout_pressure * 1.2
     + regime_alignment
     + rsi_signal * 0.5                          # RSI feeds modern model too
+    + macd_signal * 0.9                         # MACD has stronger modern weight
+    + boll_signal * 0.4
     - volatility_regime * 0.7
     - event_pressure * 0.03
   )
@@ -4361,7 +4582,17 @@ def build_forecast(symbol: str, quote: dict, summary: dict, history: list[float]
     "volatilityRegime": volatility_regime,
     "regimeAlignment": regime_alignment,
     "rsiSignal": rsi_signal,
+    "rsi": rsi,
     "volumeTrend": volume_trend,
+    "macdSignal": macd_signal,
+    "macdLine": macd["line"],
+    "macdSignalLine": macd["signal"],
+    "macdHistogram": macd["histogram"],
+    "macdCrossover": macd["crossover"],
+    "bollPosition": boll["position"],
+    "bollBandwidth": boll["bandwidth"],
+    "bollSqueeze": boll["squeeze"],
+    "atrPct": atr_pct,
   }
 
   return {
@@ -4438,15 +4669,37 @@ def build_backtest(symbol: str, history: list[float], quote: dict, summary: dict
 def build_recommendation(forecast: dict) -> dict:
   confidence = float(forecast.get("confidence") or 0)
   expected_return = float(forecast.get("expectedReturn") or 0)
-  capped_expected_return = clamp(expected_return, -10, 10)
   fair_value_gap = float(forecast.get("fairValueGap") or 0)
   event_pressure = float(forecast.get("eventPressure") or 0)
 
-  directional_edge = clamp((expected_return * 1.4) + (fair_value_gap * 0.65), -100, 100)
-  buy = clamp(34 + directional_edge * 0.55 + confidence * 0.28 - event_pressure * 12, 0, 100)
-  sell = clamp(34 - directional_edge * 0.55 + (event_pressure * 16) - confidence * 0.12, 0, 100)
-  hold = clamp(100 - buy - sell, 0, 100)
-  total = buy + sell + hold or 1
+  directional_edge = clamp((expected_return * 0.72) + (fair_value_gap * 0.28), -12, 12)
+  edge_strength = clamp(abs(directional_edge) / 8.0, 0.0, 1.0)
+  conviction = clamp((confidence - 35.0) / 55.0, 0.0, 1.0)
+  event_risk = clamp(event_pressure, 0.0, 1.2)
+  directional_weight = edge_strength * (0.45 + conviction * 0.55)
+
+  buy = 18.0
+  sell = 18.0
+  hold = 64.0
+  if directional_edge > 0:
+    buy += directional_weight * 42.0
+    hold -= directional_weight * 20.0
+    sell -= directional_weight * 12.0
+  elif directional_edge < 0:
+    sell += directional_weight * 42.0
+    hold -= directional_weight * 20.0
+    buy -= directional_weight * 12.0
+
+  sell += event_risk * 9.0
+  hold += event_risk * 6.0
+  buy -= event_risk * 5.0
+  if edge_strength < 0.18:
+    hold += 10.0 * (1 - edge_strength)
+
+  buy = clamp(buy, 2, 86)
+  sell = clamp(sell, 2, 86)
+  hold = clamp(hold, 8, 92)
+  total = buy + sell + hold or 1.0
   buy = round((buy / total) * 100)
   sell = round((sell / total) * 100)
   hold = max(0, 100 - buy - sell)
@@ -4456,6 +4709,8 @@ def build_recommendation(forecast: dict) -> dict:
     "hold": hold,
     "sell": sell,
     "signal": signal,
+    "edge": round(directional_edge, 2),
+    "confidenceUsed": round(confidence, 1),
   }
 
 
@@ -6193,53 +6448,91 @@ def build_live_quotes(symbols: list[str], active: str | None) -> dict:
   }
 
 
-def build_sector_matrix(market: str, period: str = "1D") -> dict:
+def sector_period_yahoo_config(period: str) -> tuple[str, str]:
+  normalized = (period or "1D").upper()
+  period_map = {"1D": "2d", "5D": "5d", "1W": "7d", "1M": "1mo", "3M": "3mo", "6M": "6mo", "1Y": "1y"}
+  interval_map = {"1D": "5m", "5D": "30m", "1W": "1d", "1M": "1d", "3M": "1wk", "6M": "1wk", "1Y": "1mo"}
+  return period_map.get(normalized, "2d"), interval_map.get(normalized, "1d")
+
+
+def sector_benchmark_for_market(market: str, benchmark_symbol: str | None = None) -> dict:
+  choices = SECTOR_BENCHMARKS.get(market, SECTOR_BENCHMARKS["india"])
+  if benchmark_symbol:
+    wanted = benchmark_symbol.upper()
+    for item in choices:
+      if item["symbol"].upper() == wanted:
+        return item
+  return choices[0]
+
+
+def fetch_period_change(symbol: str, period: str) -> tuple[float, float, str]:
+  range_value, interval = sector_period_yahoo_config(period)
+  cached = load_cached_history(symbol, period)
+  if cached:
+    closes, meta, source, updated_at = cached
+    try:
+      age_seconds = max(0.0, (datetime.now(timezone.utc) - datetime.fromisoformat(updated_at)).total_seconds())
+    except ValueError:
+      age_seconds = _SECTOR_CACHE_TTL + 1
+    if len(closes) >= 2 and age_seconds <= _SECTOR_CACHE_TTL:
+      return round(pct_change(float(closes[-1]), float(closes[0])), 2), round(float(closes[-1]), 2), source or "Local history cache"
+
+  chart = fetch_yahoo_chart(symbol, range_value=range_value, interval=interval)
+  closes, meta = extract_yahoo_history_payload(chart or {})
+  if len(closes) >= 2:
+    save_historical_records(symbol, interval, history_points_from_meta(closes, meta), "Yahoo Chart")
+    save_history_cache(symbol, period, closes, meta, "Yahoo Chart")
+    return round(pct_change(float(closes[-1]), float(closes[0])), 2), round(float(closes[-1]), 2), "Yahoo Chart"
+  if cached:
+    closes, _, source, _ = cached
+    if len(closes) >= 2:
+      return round(pct_change(float(closes[-1]), float(closes[0])), 2), round(float(closes[-1]), 2), f"Stale {source or 'local cache'}"
+  return 0.0, 0.0, "Unavailable"
+
+
+def build_sector_matrix(market: str, period: str = "1D", benchmark_symbol: str | None = None) -> dict:
   """Fetch sector index performance for the given market and period. Cached for 15 min."""
-  cache_key = f"{market}:{period}"
+  normalized_market = market if market in SECTOR_INDICES else "india"
+  normalized_period = period if period in SECTOR_PERIOD_LABELS else "1D"
+  benchmark = sector_benchmark_for_market(normalized_market, benchmark_symbol)
+  cache_key = f"{normalized_market}:{normalized_period}:{benchmark['symbol']}"
   now = time.time()
   cached = _sector_cache.get(cache_key)
   if cached and (now - cached.get("ts", 0)) < _SECTOR_CACHE_TTL:
-    return cached["data"]
+    return {**cached["data"], "cacheState": "memory"}
 
-  sectors = SECTOR_INDICES.get(market, SECTOR_INDICES["india"])
-  symbols = [s["sector_symbol"] if "sector_symbol" in s else s["symbol"] for s in sectors]
+  sectors = SECTOR_INDICES.get(normalized_market, SECTOR_INDICES["india"])
+  with ThreadPoolExecutor(max_workers=min(8, len(sectors) + 1)) as executor:
+    benchmark_future = executor.submit(fetch_period_change, benchmark["symbol"], normalized_period)
+    sector_futures = [(entry, executor.submit(fetch_period_change, entry["symbol"], normalized_period)) for entry in sectors]
+    benchmark_change, benchmark_price, benchmark_source = benchmark_future.result()
 
-  period_map = {"1D": "2d", "1W": "7d", "1M": "1mo", "3M": "3mo", "6M": "6mo", "1Y": "1y"}
-  yf_period = period_map.get(period, "2d")
-  interval_map = {"1D": "1d", "1W": "1d", "1M": "1d", "3M": "1wk", "6M": "1wk", "1Y": "1mo"}
-  yf_interval = interval_map.get(period, "1d")
-
-  results = []
-  for entry in sectors:
-    sym = entry["symbol"]
-    try:
-      chart = fetch_yahoo_chart(sym, range_value=yf_period, interval=yf_interval)
-      closes = (chart or {}).get("indicators", {}).get("quote", [{}])[0].get("close") or []
-      closes = [c for c in closes if c is not None]
-      if len(closes) >= 2:
-        change_pct = round(((closes[-1] - closes[0]) / closes[0]) * 100, 2)
-        price = round(closes[-1], 2)
-      elif len(closes) == 1:
-        change_pct = 0.0
-        price = round(closes[0], 2)
-      else:
-        change_pct = 0.0
-        price = 0.0
-    except Exception:
-      change_pct = 0.0
-      price = 0.0
-    results.append({
-      "label": entry["label"],
-      "symbol": sym,
-      "sector": entry["sector"],
-      "changePct": change_pct,
-      "price": price,
-    })
+    results = []
+    for entry, future in sector_futures:
+      change_pct, price, source = future.result()
+      results.append({
+        "label": entry["label"],
+        "symbol": entry["symbol"],
+        "sector": entry["sector"],
+        "changePct": change_pct,
+        "relativePct": round(change_pct - benchmark_change, 2),
+        "price": price,
+        "source": source,
+      })
 
   data = {
-    "market": market,
-    "period": period,
+    "market": normalized_market,
+    "period": normalized_period,
+    "periodLabel": SECTOR_PERIOD_LABELS[normalized_period],
+    "benchmark": {
+      **benchmark,
+      "changePct": benchmark_change,
+      "price": benchmark_price,
+      "source": benchmark_source,
+    },
     "sectors": results,
+    "cacheState": "refreshed",
+    "source": benchmark_source,
     "updatedAt": datetime.now(timezone.utc).isoformat(),
   }
   _sector_cache[cache_key] = {"ts": now, "data": data}
@@ -6340,6 +6633,9 @@ class FinancialBoardHandler(BaseHTTPRequestHandler):
             "name": f"{query.upper()} manual symbol",
             "exchange": "NSE",
             "region": "NSE",
+            "matchType": "Manual symbol",
+            "matchReason": "No provider/local match; treating text as NSE symbol",
+            "score": 10,
           }
         ]
       return self.send_json({"results": results})
@@ -6347,7 +6643,8 @@ class FinancialBoardHandler(BaseHTTPRequestHandler):
       params = urllib.parse.parse_qs(parsed.query)
       market = (params.get("market") or ["india"])[0].strip().lower()
       period = (params.get("period") or ["1D"])[0].strip().upper()
-      return self.send_json(build_sector_matrix(market, period))
+      benchmark = ((params.get("benchmark") or [""])[0] or "").strip().upper() or None
+      return self.send_json(build_sector_matrix(market, period, benchmark))
     if parsed.path == "/api/overview":
       params = urllib.parse.parse_qs(parsed.query)
       symbols = [item.upper() for item in ((params.get("symbols") or [""])[0].split(",")) if item]

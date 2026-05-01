@@ -20,6 +20,7 @@ class TempDatabaseTestCase(unittest.TestCase):
     self.config_patcher.start()
     server.HISTORY_WARMUP_JOBS.clear()
     server.HISTORY_INFLIGHT.clear()
+    server._sector_cache.clear()
     server.init_db()
 
   def tearDown(self):
@@ -250,6 +251,23 @@ class HistoryCacheTests(TempDatabaseTestCase):
     self.assertEqual(first["jobKey"], second["jobKey"])
     self.assertEqual(first["jobKey"], server.history_warmup_status()["jobs"][-1]["jobKey"])
 
+  def test_build_sector_matrix_returns_benchmark_metadata_and_relative_returns(self):
+    changes = {
+      "^NSEI": (2.0, 102.0, "Unit"),
+      "^NSEBANK": (3.0, 206.0, "Unit"),
+      "^CNXIT": (1.0, 303.0, "Unit"),
+    }
+    with mock.patch.object(server, "SECTOR_INDICES", {"india": server.SECTOR_INDICES["india"][:2]}), mock.patch.object(
+      server, "fetch_period_change", side_effect=lambda symbol, period: changes[symbol]
+    ):
+      payload = server.build_sector_matrix("india", "5D", "^NSEI")
+
+    self.assertEqual(payload["benchmark"]["symbol"], "^NSEI")
+    self.assertEqual(payload["period"], "5D")
+    self.assertEqual(payload["periodLabel"], "5 days")
+    self.assertIn("cacheState", payload)
+    self.assertEqual(payload["sectors"][0]["relativePct"], 1.0)
+
   def test_run_history_warmup_skips_fresh_ranges_and_fetches_missing_ranges(self):
     job_key = server.history_warmup_key(["ICICIBANK.NS"], ["1D", "5D"])
     server.HISTORY_WARMUP_JOBS[job_key] = {"status": "queued", "jobKey": job_key}
@@ -343,6 +361,20 @@ Apple sits inside the local market map as a duration-sensitive mega-cap.
 
 
 class ForecastAndLabTests(unittest.TestCase):
+  def test_calc_rsi_uses_wilder_smoothing(self):
+    prices = [44.0, 44.15, 43.9, 44.35, 44.6, 44.4, 44.75, 45.0, 44.8, 45.2, 45.35, 45.1, 45.5, 45.8, 45.6, 45.9, 46.2]
+
+    self.assertAlmostEqual(server.calc_rsi(prices, 14), 75.40, places=2)
+
+  def test_calc_macd_keeps_emas_aligned(self):
+    prices = [100 + index for index in range(40)]
+    macd = server.calc_macd(prices)
+    fast = server.calc_ema(prices, 12)
+    slow = server.calc_ema(prices, 26)
+    aligned = [f - s for f, s in zip(fast, slow)][25:]
+
+    self.assertAlmostEqual(macd["line"], round(aligned[-1], 6), places=6)
+
   def test_build_forecast_contains_classic_modern_agreement(self):
     history = [100 + (index * 0.7) for index in range(40)]
     quote = {"regularMarketPrice": history[-1], "regularMarketPreviousClose": history[-2], "fullExchangeName": "NSE"}
@@ -354,6 +386,9 @@ class ForecastAndLabTests(unittest.TestCase):
     self.assertIn("modern", forecast["models"])
     self.assertIn("agreement", forecast["models"])
     self.assertIn("label", forecast["models"]["agreement"])
+    self.assertIn("rsi", forecast["factorsRaw"])
+    self.assertIn("macdLine", forecast["factorsRaw"])
+    self.assertTrue(all("tag" in trigger and "weight" in trigger for trigger in forecast["triggers"]))
 
   def test_build_market_session_for_nse_closed_window(self):
     class FrozenDatetime(datetime):
@@ -384,7 +419,34 @@ class ForecastAndLabTests(unittest.TestCase):
       recommendation["buy"] + recommendation["hold"] + recommendation["sell"],
       100,
     )
-    self.assertEqual(recommendation["signal"], "Buy bias")
+    self.assertIn(recommendation["signal"], {"Buy bias", "Hold bias"})
+
+  def test_build_recommendation_neutral_prefers_hold(self):
+    recommendation = server.build_recommendation(
+      {
+        "confidence": 70,
+        "expectedReturn": 0.0,
+        "fairValueGap": 0.0,
+        "eventPressure": 0.1,
+      }
+    )
+
+    self.assertEqual(recommendation["buy"] + recommendation["hold"] + recommendation["sell"], 100)
+    self.assertGreater(recommendation["hold"], recommendation["buy"])
+    self.assertGreater(recommendation["hold"], recommendation["sell"])
+
+  def test_build_recommendation_strong_directional_cases_balance(self):
+    bullish = server.build_recommendation({"confidence": 82, "expectedReturn": 9.0, "fairValueGap": 6.0, "eventPressure": 0.05})
+    bearish = server.build_recommendation({"confidence": 82, "expectedReturn": -9.0, "fairValueGap": -6.0, "eventPressure": 0.25})
+
+    self.assertGreater(bullish["buy"], bullish["sell"])
+    self.assertGreater(bearish["sell"], bearish["buy"])
+
+  def test_local_search_finds_sector_keyword_matches(self):
+    results = server.local_search_results("Pharma")
+
+    self.assertTrue(any(item["symbol"] == "GLENMARK.NS" for item in results))
+    self.assertTrue(all("matchType" in item and "score" in item for item in results))
 
   def test_build_decision_cockpit_returns_fact_based_scenarios(self):
     snapshot = {

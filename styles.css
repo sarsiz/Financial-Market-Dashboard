@@ -389,6 +389,16 @@ button[type="submit"],
   height: auto;
 }
 
+.search-result-right em {
+  max-width: 140px;
+  color: var(--muted);
+  font-size: 0.66rem;
+  font-style: normal;
+  text-align: right;
+  white-space: normal;
+  line-height: 1.25;
+}
+
 .search-result > div { flex: 1; min-width: 0; }
 
 .search-result-right {
@@ -1258,10 +1268,10 @@ button[type="submit"],
 
 .ticker-banner {
   display: grid;
-  gap: 12px;
-  padding: 14px 14px 14px;
+  gap: 9px;
+  padding: 12px 14px;
   overflow: hidden;
-  min-height: 272px;
+  min-height: 126px;
   position: relative;
   z-index: 2;
   isolation: isolate;
@@ -1269,11 +1279,6 @@ button[type="submit"],
   --radar-footer-height: 36px;
   --radar-footer-gap: 12px;
   transition: min-height 260ms ease, padding-bottom 260ms ease;
-}
-
-.ticker-banner.floats-collapsed {
-  min-height: 148px;
-  gap: 8px;
 }
 
 .banner-topbar {
@@ -1346,359 +1351,6 @@ button[type="submit"],
   color: #ffe0e0;
 }
 
-.radar-glass-button {
-  min-height: 28px;
-  height: 28px;
-  padding: 0 10px 0 8px;
-  border-radius: 999px;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  border: 1px solid rgba(255, 241, 221, 0.18);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.04)),
-    radial-gradient(circle at 22% 16%, rgba(255, 255, 255, 0.18), transparent 34%),
-    rgba(255, 255, 255, 0.04);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.16),
-    0 10px 24px rgba(0, 0, 0, 0.22);
-  backdrop-filter: blur(14px) saturate(150%);
-  -webkit-backdrop-filter: blur(14px) saturate(150%);
-  font-size: 0.68rem;
-  line-height: 1;
-  position: relative;
-  justify-self: end;
-  z-index: 8;
-}
-
-.radar-glass-button:disabled,
-.radar-glass-button.is-idle {
-  opacity: 0.56;
-}
-
-.radar-glass-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 999px;
-  background: radial-gradient(circle at 30% 30%, #fff7e6, #ffb000 72%);
-  box-shadow: 0 0 14px rgba(255, 176, 0, 0.42);
-}
-
-.radar-floats {
-  position: absolute;
-  bottom: calc(var(--radar-footer-height) + var(--radar-footer-gap));
-  left: 18px;
-  right: 18px;
-  width: auto;
-  min-width: 0;
-  max-width: none;
-  height: 116px;
-  pointer-events: none;
-  z-index: 6;
-  transition: height 260ms ease, opacity 220ms ease, transform 260ms ease;
-}
-
-.ticker-banner.floats-collapsed .radar-floats {
-  height: 0;
-  opacity: 0;
-  transform: translateY(-10px);
-}
-
-.ticker-banner.floats-collapsed .radar-layout {
-  min-height: 34px;
-}
-
-.ticker-banner.floats-collapsed .ticker-track-wrap {
-  min-height: 30px;
-}
-
-.radar-float-chip {
-  position: absolute;
-  left: var(--float-x);
-  top: var(--float-y);
-  min-width: 148px;
-  max-width: 214px;
-  min-height: 54px;
-  padding: 10px 16px 12px;
-  border-radius: 30px 36px 28px 38px;
-  border: 1px solid rgba(255, 220, 176, 0.24);
-  background:
-    radial-gradient(circle at 20% 16%, rgba(255, 255, 255, 0.32), transparent 30%),
-    radial-gradient(circle at 74% 22%, rgba(255, 199, 118, 0.16), transparent 30%),
-    linear-gradient(180deg, rgba(50, 56, 63, 0.78), rgba(14, 16, 20, 0.68));
-  backdrop-filter: blur(18px) saturate(140%);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.14),
-    0 16px 40px rgba(0, 0, 0, 0.34);
-  display: grid;
-  gap: 2px;
-  justify-items: start;
-  text-align: left;
-  pointer-events: auto;
-  overflow: hidden;
-  animation: radarFloat 6.4s ease-in-out infinite, radarMorph 6.9s ease-in-out infinite;
-  animation-delay: var(--float-delay);
-  transition: transform 300ms cubic-bezier(0.2, 0.9, 0.2, 1), box-shadow 300ms ease, max-width 300ms ease, min-height 300ms ease, max-height 300ms ease, background 300ms ease, border-radius 300ms ease, padding 300ms ease;
-  cursor: grab;
-  user-select: none;
-  touch-action: none;
-  --drag-rotate: 0deg;
-  --drag-skew: 0deg;
-  --drag-scale-x: 1;
-  --drag-scale-y: 1;
-}
-
-.radar-float-chip.forming {
-  animation:
-    radarCloudForm 460ms cubic-bezier(0.18, 0.9, 0.22, 1) both,
-    radarFloat 6.4s ease-in-out infinite 460ms,
-    radarMorph 6.9s ease-in-out infinite 460ms;
-}
-
-.radar-float-shape-0 {
-  border-radius: 30px 36px 24px 38px;
-}
-
-.radar-float-shape-1 {
-  border-radius: 36px 28px 34px 24px;
-}
-
-.radar-float-shape-2 {
-  border-radius: 26px 40px 26px 32px;
-}
-
-.radar-float-shape-3 {
-  border-radius: 38px 30px 22px 34px;
-}
-
-.radar-float-shape-4 {
-  border-radius: 32px 42px 24px 30px;
-}
-
-.radar-float-shape-5 {
-  border-radius: 40px 28px 28px 38px;
-}
-
-.radar-float-chip::before,
-.radar-float-chip::after,
-.cloud-puff {
-  content: "";
-  position: absolute;
-  inset: auto;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.12);
-  pointer-events: none;
-}
-
-.radar-float-chip::before {
-  width: 44px;
-  height: 28px;
-  top: -8px;
-  left: 18px;
-}
-
-.radar-float-chip::after {
-  width: 38px;
-  height: 24px;
-  top: -4px;
-  right: 16px;
-}
-
-.cloud-puff {
-  z-index: 0;
-  filter: blur(0.3px);
-  animation: cloudPulse 6.4s ease-in-out infinite;
-}
-
-.cloud-puff-a {
-  width: 34px;
-  height: 22px;
-  left: 8px;
-  bottom: 8px;
-  animation-delay: calc(var(--float-delay) + 0.4s);
-}
-
-.cloud-puff-b {
-  width: 42px;
-  height: 24px;
-  right: 18px;
-  bottom: 10px;
-  animation-delay: calc(var(--float-delay) + 0.9s);
-}
-
-.cloud-puff-c {
-  width: 26px;
-  height: 18px;
-  left: 50%;
-  bottom: 3px;
-  transform: translateX(-50%);
-  animation-delay: calc(var(--float-delay) + 1.3s);
-}
-
-.radar-float-chip span {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  width: 100%;
-  font-size: 0.52rem;
-  color: rgba(255, 224, 184, 0.88);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  position: relative;
-  z-index: 1;
-}
-
-.radar-float-chip span label {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.radar-float-chip span b {
-  font-weight: 600;
-  color: rgba(171, 221, 255, 0.86);
-  letter-spacing: 0.01em;
-  text-transform: none;
-  flex: 0 0 auto;
-}
-
-.radar-float-chip strong {
-  font-size: 0.68rem;
-  color: #f8f1e6;
-  line-height: 1.26;
-  position: relative;
-  z-index: 1;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
-  overflow: hidden;
-  text-wrap: pretty;
-  max-width: 100%;
-}
-
-.radar-float-chip p {
-  margin: 0;
-  max-height: 0;
-  opacity: 0;
-  overflow: hidden;
-  color: rgba(241, 235, 221, 0.84);
-  font-size: 0.63rem;
-  line-height: 1.35;
-  transform: translateY(-6px);
-  transition: max-height 260ms ease, opacity 260ms ease, margin-top 260ms ease, transform 260ms ease;
-}
-
-.radar-float-chip em {
-  font-style: normal;
-  font-size: 0.63rem;
-  color: #9ee7ff;
-  opacity: 0;
-  transition: opacity 220ms ease;
-  position: relative;
-  z-index: 1;
-}
-
-.radar-float-link {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 24px;
-  padding: 0 10px;
-  border-radius: 999px;
-  background: linear-gradient(180deg, rgba(255, 205, 120, 0.22), rgba(255, 164, 72, 0.16));
-  border: 1px solid rgba(255, 215, 150, 0.28);
-  color: #fff2da;
-  font-size: 0.63rem;
-  font-weight: 600;
-  text-decoration: none;
-  position: relative;
-  z-index: 2;
-  margin-top: 2px;
-  opacity: 0;
-  transform: translateY(4px);
-  transition: opacity 260ms ease, transform 260ms ease, background 160ms ease, color 160ms ease;
-  pointer-events: auto;
-  touch-action: auto;
-}
-
-.radar-float-link:hover {
-  background: linear-gradient(180deg, rgba(255, 218, 154, 0.28), rgba(255, 177, 88, 0.22));
-  color: #fff8ea;
-}
-
-.radar-float-chip.active {
-  border-color: rgba(255, 226, 194, 0.34);
-  max-width: 286px;
-  min-height: 122px;
-  padding-bottom: 13px;
-  z-index: 9;
-  background:
-    radial-gradient(circle at 24% 18%, rgba(255, 255, 255, 0.22), transparent 32%),
-    radial-gradient(circle at 72% 18%, rgba(255, 210, 145, 0.24), transparent 32%),
-    linear-gradient(180deg, rgba(74, 55, 34, 0.72), rgba(18, 20, 24, 0.72));
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.16),
-    0 18px 46px rgba(0, 0, 0, 0.38);
-  animation-play-state: running;
-}
-
-.radar-float-chip.dragging {
-  animation: none;
-  cursor: grabbing;
-  transform: rotate(var(--drag-rotate)) skewX(var(--drag-skew)) scaleX(var(--drag-scale-x)) scaleY(var(--drag-scale-y));
-}
-
-.radar-float-chip.popping {
-  animation: radarPopAway 260ms cubic-bezier(0.2, 0.9, 0.2, 1) forwards;
-  pointer-events: none;
-}
-
-.radar-float-chip.active p {
-  margin-top: 4px;
-  max-height: 60px;
-  opacity: 1;
-  transform: translateY(0);
-}
-
-.radar-float-chip.active em {
-  opacity: 1;
-}
-
-.radar-float-chip.active .radar-float-link {
-  opacity: 1;
-  transform: translateY(0);
-}
-
-.radar-float-chip-small {
-  max-width: 188px;
-}
-
-.radar-float-chip-medium {
-  max-width: 226px;
-}
-
-.radar-float-chip-large {
-  max-width: 258px;
-}
-
-@keyframes cloudPulse {
-  0%,
-  100% {
-    transform: translate3d(0, 0, 0) scale(1, 1);
-    opacity: 0.86;
-  }
-  40% {
-    transform: translate3d(1px, -1px, 0) scale(1.08, 0.94);
-    opacity: 1;
-  }
-  70% {
-    transform: translate3d(-1px, 1px, 0) scale(0.95, 1.06);
-    opacity: 0.92;
-  }
-}
-
 @keyframes recentSlideIn {
   from {
     opacity: 0;
@@ -1707,74 +1359,6 @@ button[type="submit"],
   to {
     opacity: 1;
     transform: translateX(0) scale(1);
-  }
-}
-
-@keyframes radarCloudForm {
-  0% {
-    opacity: 0;
-    transform: translate3d(0, 10px, 0) scale(0.72);
-    filter: blur(8px);
-  }
-  55% {
-    opacity: 1;
-    transform: translate3d(0, -2px, 0) scale(1.04);
-    filter: blur(0);
-  }
-  100% {
-    opacity: 1;
-    transform: translate3d(0, 0, 0) scale(1);
-    filter: blur(0);
-  }
-}
-
-.radar-float-detail {
-  display: none !important;
-}
-
-@keyframes radarFloat {
-  0% {
-    transform: translate3d(0, 0, 0) scaleX(1) scaleY(1);
-  }
-  25% {
-    transform: translate3d(8px, -5px, 0) scaleX(1.08) scaleY(0.94);
-  }
-  50% {
-    transform: translate3d(2px, 4px, 0) scaleX(0.95) scaleY(1.06);
-  }
-  75% {
-    transform: translate3d(-7px, -2px, 0) scaleX(1.06) scaleY(0.96);
-  }
-  100% {
-    transform: translate3d(0, 0, 0) scaleX(1) scaleY(1);
-  }
-}
-
-@keyframes radarMorph {
-  0%, 100% {
-    border-radius: 28px 36px 24px 38px;
-  }
-  25% {
-    border-radius: 42px 24px 36px 22px;
-  }
-  50% {
-    border-radius: 22px 44px 24px 38px;
-  }
-  75% {
-    border-radius: 40px 30px 20px 36px;
-  }
-}
-
-@keyframes radarPopAway {
-  from {
-    opacity: 1;
-    transform: rotate(var(--drag-rotate)) scale(1);
-    filter: blur(0);
-  }
-  to {
-    opacity: 0;
-    transform: translate3d(var(--pop-x, 0), var(--pop-y, -36px), 0) rotate(calc(var(--drag-rotate) * 1.6)) scale(0.58);
-    filter: blur(7px);
   }
 }
 
@@ -1804,7 +1388,7 @@ button[type="submit"],
   grid-template-columns: 1fr;
   gap: 10px;
   align-items: start;
-  min-height: 56px;
+  min-height: 42px;
   position: relative;
   z-index: 4;
 }
@@ -1931,15 +1515,12 @@ button[type="submit"],
 
 .radar-footer {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
   align-items: center;
   gap: 12px;
-  min-height: 28px;
-  padding: 8px 0 0;
-  position: absolute;
-  left: 14px;
-  right: 14px;
-  bottom: 12px;
+  min-height: 22px;
+  padding: 7px 0 0;
+  position: relative;
   border-top: 1px solid rgba(255, 176, 0, 0.08);
   background: linear-gradient(180deg, rgba(255, 176, 0, 0), rgba(255, 176, 0, 0.03));
   z-index: 7;
@@ -2089,16 +1670,18 @@ button[type="submit"],
 
 .stock-dossier {
   display: grid;
-  grid-template-columns: repeat(12, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 248px), 1fr));
   grid-auto-flow: dense;
+  grid-auto-rows: minmax(178px, auto);
   align-items: stretch;
   gap: 12px;
 }
 
 .dossier-card {
   position: relative;
-  grid-column: span 4;
+  grid-column: span 1;
   min-width: 0;
+  min-height: 178px;
   padding: 11px;
   border-radius: 16px;
   border: 1px solid rgba(255, 176, 0, 0.1);
@@ -2129,16 +1712,17 @@ button[type="submit"],
 
 .dossier-card-focus,
 .dossier-card-compact {
-  grid-column: span 4;
+  grid-column: span 1;
 }
 
 .dossier-card-table,
 .dossier-card-wide {
-  grid-column: span 6;
+  grid-column: span 2;
 }
 
 .dossier-card-band {
   grid-column: 1 / -1;
+  min-height: 0;
 }
 
 .dossier-drag-handle {
@@ -2307,15 +1891,15 @@ button[type="submit"],
 .peer-table {
   display: grid;
   gap: 5px;
-  overflow-x: auto;
+  overflow: hidden;
 }
 
 .peer-row {
   display: grid;
-  grid-template-columns: minmax(92px, 1fr) repeat(5, minmax(74px, 0.72fr));
+  grid-template-columns: minmax(88px, 1.15fr) repeat(5, minmax(54px, 0.78fr));
   gap: 6px;
   align-items: center;
-  min-width: 620px;
+  min-width: 0;
   padding: 7px 8px;
   border-radius: 10px;
   background: rgba(255, 255, 255, 0.028);
@@ -3722,18 +3306,21 @@ svg {
   }
 
   .stock-dossier {
-    grid-template-columns: repeat(6, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 236px), 1fr));
   }
 
   .dossier-card,
   .dossier-card-focus,
   .dossier-card-compact {
-    grid-column: span 3;
+    grid-column: span 1;
   }
 
   .dossier-card-table,
-  .dossier-card-band,
   .dossier-card-wide {
+    grid-column: span 2;
+  }
+
+  .dossier-card-band {
     grid-column: 1 / -1;
   }
 
@@ -3742,7 +3329,7 @@ svg {
   }
 
   .radar-layout {
-    grid-template-columns: minmax(0, 1.08fr) minmax(280px, 0.92fr);
+    grid-template-columns: 1fr;
   }
 
   .chart-toolbar {
@@ -3828,11 +3415,6 @@ svg {
   .operator-check-grid,
   .driver-event-strip {
     grid-template-columns: 1fr;
-  }
-
-  .radar-floats,
-  .radar-float-detail {
-    display: none;
   }
 
   .event-panel.compact-panel::before {
@@ -4045,11 +3627,6 @@ svg {
   .hero-stats,
   .event-search-form {
     grid-template-columns: 1fr;
-  }
-
-  .radar-floats,
-  .radar-float-detail {
-    display: none;
   }
 
   .tab {
@@ -5169,8 +4746,6 @@ body.app-ready .pulse-card {
     transition-duration: 0.001ms !important;
   }
 
-  .radar-float-chip,
-  .cloud-puff,
   .ticker-track,
   .live-number.value-updated-up,
   .live-number.value-updated-down,
@@ -5286,6 +4861,12 @@ body.app-ready .pulse-card {
   font-family: var(--font-mono, monospace);
 }
 
+.sector-tile-relative {
+  color: rgba(255, 255, 255, 0.44);
+  font-size: 0.58rem;
+  font-family: var(--font-mono, monospace);
+}
+
 .sector-matrix-footer {
   margin-top: 8px;
   font-size: 0.68rem;
@@ -5307,4 +4888,467 @@ body.app-ready .pulse-card {
   .sector-matrix-heading {
     flex-direction: column;
   }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   CLAUDE DESIGN SYSTEM — Financial Board polish layer
+   Applied on top of the base theme. Minimal, surgical, quant-grade.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── 1. Sidebar brand gradient ── */
+.sidebar h1 {
+  background: linear-gradient(135deg, #fff4d3 0%, var(--amber) 55%, #ffcd5e 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  font-size: 1.18rem;
+  letter-spacing: -0.03em;
+}
+
+/* ── 2. Tab bar — pill track container ── */
+.tabbar {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 176, 0, 0.1);
+  border-radius: 14px;
+  padding: 5px;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.tab {
+  min-width: 0;
+  flex: 1 1 auto;
+  border-radius: 10px;
+  border-color: transparent;
+  background: transparent;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--muted);
+  transition: background 160ms ease, color 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.tab:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.05);
+  border-color: transparent;
+}
+
+.tab.active {
+  background: linear-gradient(180deg, rgba(255, 176, 0, 0.22), rgba(255, 176, 0, 0.1));
+  border-color: rgba(255, 176, 0, 0.32);
+  color: #fff5d8;
+  box-shadow: 0 2px 8px rgba(255, 176, 0, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+/* ── 3. Section heading — left accent line ── */
+.section-heading h3 {
+  position: relative;
+  padding-left: 10px;
+}
+
+.section-heading h3::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 10%;
+  height: 80%;
+  width: 3px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, var(--amber) 0%, rgba(255, 176, 0, 0.3) 100%);
+}
+
+/* ── 4. Signal cards — semantic left border by direction class ── */
+.signal-card {
+  position: relative;
+  overflow: hidden;
+  transition: border-color 200ms ease, box-shadow 200ms ease;
+}
+
+.signal-card::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  border-radius: 0 2px 2px 0;
+  background: rgba(255, 176, 0, 0.3);
+  transition: background 200ms ease;
+}
+
+.signal-card.bullish::before { background: var(--positive); }
+.signal-card.bearish::before { background: var(--negative); }
+.signal-card.neutral::before { background: rgba(255, 176, 0, 0.45); }
+.signal-card.bullish { border-color: rgba(63, 224, 142, 0.18); }
+.signal-card.bearish { border-color: rgba(255, 107, 107, 0.18); }
+
+/* ── 5. Factor cards — score bar ── */
+.factor-card {
+  position: relative;
+  overflow: hidden;
+}
+
+.factor-card.positive { border-left: 2px solid var(--positive); }
+.factor-card.negative { border-left: 2px solid var(--negative); }
+.factor-card.neutral  { border-left: 2px solid rgba(255,255,255,0.18); }
+
+.factor-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.factor-card-header strong {
+  font-size: 0.82rem;
+  color: var(--text);
+}
+
+.factor-card-header span {
+  font-size: 0.68rem;
+  color: var(--muted);
+  font-family: var(--font-mono);
+}
+
+.factor-score-bar {
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+  overflow: hidden;
+  margin-bottom: 6px;
+}
+
+.factor-score-fill {
+  height: 100%;
+  border-radius: inherit;
+  transition: width 420ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.factor-score-fill.positive {
+  background: linear-gradient(90deg, rgba(63, 224, 142, 0.4), var(--positive));
+}
+
+.factor-score-fill.negative {
+  background: linear-gradient(90deg, rgba(255, 107, 107, 0.4), var(--negative));
+}
+
+.factor-score-fill.neutral {
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.3));
+}
+
+.factor-card p {
+  font-size: 0.72rem;
+  color: var(--muted);
+  line-height: 1.4;
+  margin: 0;
+}
+
+/* ── 6. Hero stat cards — subtle top gradient accent ── */
+.hero-stat-card {
+  background:
+    linear-gradient(180deg, rgba(255, 176, 0, 0.07) 0%, rgba(255, 255, 255, 0.015) 100%),
+    rgba(255, 255, 255, 0.018);
+  border-top: 1px solid rgba(255, 176, 0, 0.18);
+  border-left: 1px solid rgba(255, 176, 0, 0.08);
+  border-right: 1px solid rgba(255, 176, 0, 0.08);
+  border-bottom: 1px solid rgba(255, 176, 0, 0.08);
+}
+
+/* ── 7. Range tabs — pill pill pill ── */
+.chart-range-tabs {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 176, 0, 0.1);
+  border-radius: 10px;
+  padding: 3px;
+  gap: 3px;
+}
+
+.range-tab {
+  background: transparent;
+  border-color: transparent;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--muted);
+  padding: 0 8px;
+  height: 26px;
+  min-height: 26px;
+  border-radius: 7px;
+  flex-shrink: 0;
+  transition: background 150ms, color 150ms;
+}
+
+.range-tab:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.05);
+  border-color: transparent;
+}
+
+.range-tab.active {
+  background: rgba(255, 176, 0, 0.2);
+  border-color: rgba(255, 176, 0, 0.3);
+  color: #fff0c8;
+  box-shadow: 0 1px 4px rgba(255, 176, 0, 0.12);
+}
+
+/* ── 8. Pulse cards — thin left accent ── */
+.pulse-card {
+  position: relative;
+  overflow: hidden;
+  transition: border-color 200ms ease;
+}
+
+.pulse-card::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: rgba(255, 176, 0, 0.25);
+  transition: background 200ms ease;
+}
+
+.pulse-card.positive::after { background: var(--positive); }
+.pulse-card.negative::after { background: var(--negative); }
+.pulse-card.positive { border-color: rgba(63, 224, 142, 0.15); }
+.pulse-card.negative { border-color: rgba(255, 107, 107, 0.15); }
+
+/* ── 9. Buy-sell signal — coloured label ── */
+#buy-sell-signal {
+  font-family: var(--font-mono);
+  font-size: 0.92rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+/* ── 10. Reason cards — analysis tag accent ── */
+.analysis-tag {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 7px;
+  border-radius: 999px;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 5px;
+}
+
+.analysis-tag.fact        { background: rgba(93, 214, 255, 0.14); color: #9ee7ff; border: 1px solid rgba(93, 214, 255, 0.2); }
+.analysis-tag.interpretation { background: rgba(255, 176, 0, 0.14); color: var(--amber); border: 1px solid rgba(255, 176, 0, 0.2); }
+.analysis-tag.implication { background: rgba(63, 224, 142, 0.12); color: var(--positive); border: 1px solid rgba(63, 224, 142, 0.2); }
+.analysis-tag.note        { background: rgba(255, 255, 255, 0.06); color: var(--muted); border: 1px solid rgba(255, 255, 255, 0.08); }
+.analysis-tag.monitor     { background: rgba(255, 107, 107, 0.12); color: var(--negative); border: 1px solid rgba(255, 107, 107, 0.18); }
+
+/* ── 11. Regime pill — coloured ── */
+.regime-pill {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  background: rgba(255, 176, 0, 0.12);
+  border: 1px solid rgba(255, 176, 0, 0.22);
+  color: #ffe0a0;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+/* ── 12. Watchlist item — active glow ── */
+.watch-item.active {
+  background: rgba(255, 176, 0, 0.07);
+  border-color: rgba(255, 176, 0, 0.3);
+  box-shadow: 0 0 0 1px rgba(255, 176, 0, 0.08) inset;
+}
+
+/* ── 13. Global market card — micro-chart accent ── */
+.market-clock-card {
+  transition: border-color 180ms ease, transform 180ms ease;
+}
+
+.market-clock-card:hover {
+  border-color: rgba(255, 176, 0, 0.22);
+  transform: translateY(-1px);
+}
+
+/* ── 14. Section heading actions — ghost buttons tighter ── */
+.section-heading span {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+/* ── 15. Dossier cards — hover lift ── */
+.dossier-card {
+  transition:
+    border-color 180ms ease,
+    box-shadow 180ms ease,
+    opacity 180ms ease,
+    transform 200ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.dossier-card:hover {
+  border-color: rgba(255, 176, 0, 0.2);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  transform: translateY(-1px);
+}
+
+/* ── 16. Sector performance strip (above tabbar) ── */
+.sector-overview-strip {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 7px 10px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 176, 0, 0.1);
+  border-radius: 12px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  flex-wrap: nowrap;
+}
+
+.sector-overview-strip::-webkit-scrollbar { display: none; }
+
+.sector-strip-label {
+  font-size: 0.58rem;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+  padding-right: 8px;
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  margin-right: 2px;
+}
+
+.sector-strip-chip {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding: 4px 9px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.025);
+  white-space: nowrap;
+  flex-shrink: 0;
+  cursor: default;
+  transition: border-color 160ms ease, background 160ms ease, transform 160ms ease;
+}
+
+.sector-strip-chip:hover {
+  border-color: rgba(255, 176, 0, 0.2);
+  background: rgba(255, 176, 0, 0.06);
+  transform: translateY(-1px);
+}
+
+.sector-strip-chip-name {
+  font-size: 0.58rem;
+  color: rgba(255, 255, 255, 0.5);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.sector-strip-chip-pct {
+  font-size: 0.72rem;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  line-height: 1;
+}
+
+.sector-strip-chip-pct.up   { color: var(--positive); }
+.sector-strip-chip-pct.down { color: var(--negative); }
+.sector-strip-chip-pct.flat { color: var(--muted); }
+
+.sector-strip-chip.loading .sector-strip-chip-pct {
+  animation: stripPulse 1.4s ease-in-out infinite;
+}
+
+@keyframes stripPulse {
+  0%, 100% { opacity: 0.4; }
+  50%       { opacity: 1; }
+}
+
+/* ── 17. Buy/sell signal colour states ── */
+#buy-sell-signal.bullish { color: var(--positive); }
+#buy-sell-signal.bearish { color: var(--negative); }
+#buy-sell-signal.neutral { color: #fff5d8; }
+
+/* ── 18. Macro panel section headings — secondary colour accent ── */
+.macro-panel .section-heading h3::before {
+  background: linear-gradient(180deg, #5dd6ff 0%, rgba(93, 214, 255, 0.3) 100%);
+}
+
+/* ── 19. Bond/inflation/equity macro panels — teal accent ── */
+#bond-market .section-heading h3::before,
+#inflation .section-heading h3::before { background: linear-gradient(180deg, var(--teal) 0%, rgba(63, 208, 172, 0.3) 100%); }
+
+/* ── 20. Event chip active state ── */
+.event-chip.active {
+  background: rgba(255, 176, 0, 0.18);
+  border-color: rgba(255, 176, 0, 0.3);
+  color: #fff0c8;
+}
+
+/* ── 21. micro-note refinement ── */
+.micro-note {
+  font-size: 0.7rem;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+/* ── 22. Topbar eyebrow ── */
+.topbar-copy .eyebrow {
+  font-size: 0.65rem;
+  opacity: 0.75;
+}
+
+/* ── 23. Dossier nav pills ── */
+.dossier-nav {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.dossier-nav-pill {
+  display: inline-flex;
+  align-items: center;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--muted);
+  cursor: pointer;
+  transition: background 150ms, color 150ms, border-color 150ms;
+}
+
+.dossier-nav-pill:hover,
+.dossier-nav-pill.active {
+  background: rgba(255, 176, 0, 0.14);
+  border-color: rgba(255, 176, 0, 0.28);
+  color: #fff0c8;
+}
+
+/* ── 24. Forecast signal cards — coloured by direction ── */
+#forecast-direction {
+  font-family: var(--font-mono);
+}
+
+.signal-card:has(#forecast-direction.bullish) { border-color: rgba(63, 224, 142, 0.2); }
+.signal-card:has(#forecast-direction.bearish) { border-color: rgba(255, 107, 107, 0.2); }
+
+/* ── 25. Scrollbar thinning on main panels ── */
+.spotlight,
+.metrics-panel,
+.event-panel {
+  overflow-y: auto;
+  scrollbar-width: thin;
 }

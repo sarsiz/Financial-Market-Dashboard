@@ -120,8 +120,6 @@
               <small>Headlines and catalysts</small>
             </div>
           </div>
-          <div id="radar-floats" class="radar-floats" aria-live="polite"></div>
-          <div id="radar-float-detail" class="radar-float-detail" hidden></div>
           <div class="radar-layout">
             <div class="radar-copy">
               <div class="ticker-track-wrap">
@@ -132,10 +130,6 @@
           </div>
           <div class="radar-footer">
             <div id="radar-source-note" class="micro-note">Sources loading.</div>
-            <button id="pop-radar-clouds" class="radar-glass-button" type="button" aria-label="Hide clouds">
-              <span class="radar-glass-dot" aria-hidden="true"></span>
-              <span id="radar-cloud-toggle-label">Hide clouds</span>
-            </button>
           </div>
         </section>
 
@@ -150,6 +144,11 @@
             </div>
             <div id="overview-board" class="overview-board"></div>
           </section>
+        </div>
+
+        <!-- Sector Overview Strip — always visible, all markets at a glance -->
+        <div id="sector-overview-strip" class="sector-overview-strip" aria-label="Sector performance overview">
+          <span class="sector-strip-label">Sectors</span>
         </div>
 
         <nav class="tabbar">
@@ -193,6 +192,10 @@
                     <button class="range-tab" type="button" data-range="5D">5D</button>
                     <button class="range-tab" type="button" data-range="1M">1M</button>
                     <button class="range-tab" type="button" data-range="1Y">1Y</button>
+                    <button class="range-tab" type="button" data-range="2Y">2Y</button>
+                    <button class="range-tab" type="button" data-range="3Y">3Y</button>
+                    <button class="range-tab" type="button" data-range="5Y">5Y</button>
+                    <button class="range-tab" type="button" data-range="MAX">Max</button>
                   </div>
                 </div>
                 <div class="chart-toolbar">
@@ -374,8 +377,14 @@
                     <option value="us">US (S&amp;P Sectors)</option>
                     <option value="global">Global Indices</option>
                   </select>
+                  <select id="sector-matrix-benchmark" class="sector-ctrl-select" aria-label="Benchmark">
+                    <option value="^NSEI" selected>NIFTY 50</option>
+                    <option value="^BSESN">SENSEX</option>
+                    <option value="^NSEBANK">NIFTY Bank</option>
+                  </select>
                   <div class="sector-period-tabs">
                     <button class="sector-period-tab active" data-period="1D">1D</button>
+                    <button class="sector-period-tab" data-period="5D">5D</button>
                     <button class="sector-period-tab" data-period="1W">1W</button>
                     <button class="sector-period-tab" data-period="1M">1M</button>
                     <button class="sector-period-tab" data-period="3M">3M</button>
