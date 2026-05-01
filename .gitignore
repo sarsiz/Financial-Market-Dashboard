@@ -3,6 +3,8 @@ __pycache__/
 .DS_Store
 
 financial_board.db
+financial_board.db-shm
+financial_board.db-wal
 config.json
 
 .env
