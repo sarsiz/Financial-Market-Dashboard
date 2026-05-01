@@ -95,21 +95,6 @@
           <div id="compact-menu-list" class="compact-menu-list"></div>
         </nav>
 
-        <header class="topbar">
-          <div class="topbar-side">
-            <div class="live-cluster">
-              <div class="live-dot"></div>
-              <span id="status-updated" class="status-pill loading" aria-live="polite">
-                <span class="status-token" aria-hidden="true">
-                  <span class="status-token-fill"></span>
-                  <span class="status-token-code">USD</span>
-                </span>
-                <span class="status-label">Loading data</span>
-              </span>
-            </div>
-          </div>
-        </header>
-
         <section id="global-market-overview" class="global-market-overview glass-panel" aria-live="polite"></section>
 
         <section id="market-radar" class="ticker-banner glass-panel">
@@ -500,10 +485,10 @@
               </div>
               <div class="impact-workspace-toolbar">
                 <div class="impact-workspace-actions">
-                  <button id="impact-fit" class="ghost-button compact-ghost" type="button">Fit</button>
-                  <button id="impact-zoom-in" class="ghost-button compact-ghost" type="button">Zoom +</button>
-                  <button id="impact-zoom-out" class="ghost-button compact-ghost" type="button">Zoom -</button>
-                  <button id="impact-reset" class="ghost-button compact-ghost" type="button">Reset</button>
+                  <button id="impact-fit" class="ghost-button compact-ghost" type="button">Fit all</button>
+                  <button id="impact-zoom-in" class="ghost-button compact-ghost" type="button">Detail +</button>
+                  <button id="impact-zoom-out" class="ghost-button compact-ghost" type="button">Detail -</button>
+                  <button id="impact-reset" class="ghost-button compact-ghost" type="button">Reset layout</button>
                 </div>
                 <div id="impact-graph-note" class="micro-note">Graph source is loading.</div>
               </div>
@@ -561,7 +546,7 @@
         </label>
         <label>
           <span>Alpha Vantage API key</span>
-          <input id="alpha-key" type="password" placeholder="Optional" />
+          <input id="alpha-key" type="password" placeholder="Optional" autocomplete="off" />
         </label>
         <label>
           <span>Local LLM base URL</span>

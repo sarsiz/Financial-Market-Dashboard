@@ -55,6 +55,9 @@ class HtmlContractTests(unittest.TestCase):
     self.assertNotIn("Live Markets", self.index_html)
     self.assertNotIn("macro, bonds, inflation, equities, and watchlist context", self.app_js)
     self.assertNotIn("NASDAQ, S&amp;P 500, NSE, and global market coverage", self.index_html)
+    self.assertNotIn("<header class=\"topbar\">", self.index_html)
+    self.assertIn("global-market-head-actions", self.app_js)
+    self.assertIn("status-updated", self.app_js)
 
   def test_frontend_contains_key_renderers_and_handlers(self):
     expected_snippets = [
@@ -72,6 +75,7 @@ class HtmlContractTests(unittest.TestCase):
       "function renderCorePanels()",
       "function renderDeferredPanels()",
       "function loadEventFeed(",
+      "function liveStatusClusterMarkup(",
       "eventCache",
       "event-card-header",
       "dashboardRequestId",
@@ -92,6 +96,7 @@ class HtmlContractTests(unittest.TestCase):
       "sector-tile-meta",
       "chart-mode-tab",
       "function buildSyntheticCandles(",
+      "function buildImpactGraphPresetPositions(",
       "function relayoutImpactGraph(",
       "pendingImpactGraph",
       "formatAxisDate",
@@ -144,6 +149,12 @@ class HtmlContractTests(unittest.TestCase):
     self.assertIn("panel?.classList.contains(\"active\")", self.app_js)
     self.assertIn("renderWatchlistImplications();", self.app_js)
     self.assertIn("relayoutImpactGraph();", self.app_js)
+    self.assertIn("name: \"preset\"", self.app_js)
+    self.assertIn("fit-all view, zoom for detail", self.app_js)
+    self.assertIn("minZoom: 0.25", self.app_js)
+    self.assertIn("maxZoom: 3", self.app_js)
+    self.assertIn(">Fit all<", self.index_html)
+    self.assertIn(">Detail +<", self.index_html)
     self.assertIn("height: clamp(520px, 62vh, 680px)", styles)
 
 

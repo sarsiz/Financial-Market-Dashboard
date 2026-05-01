@@ -2443,17 +2443,23 @@ function renderImpactGraphWorkspace(graph = {}) {
   }
   const elements = buildImpactGraphElements(graph);
   if (!elements.length) {
+    if (state.impactGraphCy) {
+      state.impactGraphCy.destroy();
+      state.impactGraphCy = null;
+    }
     container.innerHTML = `<div class="impact-graph-fallback">No graph data for the current region.</div>`;
     renderImpactGraphDetail(null);
     if (noteNode) noteNode.textContent = "Graph source pending.";
     return;
   }
+  container.querySelectorAll(".impact-graph-fallback").forEach((node) => node.remove());
+  if (!state.impactGraphCy) container.innerHTML = "";
   if (!state.impactGraphCy) {
     state.impactGraphCy = window.cytoscape({
       container,
       elements,
-      minZoom: 0.45,
-      maxZoom: 1.8,
+      minZoom: 0.25,
+      maxZoom: 3,
       boxSelectionEnabled: false,
       autoungrabify: false,
       style: [
@@ -2466,13 +2472,13 @@ function renderImpactGraphWorkspace(graph = {}) {
             label: "data(label)",
             color: "#fff1cf",
             "font-family": "Manrope",
-            "font-size": 10,
+            "font-size": 9.5,
             "text-wrap": "wrap",
-            "text-max-width": 120,
+            "text-max-width": 106,
             "text-valign": "center",
             "text-halign": "center",
-            width: (ele) => (ele.data("group") === "project" ? 168 : ele.data("group") === "stock" ? 136 : 116),
-            height: (ele) => (ele.data("group") === "project" ? 70 : ele.data("group") === "stock" ? 58 : 50),
+            width: (ele) => (ele.data("group") === "project" ? 152 : ele.data("group") === "stock" ? 126 : 108),
+            height: (ele) => (ele.data("group") === "project" ? 64 : ele.data("group") === "stock" ? 54 : 48),
             shape: (ele) => (ele.data("group") === "entity" ? "round-rectangle" : "round-hexagon"),
             "overlay-opacity": 0,
           },
@@ -2493,8 +2499,10 @@ function renderImpactGraphWorkspace(graph = {}) {
             opacity: 0.72,
             label: "data(relation)",
             color: "rgba(224,214,193,0.52)",
-            "font-size": 8,
-            "text-background-opacity": 0,
+            "font-size": 7,
+            "text-background-color": "#15120d",
+            "text-background-opacity": 0.72,
+            "text-background-padding": 2,
             "text-rotation": "autorotate",
           },
         },
@@ -2528,24 +2536,84 @@ function renderImpactGraphWorkspace(graph = {}) {
       relationMeta.source || graphMeta.layout || "Dependency workspace",
       generatedAt,
       projectMeta.coverage ? `${projectMeta.coverage} project maps` : "",
-      graphMeta.maxNodes ? `${graphMeta.maxNodes} nodes` : "",
+      `${state.impactGraphCy.nodes().length} nodes`,
+      `${state.impactGraphCy.edges().length} links`,
+      "fit-all view, zoom for detail",
     ].filter(Boolean);
     noteNode.textContent = noteBits.join(" • ");
   }
 }
 
+function getImpactGraphGroupOrder(group) {
+  const groupOrder = { macro: 0, market: 1, stock: 2, project: 3, entity: 4 };
+  return groupOrder[group] ?? groupOrder.entity;
+}
+
+function buildImpactGraphPresetPositions(cy) {
+  if (!cy) return {};
+  const nodes = cy.nodes().toArray();
+  const width = Math.max(cy.width() || 760, 760);
+  const height = Math.max(cy.height() || 540, 540);
+  const groups = ["macro", "market", "stock", "project", "entity"];
+  const buckets = groups.reduce((acc, group) => ({ ...acc, [group]: [] }), {});
+  nodes.forEach((node) => {
+    const group = node.data("group") || "entity";
+    (buckets[group] || buckets.entity).push(node);
+  });
+
+  const activeGroups = groups.filter((group) => buckets[group].length);
+  const horizontalPad = activeGroups.length > 3 ? 96 : 132;
+  const verticalPad = 78;
+  const usableWidth = Math.max(width - horizontalPad * 2, 260);
+  const columnGap = activeGroups.length > 1 ? usableWidth / (activeGroups.length - 1) : 0;
+  const positions = {};
+
+  activeGroups.forEach((group, groupIndex) => {
+    const items = buckets[group].sort((a, b) => {
+      const groupDelta = getImpactGraphGroupOrder(a.data("group")) - getImpactGraphGroupOrder(b.data("group"));
+      if (groupDelta) return groupDelta;
+      return String(a.data("label") || a.id()).localeCompare(String(b.data("label") || b.id()));
+    });
+    const laneCount = items.length > 7 ? 2 : 1;
+    const rowCount = Math.ceil(items.length / laneCount);
+    const usableHeight = Math.max(height - verticalPad * 2, 240);
+    const rowGap = rowCount > 1 ? Math.min(94, usableHeight / (rowCount - 1)) : 0;
+    const groupHeight = rowGap * Math.max(rowCount - 1, 0);
+    const startY = height / 2 - groupHeight / 2;
+    const baseX = activeGroups.length > 1 ? horizontalPad + columnGap * groupIndex : width / 2;
+    const laneGap = Math.min(58, Math.max(38, usableWidth / Math.max(activeGroups.length, 1) * 0.16));
+
+    items.forEach((node, index) => {
+      const lane = laneCount === 2 ? index % 2 : 0;
+      const row = laneCount === 2 ? Math.floor(index / 2) : index;
+      const laneOffset = laneCount === 2 ? (lane === 0 ? -laneGap / 2 : laneGap / 2) : 0;
+      positions[node.id()] = {
+        x: baseX + laneOffset,
+        y: startY + rowGap * row,
+      };
+    });
+  });
+
+  return positions;
+}
+
 function relayoutImpactGraph() {
   if (!state.impactGraphCy) return;
   state.impactGraphCy.resize();
+  const positions = buildImpactGraphPresetPositions(state.impactGraphCy);
   state.impactGraphCy.layout({
-    name: "breadthfirst",
-    directed: true,
-    padding: 34,
-    spacingFactor: 1.1,
+    name: "preset",
+    positions: (node) => positions[node.id()] || { x: 0, y: 0 },
+    fit: true,
+    padding: 28,
     animate: true,
-    roots: ["#bonds", "#inflation", "#policy"],
+    animationDuration: 360,
+    animationEasing: "ease-out-cubic",
   }).run();
-  window.setTimeout(() => state.impactGraphCy?.fit(undefined, 34), 140);
+  window.setTimeout(() => {
+    state.impactGraphCy?.fit(state.impactGraphCy.elements(), 28);
+    state.impactGraphCy?.center(state.impactGraphCy.elements());
+  }, 180);
 }
 
 function renderSearchResults(results = []) {
@@ -3765,10 +3833,25 @@ function renderResearch() {
 
 function renderTopbar() {
   document.getElementById("provider-badge").textContent = state.dashboard?.provider || state.config?.provider || "yahoo";
+  renderGlobalMarketOverview();
   setStatus(state.dashboard?.updatedAt ? "Live now" : "Loading data");
   document.body.classList.toggle("app-ready", state.bootReady);
   document.body.classList.toggle("app-booting", !state.bootReady);
-  renderGlobalMarketOverview();
+}
+
+function liveStatusClusterMarkup() {
+  return `
+    <div class="live-cluster" aria-label="Dashboard live status">
+      <div class="live-dot"></div>
+      <span id="status-updated" class="status-pill loading" aria-live="polite">
+        <span class="status-token" aria-hidden="true">
+          <span class="status-token-fill"></span>
+          <span class="status-token-code">USD</span>
+        </span>
+        <span class="status-label">Loading data</span>
+      </span>
+    </div>
+  `;
 }
 
 function renderGlobalMarketOverview() {
@@ -3783,6 +3866,9 @@ function renderGlobalMarketOverview() {
           <span class="overview-panel-kicker">Global clocks</span>
           <strong>Loading market benchmarks</strong>
         </div>
+        <div class="global-market-head-actions">
+          ${liveStatusClusterMarkup()}
+        </div>
       </button>
     `;
     return;
@@ -3794,10 +3880,13 @@ function renderGlobalMarketOverview() {
         <span class="overview-panel-kicker">Global clocks</span>
         <strong>Major benchmarks</strong>
       </div>
-      <span class="overview-panel-note">
-        Local time, session, latest quote age
-        <i class="benchmark-chevron" aria-hidden="true"></i>
-      </span>
+      <div class="global-market-head-actions">
+        <span class="overview-panel-note">
+          Local time, session, latest quote age
+          <i class="benchmark-chevron" aria-hidden="true"></i>
+        </span>
+        ${liveStatusClusterMarkup()}
+      </div>
     </button>
     <div class="global-market-collapse" id="global-market-benchmark-grid">
       <div class="global-market-grid">
@@ -4618,8 +4707,7 @@ function bindEvents() {
     if (!state.impactGraphCy) return;
     window.clearTimeout(state.impactResizeTimer);
     state.impactResizeTimer = window.setTimeout(() => {
-      state.impactGraphCy?.resize();
-      state.impactGraphCy?.fit(undefined, 34);
+      relayoutImpactGraph();
     }, 120);
   }, { passive: true });
 
@@ -4630,21 +4718,21 @@ function bindEvents() {
     persistWatchlist();
     renderBoard();
   });
-  document.getElementById("impact-fit")?.addEventListener("click", () => state.impactGraphCy?.fit(undefined, 34));
+  document.getElementById("impact-fit")?.addEventListener("click", () => state.impactGraphCy?.fit(state.impactGraphCy.elements(), 28));
   document.getElementById("impact-reset")?.addEventListener("click", () => {
     relayoutImpactGraph();
   });
   document.getElementById("impact-zoom-in")?.addEventListener("click", () => {
     if (!state.impactGraphCy) return;
     state.impactGraphCy.zoom({
-      level: Math.min(1.8, state.impactGraphCy.zoom() * 1.16),
+      level: Math.min(3, state.impactGraphCy.zoom() * 1.18),
       renderedPosition: { x: state.impactGraphCy.width() / 2, y: state.impactGraphCy.height() / 2 },
     });
   });
   document.getElementById("impact-zoom-out")?.addEventListener("click", () => {
     if (!state.impactGraphCy) return;
     state.impactGraphCy.zoom({
-      level: Math.max(0.45, state.impactGraphCy.zoom() / 1.16),
+      level: Math.max(0.25, state.impactGraphCy.zoom() / 1.18),
       renderedPosition: { x: state.impactGraphCy.width() / 2, y: state.impactGraphCy.height() / 2 },
     });
   });

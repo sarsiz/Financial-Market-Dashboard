@@ -794,7 +794,7 @@ button[type="submit"],
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 14px;
   width: 100%;
   padding: 6px 8px;
   border: 0;
@@ -873,6 +873,26 @@ button[type="submit"],
   justify-content: flex-end;
   align-items: center;
   gap: 8px;
+}
+
+.global-market-head-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  min-width: 0;
+  margin-left: auto;
+}
+
+.global-market-head-actions .live-cluster {
+  justify-content: flex-end;
+  flex: 0 0 auto;
+}
+
+.global-market-head-actions .status-pill {
+  box-shadow:
+    0 12px 30px rgba(0, 0, 0, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 .benchmark-chevron {
@@ -3624,6 +3644,11 @@ svg {
 
   .global-market-overview-head {
     display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .global-market-head-actions {
+    justify-self: end;
   }
 
   .market-clock-meta,
