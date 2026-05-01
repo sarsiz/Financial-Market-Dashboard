@@ -361,6 +361,32 @@
               </div>
               <div id="sector-grid" class="macro-summary-grid"></div>
             </article>
+            <!-- Sector Performance Matrix — full width -->
+            <article class="glass-panel macro-panel sector-matrix-panel" style="grid-column: 1 / -1;">
+              <div class="section-heading sector-matrix-heading">
+                <div>
+                  <h3>Sector Performance Matrix</h3>
+                  <span>Live index returns by sector — cached 15 min, history saved locally</span>
+                </div>
+                <div class="sector-matrix-controls">
+                  <select id="sector-matrix-market" class="sector-ctrl-select">
+                    <option value="india" selected>India (NSE)</option>
+                    <option value="us">US (S&amp;P Sectors)</option>
+                    <option value="global">Global Indices</option>
+                  </select>
+                  <div class="sector-period-tabs">
+                    <button class="sector-period-tab active" data-period="1D">1D</button>
+                    <button class="sector-period-tab" data-period="1W">1W</button>
+                    <button class="sector-period-tab" data-period="1M">1M</button>
+                    <button class="sector-period-tab" data-period="3M">3M</button>
+                    <button class="sector-period-tab" data-period="6M">6M</button>
+                    <button class="sector-period-tab" data-period="1Y">1Y</button>
+                  </div>
+                </div>
+              </div>
+              <div id="sector-matrix-grid" class="sector-matrix-grid"></div>
+              <div id="sector-matrix-updated" class="sector-matrix-footer"></div>
+            </article>
           </div>
         </section>
 

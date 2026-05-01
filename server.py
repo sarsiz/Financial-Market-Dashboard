@@ -48,22 +48,46 @@ DEFAULT_CONFIG = {
 DEFAULT_WATCHLIST = ["BHARTIARTL.NS", "ICICIBANK.NS", "GLENMARK.NS"]
 
 FALLBACK_TICKERS = {
-  "AAPL": {"name": "Apple", "basePrice": 212.4, "currency": "USD", "exchange": "NASDAQ", "beta": 1.08, "pe": 31.4},
-  "MSFT": {"name": "Microsoft", "basePrice": 428.8, "currency": "USD", "exchange": "NASDAQ", "beta": 0.92, "pe": 36.2},
-  "NVDA": {"name": "NVIDIA", "basePrice": 928.1, "currency": "USD", "exchange": "NASDAQ", "beta": 1.74, "pe": 63.1},
-  "AMZN": {"name": "Amazon", "basePrice": 183.1, "currency": "USD", "exchange": "NASDAQ", "beta": 1.18, "pe": 44.5},
-  "META": {"name": "Meta Platforms", "basePrice": 498.7, "currency": "USD", "exchange": "NASDAQ", "beta": 1.22, "pe": 27.4},
-  "GOOGL": {"name": "Alphabet", "basePrice": 161.5, "currency": "USD", "exchange": "NASDAQ", "beta": 1.04, "pe": 25.7},
-  "TSLA": {"name": "Tesla", "basePrice": 184.2, "currency": "USD", "exchange": "NASDAQ", "beta": 2.03, "pe": 58.9},
-  "AMD": {"name": "AMD", "basePrice": 178.9, "currency": "USD", "exchange": "NASDAQ", "beta": 1.62, "pe": 49.8},
-  "RELIANCE.NS": {"name": "Reliance Industries", "basePrice": 2940.0, "currency": "INR", "exchange": "NSE", "beta": 0.96, "pe": 28.3},
-  "BHARTIARTL.NS": {"name": "Bharti Airtel", "basePrice": 1228.0, "currency": "INR", "exchange": "NSE", "beta": 0.84, "pe": 54.0},
-  "ICICIBANK.NS": {"name": "ICICI Bank", "basePrice": 1094.0, "currency": "INR", "exchange": "NSE", "beta": 0.89, "pe": 18.8},
-  "GLENMARK.NS": {"name": "Glenmark Pharma", "basePrice": 1168.0, "currency": "INR", "exchange": "NSE", "beta": 0.93, "pe": 21.7},
-  "TCS.NS": {"name": "TCS", "basePrice": 4125.0, "currency": "INR", "exchange": "NSE", "beta": 0.81, "pe": 31.2},
-  "INFY.NS": {"name": "Infosys", "basePrice": 1518.0, "currency": "INR", "exchange": "NSE", "beta": 0.88, "pe": 24.6},
-  "HDFCBANK.NS": {"name": "HDFC Bank", "basePrice": 1528.0, "currency": "INR", "exchange": "NSE", "beta": 0.77, "pe": 19.4},
-  "SBIN.NS": {"name": "State Bank of India", "basePrice": 818.0, "currency": "INR", "exchange": "NSE", "beta": 0.92, "pe": 10.9, "aliases": ["SBI", "STATE BANK OF INDIA"]},
+  "AAPL": {"name": "Apple", "basePrice": 212.4, "currency": "USD", "exchange": "NASDAQ", "beta": 1.08, "pe": 31.4, "sector": "technology", "tags": ["tech", "consumer electronics", "software"]},
+  "MSFT": {"name": "Microsoft", "basePrice": 428.8, "currency": "USD", "exchange": "NASDAQ", "beta": 0.92, "pe": 36.2, "sector": "technology", "tags": ["tech", "software", "cloud", "ai"]},
+  "NVDA": {"name": "NVIDIA", "basePrice": 928.1, "currency": "USD", "exchange": "NASDAQ", "beta": 1.74, "pe": 63.1, "sector": "technology", "tags": ["tech", "semiconductor", "chips", "ai", "gpu"]},
+  "AMZN": {"name": "Amazon", "basePrice": 183.1, "currency": "USD", "exchange": "NASDAQ", "beta": 1.18, "pe": 44.5, "sector": "consumer discretionary", "tags": ["ecommerce", "cloud", "retail", "tech"]},
+  "META": {"name": "Meta Platforms", "basePrice": 498.7, "currency": "USD", "exchange": "NASDAQ", "beta": 1.22, "pe": 27.4, "sector": "communication services", "tags": ["social media", "tech", "advertising", "ai"]},
+  "GOOGL": {"name": "Alphabet", "basePrice": 161.5, "currency": "USD", "exchange": "NASDAQ", "beta": 1.04, "pe": 25.7, "sector": "communication services", "tags": ["tech", "search", "cloud", "advertising", "ai"]},
+  "TSLA": {"name": "Tesla", "basePrice": 184.2, "currency": "USD", "exchange": "NASDAQ", "beta": 2.03, "pe": 58.9, "sector": "consumer discretionary", "tags": ["ev", "electric vehicle", "auto", "energy", "tech"]},
+  "AMD": {"name": "AMD", "basePrice": 178.9, "currency": "USD", "exchange": "NASDAQ", "beta": 1.62, "pe": 49.8, "sector": "technology", "tags": ["semiconductor", "chips", "cpu", "gpu", "tech"]},
+  "RELIANCE.NS": {"name": "Reliance Industries", "basePrice": 2940.0, "currency": "INR", "exchange": "NSE", "beta": 0.96, "pe": 28.3, "sector": "energy", "tags": ["oil", "gas", "petrochemical", "telecom", "retail", "conglomerate"]},
+  "BHARTIARTL.NS": {"name": "Bharti Airtel", "basePrice": 1228.0, "currency": "INR", "exchange": "NSE", "beta": 0.84, "pe": 54.0, "sector": "communication services", "tags": ["telecom", "wireless", "broadband", "africa"]},
+  "ICICIBANK.NS": {"name": "ICICI Bank", "basePrice": 1094.0, "currency": "INR", "exchange": "NSE", "beta": 0.89, "pe": 18.8, "sector": "financials", "tags": ["bank", "banking", "finance", "private bank", "nbfc"]},
+  "GLENMARK.NS": {"name": "Glenmark Pharma", "basePrice": 1168.0, "currency": "INR", "exchange": "NSE", "beta": 0.93, "pe": 21.7, "sector": "healthcare", "tags": ["pharma", "pharmaceutical", "drug", "medicine", "healthcare"]},
+  "TCS.NS": {"name": "TCS", "basePrice": 4125.0, "currency": "INR", "exchange": "NSE", "beta": 0.81, "pe": 31.2, "sector": "technology", "tags": ["it", "tech", "software", "consulting", "outsourcing"]},
+  "INFY.NS": {"name": "Infosys", "basePrice": 1518.0, "currency": "INR", "exchange": "NSE", "beta": 0.88, "pe": 24.6, "sector": "technology", "tags": ["it", "tech", "software", "consulting", "outsourcing"]},
+  "HDFCBANK.NS": {"name": "HDFC Bank", "basePrice": 1528.0, "currency": "INR", "exchange": "NSE", "beta": 0.77, "pe": 19.4, "sector": "financials", "tags": ["bank", "banking", "finance", "private bank"]},
+  "SBIN.NS": {"name": "State Bank of India", "basePrice": 818.0, "currency": "INR", "exchange": "NSE", "beta": 0.92, "pe": 10.9, "aliases": ["SBI", "STATE BANK OF INDIA"], "sector": "financials", "tags": ["bank", "banking", "psu", "public sector", "finance"]},
+  # Additional India sector stocks
+  "SUNPHARMA.NS": {"name": "Sun Pharmaceutical", "basePrice": 1680.0, "currency": "INR", "exchange": "NSE", "beta": 0.72, "pe": 34.2, "sector": "healthcare", "tags": ["pharma", "pharmaceutical", "drug", "medicine", "healthcare"]},
+  "DRREDDY.NS": {"name": "Dr Reddy's Laboratories", "basePrice": 5980.0, "currency": "INR", "exchange": "NSE", "beta": 0.68, "pe": 22.8, "sector": "healthcare", "tags": ["pharma", "pharmaceutical", "drug", "generic", "healthcare"], "aliases": ["DR REDDY"]},
+  "CIPLA.NS": {"name": "Cipla", "basePrice": 1520.0, "currency": "INR", "exchange": "NSE", "beta": 0.71, "pe": 26.5, "sector": "healthcare", "tags": ["pharma", "pharmaceutical", "drug", "medicine", "healthcare"]},
+  "DIVISLAB.NS": {"name": "Divi's Laboratories", "basePrice": 5320.0, "currency": "INR", "exchange": "NSE", "beta": 0.65, "pe": 42.1, "sector": "healthcare", "tags": ["pharma", "api", "pharmaceutical", "drug", "healthcare"], "aliases": ["DIVI"]},
+  "WIPRO.NS": {"name": "Wipro", "basePrice": 478.0, "currency": "INR", "exchange": "NSE", "beta": 0.82, "pe": 22.4, "sector": "technology", "tags": ["it", "tech", "software", "consulting"]},
+  "HCLTECH.NS": {"name": "HCL Technologies", "basePrice": 1690.0, "currency": "INR", "exchange": "NSE", "beta": 0.85, "pe": 24.8, "sector": "technology", "tags": ["it", "tech", "software", "consulting"], "aliases": ["HCL"]},
+  "AXISBANK.NS": {"name": "Axis Bank", "basePrice": 1040.0, "currency": "INR", "exchange": "NSE", "beta": 0.94, "pe": 15.2, "sector": "financials", "tags": ["bank", "banking", "finance", "private bank"]},
+  "KOTAKBANK.NS": {"name": "Kotak Mahindra Bank", "basePrice": 1780.0, "currency": "INR", "exchange": "NSE", "beta": 0.88, "pe": 23.5, "sector": "financials", "tags": ["bank", "banking", "finance", "private bank"], "aliases": ["KOTAK"]},
+  "TATAMOTORS.NS": {"name": "Tata Motors", "basePrice": 780.0, "currency": "INR", "exchange": "NSE", "beta": 1.18, "pe": 8.9, "sector": "consumer discretionary", "tags": ["auto", "automobile", "ev", "car", "jlr", "tata"], "aliases": ["TATA MOTORS"]},
+  "MARUTI.NS": {"name": "Maruti Suzuki", "basePrice": 11900.0, "currency": "INR", "exchange": "NSE", "beta": 0.88, "pe": 27.4, "sector": "consumer discretionary", "tags": ["auto", "automobile", "car", "suzuki"]},
+  "ONGC.NS": {"name": "ONGC", "basePrice": 274.0, "currency": "INR", "exchange": "NSE", "beta": 0.94, "pe": 7.8, "sector": "energy", "tags": ["oil", "gas", "energy", "psu"], "aliases": ["OIL AND NATURAL GAS"]},
+  "NTPC.NS": {"name": "NTPC", "basePrice": 382.0, "currency": "INR", "exchange": "NSE", "beta": 0.82, "pe": 16.4, "sector": "utilities", "tags": ["power", "energy", "electricity", "psu", "utility"]},
+  "POWERGRID.NS": {"name": "Power Grid Corp", "basePrice": 332.0, "currency": "INR", "exchange": "NSE", "beta": 0.76, "pe": 19.2, "sector": "utilities", "tags": ["power", "energy", "electricity", "grid", "psu", "utility"]},
+  "ITC.NS": {"name": "ITC", "basePrice": 445.0, "currency": "INR", "exchange": "NSE", "beta": 0.71, "pe": 27.8, "sector": "consumer staples", "tags": ["fmcg", "cigarette", "tobacco", "consumer", "hotel", "agri"]},
+  "HINDUNILVR.NS": {"name": "Hindustan Unilever", "basePrice": 2290.0, "currency": "INR", "exchange": "NSE", "beta": 0.64, "pe": 55.2, "sector": "consumer staples", "tags": ["fmcg", "consumer goods", "personal care", "hul"], "aliases": ["HUL"]},
+  "LT.NS": {"name": "Larsen & Toubro", "basePrice": 3580.0, "currency": "INR", "exchange": "NSE", "beta": 0.97, "pe": 32.6, "sector": "industrials", "tags": ["infra", "infrastructure", "construction", "engineering", "defence"], "aliases": ["L&T"]},
+  "ADANIENT.NS": {"name": "Adani Enterprises", "basePrice": 2450.0, "currency": "INR", "exchange": "NSE", "beta": 1.22, "pe": 68.4, "sector": "industrials", "tags": ["conglomerate", "infra", "energy", "ports", "adani"]},
+  # US additional
+  "JPM": {"name": "JPMorgan Chase", "basePrice": 196.4, "currency": "USD", "exchange": "NYSE", "beta": 1.12, "pe": 11.8, "sector": "financials", "tags": ["bank", "banking", "finance", "investment bank"]},
+  "JNJ": {"name": "Johnson & Johnson", "basePrice": 152.8, "currency": "USD", "exchange": "NYSE", "beta": 0.56, "pe": 15.4, "sector": "healthcare", "tags": ["pharma", "pharmaceutical", "medical devices", "consumer health"]},
+  "PFE": {"name": "Pfizer", "basePrice": 26.8, "currency": "USD", "exchange": "NYSE", "beta": 0.62, "pe": 14.2, "sector": "healthcare", "tags": ["pharma", "pharmaceutical", "drug", "vaccine", "biotech"]},
+  "ABBV": {"name": "AbbVie", "basePrice": 168.5, "currency": "USD", "exchange": "NYSE", "beta": 0.58, "pe": 16.8, "sector": "healthcare", "tags": ["pharma", "pharmaceutical", "drug", "biotech"]},
+  "XOM": {"name": "ExxonMobil", "basePrice": 118.4, "currency": "USD", "exchange": "NYSE", "beta": 0.92, "pe": 14.2, "sector": "energy", "tags": ["oil", "gas", "energy", "petroleum"]},
   "^NSEI": {"name": "NIFTY 50", "basePrice": 22431.65, "currency": "INR", "exchange": "NSE", "beta": 1.0, "pe": 0.0},
   "^BSESN": {"name": "SENSEX", "basePrice": 73895.54, "currency": "INR", "exchange": "BSE", "beta": 1.0, "pe": 0.0},
   "^N225": {"name": "Nikkei 225", "basePrice": 38405.12, "currency": "JPY", "exchange": "JPX", "beta": 1.0, "pe": 0.0},
@@ -90,6 +114,70 @@ MARKET_SUFFIXES = {
   "xetra": ".DE",
 }
 
+# Sector keyword → sector tag mapping for fuzzy search
+SECTOR_KEYWORDS: dict[str, list[str]] = {
+  "pharma": ["healthcare"],
+  "pharmaceutical": ["healthcare"],
+  "drug": ["healthcare"],
+  "medicine": ["healthcare"],
+  "biotech": ["healthcare"],
+  "healthcare": ["healthcare"],
+  "health": ["healthcare"],
+  "hospital": ["healthcare"],
+  "medic": ["healthcare"],
+  "bank": ["financials"],
+  "banking": ["financials"],
+  "finance": ["financials"],
+  "financial": ["financials"],
+  "nbfc": ["financials"],
+  "insurance": ["financials"],
+  "tech": ["technology", "communication services"],
+  "technology": ["technology"],
+  "software": ["technology"],
+  "it ": ["technology"],
+  "semiconductor": ["technology"],
+  "chip": ["technology"],
+  "cloud": ["technology"],
+  "ai": ["technology"],
+  "telecom": ["communication services"],
+  "wireless": ["communication services"],
+  "media": ["communication services"],
+  "social": ["communication services"],
+  "oil": ["energy"],
+  "gas": ["energy"],
+  "energy": ["energy"],
+  "petroleum": ["energy"],
+  "power": ["utilities", "energy"],
+  "utility": ["utilities"],
+  "electricity": ["utilities"],
+  "electric": ["utilities", "consumer discretionary"],
+  "auto": ["consumer discretionary"],
+  "automobile": ["consumer discretionary"],
+  "car": ["consumer discretionary"],
+  "ev": ["consumer discretionary"],
+  "fmcg": ["consumer staples"],
+  "consumer": ["consumer staples", "consumer discretionary"],
+  "food": ["consumer staples"],
+  "retail": ["consumer discretionary"],
+  "ecommerce": ["consumer discretionary"],
+  "infra": ["industrials"],
+  "infrastructure": ["industrials"],
+  "construction": ["industrials"],
+  "engineering": ["industrials"],
+  "defence": ["industrials"],
+  "psu": ["industrials", "energy", "utilities", "financials"],
+  "conglomerate": ["industrials"],
+  "metal": ["materials"],
+  "steel": ["materials"],
+  "mining": ["materials"],
+  "cement": ["materials"],
+  "chemical": ["materials"],
+  "realty": ["real estate"],
+  "real estate": ["real estate"],
+  "property": ["real estate"],
+  "reit": ["real estate"],
+}
+
 MACRO_SYMBOLS = [
   {"label": "S&P 500", "symbol": "^GSPC"},
   {"label": "NASDAQ 100", "symbol": "^NDX"},
@@ -98,6 +186,53 @@ MACRO_SYMBOLS = [
   {"label": "WTI Crude", "symbol": "CL=F"},
   {"label": "Gold", "symbol": "GC=F"},
 ]
+
+# Sector indices per market — used by /api/sectors
+SECTOR_INDICES: dict[str, list[dict]] = {
+  "india": [
+    {"label": "Bank", "symbol": "^NSEBANK", "sector": "financials"},
+    {"label": "IT", "symbol": "^CNXIT", "sector": "technology"},
+    {"label": "Pharma", "symbol": "^CNXPHARMA", "sector": "healthcare"},
+    {"label": "Auto", "symbol": "^CNXAUTO", "sector": "consumer discretionary"},
+    {"label": "FMCG", "symbol": "^CNXFMCG", "sector": "consumer staples"},
+    {"label": "Metal", "symbol": "^CNXMETAL", "sector": "materials"},
+    {"label": "Energy", "symbol": "^CNXENERGY", "sector": "energy"},
+    {"label": "Infra", "symbol": "^CNXINFRA", "sector": "industrials"},
+    {"label": "Realty", "symbol": "^CNXREALTY", "sector": "real estate"},
+    {"label": "Media", "symbol": "^CNXMEDIA", "sector": "communication services"},
+    {"label": "PSU Bank", "symbol": "^NIFPSUBNK", "sector": "financials"},
+    {"label": "Midcap", "symbol": "^NIFMDCP100", "sector": "broad"},
+  ],
+  "us": [
+    {"label": "Technology", "symbol": "XLK", "sector": "technology"},
+    {"label": "Financials", "symbol": "XLF", "sector": "financials"},
+    {"label": "Healthcare", "symbol": "XLV", "sector": "healthcare"},
+    {"label": "Energy", "symbol": "XLE", "sector": "energy"},
+    {"label": "Industrials", "symbol": "XLI", "sector": "industrials"},
+    {"label": "Cons. Disc.", "symbol": "XLY", "sector": "consumer discretionary"},
+    {"label": "Cons. Staples", "symbol": "XLP", "sector": "consumer staples"},
+    {"label": "Utilities", "symbol": "XLU", "sector": "utilities"},
+    {"label": "Materials", "symbol": "XLB", "sector": "materials"},
+    {"label": "Real Estate", "symbol": "XLRE", "sector": "real estate"},
+    {"label": "Comm. Svcs", "symbol": "XLC", "sector": "communication services"},
+  ],
+  "global": [
+    {"label": "NIFTY 50", "symbol": "^NSEI", "sector": "india broad"},
+    {"label": "S&P 500", "symbol": "^GSPC", "sector": "us broad"},
+    {"label": "NASDAQ 100", "symbol": "^NDX", "sector": "us tech"},
+    {"label": "Nikkei 225", "symbol": "^N225", "sector": "japan broad"},
+    {"label": "Hang Seng", "symbol": "^HSI", "sector": "hk broad"},
+    {"label": "FTSE 100", "symbol": "^FTSE", "sector": "uk broad"},
+    {"label": "Gold", "symbol": "GC=F", "sector": "commodities"},
+    {"label": "Crude Oil", "symbol": "CL=F", "sector": "commodities"},
+    {"label": "US 10Y", "symbol": "^TNX", "sector": "rates"},
+    {"label": "USD Index", "symbol": "DX-Y.NYB", "sector": "fx"},
+  ],
+}
+
+# In-memory cache: {market_key: {period: {updated_at, sectors}}}
+_sector_cache: dict = {}
+_SECTOR_CACHE_TTL = 900  # 15 minutes
 
 MARKET_PRESETS = [
   {
@@ -1921,6 +2056,33 @@ def pct_change(current: float, previous: float) -> float:
   return ((current - previous) / previous) * 100
 
 
+def calc_rsi(prices: list[float], period: int = 14) -> float:
+  """Calculate RSI(period). Returns 50.0 (neutral) if insufficient data."""
+  if len(prices) < period + 1:
+    return 50.0
+  window = prices[-(period + 1):]
+  gains, losses = [], []
+  for i in range(1, len(window)):
+    delta = window[i] - window[i - 1]
+    gains.append(max(delta, 0.0))
+    losses.append(max(-delta, 0.0))
+  avg_gain = sum(gains) / period
+  avg_loss = sum(losses) / period
+  if avg_loss == 0:
+    return 100.0
+  rs = avg_gain / avg_loss
+  return round(100.0 - (100.0 / (1.0 + rs)), 2)
+
+
+def calc_volume_trend(volumes: list[float], short: int = 5, long: int = 20) -> float:
+  """Returns ratio of recent avg volume to longer-term avg. >1 = rising volume."""
+  if len(volumes) < long:
+    return 1.0
+  short_avg = average(volumes[-short:])
+  long_avg = average(volumes[-long:])
+  return short_avg / long_avg if long_avg else 1.0
+
+
 def raw_value(block: dict, key: str, default=None):
   value = (block or {}).get(key)
   if isinstance(value, dict):
@@ -1973,8 +2135,29 @@ def fetch_yahoo_quote_summary(symbol: str) -> dict:
   return result[0] if result else {}
 
 
+def _sector_matches_query(query_lower: str, meta: dict) -> bool:
+  """Return True if the query matches sector or tag metadata of a ticker."""
+  sector = meta.get("sector", "").lower()
+  tags = [t.lower() for t in meta.get("tags", [])]
+  # Direct sector match
+  if query_lower in sector:
+    return True
+  # Tag match
+  if any(query_lower in tag or tag in query_lower for tag in tags):
+    return True
+  # Sector keyword → sector lookup
+  for kw, matched_sectors in SECTOR_KEYWORDS.items():
+    if kw in query_lower or query_lower in kw:
+      if any(ms in sector for ms in matched_sectors):
+        return True
+      if any(ms in tag for ms in matched_sectors for tag in tags):
+        return True
+  return False
+
+
 def local_search_results(query: str) -> list[dict]:
   cleaned = query.strip().upper()
+  query_lower = query.strip().lower()
   if not cleaned:
     return []
   normalized_query = re.sub(r"[^A-Z0-9]+", " ", cleaned).strip()
@@ -1994,6 +2177,7 @@ def local_search_results(query: str) -> list[dict]:
       or any(cleaned in alias for alias in aliases)
       or any(normalized_query in alias for alias in alias_compact)
       or normalized_name_compact.startswith(normalized_query)
+      or _sector_matches_query(query_lower, meta)
     ):
       results.append(
         {
@@ -2001,6 +2185,7 @@ def local_search_results(query: str) -> list[dict]:
           "name": meta["name"],
           "exchange": meta["exchange"],
           "region": meta["exchange"],
+          "sector": meta.get("sector", ""),
         }
       )
   return results
@@ -3762,6 +3947,16 @@ def build_factor_cards(inputs: dict) -> list[dict]:
       "score": clamp(inputs["qualityLift"] * 220, -100, 100),
       "description": "Steadier fundamentals keep the model from blindly chasing fragile momentum bursts.",
     },
+    {
+      "title": "RSI signal",
+      "score": clamp(inputs.get("rsiSignal", 0.0) * 5500, -100, 100),
+      "description": "RSI(14) mean-reversion overlay. Oversold (<30) adds bullish bias; overbought (>70) adds bearish dampening.",
+    },
+    {
+      "title": "Volume trend",
+      "score": clamp((inputs.get("volumeTrend", 1.0) - 1.0) * 150, -100, 100),
+      "description": "Rising volume relative to 20-session average confirms signal strength; thin volume reduces confidence.",
+    },
   ]
 
 
@@ -4077,14 +4272,32 @@ def build_forecast(symbol: str, quote: dict, summary: dict, history: list[float]
   macro_score = build_macro_score(region, enriched["beta"], enriched["pe"], stress)
   quality_lift = (enriched["qualityScore"] - 0.5) * 0.4
 
+  # ── RSI factor: <30 = oversold (bullish), >70 = overbought (bearish)
+  rsi = calc_rsi(history, period=14)
+  rsi_signal = 0.0
+  if rsi < 30:
+    rsi_signal = (30 - rsi) / 30 * 0.018   # up to +0.018 for deeply oversold
+  elif rsi > 70:
+    rsi_signal = -(rsi - 70) / 30 * 0.018  # down to -0.018 for overbought
+  # Dampen momentum when RSI is extreme (prevents chasing overbought momentum)
+  rsi_momentum_dampen = clamp(1.0 - abs(rsi - 50) / 100, 0.5, 1.0)
+
+  # ── Volume trend: rising volume confirms signals; falling volume weakens them
+  raw_volumes = summary.get("summaryDetail", {}).get("volume", None)
+  vol_list = [float(v) for v in (summary.get("_volumeHistory") or []) if v]
+  volume_trend = calc_volume_trend(vol_list) if len(vol_list) >= 5 else 1.0
+  # >1.3 = volume surge (confidence lift), <0.6 = thin volume (confidence drag)
+  volume_confidence_lift = clamp((volume_trend - 1.0) * 0.06, -0.04, 0.06)
+
   classic_score = (
-    fast_momentum * 1.4
-    + slow_momentum * 1.2
-    + ma_spread * 0.85
-    + ma_slope * 0.65
-    + mean_reversion * 0.9
-    + macro_score * 0.8
+    fast_momentum * 1.2 * rsi_momentum_dampen  # dampened when overbought
+    + slow_momentum * 1.1
+    + ma_spread * 1.0                           # increased weight: clean signal
+    + ma_slope * 0.75
+    + mean_reversion * 0.75
+    + macro_score * 0.85
     + quality_lift
+    + rsi_signal                                # RSI mean-reversion overlay
     - volatility_penalty
     - event_pressure * 0.04
   )
@@ -4106,20 +4319,22 @@ def build_forecast(symbol: str, quote: dict, summary: dict, history: list[float]
     trend_patch * 1.6
     + breakout_pressure * 1.2
     + regime_alignment
+    + rsi_signal * 0.5                          # RSI feeds modern model too
     - volatility_regime * 0.7
     - event_pressure * 0.03
   )
 
   agreement = build_model_agreement(classic_score * math.sqrt(horizon) * 100, modern_score * math.sqrt(horizon) * 100)
   agreement_boost = 0.05 if agreement["label"] == "Aligned" else -0.03 if agreement["label"] == "Diverging" else 0.0
-  factor_score = (classic_score * 0.62) + (modern_score * 0.38) + agreement_boost
+  factor_score = (classic_score * 0.60) + (modern_score * 0.40) + agreement_boost
 
   expected_return = factor_score * math.sqrt(horizon) * 100
   classic_expected_return = classic_score * math.sqrt(horizon) * 100
   modern_expected_return = modern_score * math.sqrt(horizon) * 100
-  classic_confidence = clamp(100 - realized_vol * 1750 - enriched["eventScore"] * 28, 18, 89)
-  modern_confidence = clamp(100 - realized_vol * 1500 - abs(volatility_regime) * 1200 - enriched["eventScore"] * 22, 18, 92)
-  confidence = clamp(((classic_confidence * 0.58) + (modern_confidence * 0.42)) + (agreement["score"] - 50) * 0.08, 18, 93)
+  # Confidence: add volume lift, slightly relax the vol penalty floor
+  classic_confidence = clamp(100 - realized_vol * 1600 - enriched["eventScore"] * 24 + volume_confidence_lift * 100, 20, 89)
+  modern_confidence = clamp(100 - realized_vol * 1350 - abs(volatility_regime) * 1100 - enriched["eventScore"] * 20 + volume_confidence_lift * 100, 20, 92)
+  confidence = clamp(((classic_confidence * 0.58) + (modern_confidence * 0.42)) + (agreement["score"] - 50) * 0.08, 20, 93)
   fair_value = enriched["latestPrice"] * (1 + factor_score * 1.65)
   mae = clamp(realized_vol * 100 * (1.7 + enriched["beta"] * 0.25), 1.6, 12.5)
   direction = model_direction(expected_return)
@@ -4145,6 +4360,8 @@ def build_forecast(symbol: str, quote: dict, summary: dict, history: list[float]
     "breakoutPressure": breakout_pressure,
     "volatilityRegime": volatility_regime,
     "regimeAlignment": regime_alignment,
+    "rsiSignal": rsi_signal,
+    "volumeTrend": volume_trend,
   }
 
   return {
@@ -5976,6 +6193,59 @@ def build_live_quotes(symbols: list[str], active: str | None) -> dict:
   }
 
 
+def build_sector_matrix(market: str, period: str = "1D") -> dict:
+  """Fetch sector index performance for the given market and period. Cached for 15 min."""
+  cache_key = f"{market}:{period}"
+  now = time.time()
+  cached = _sector_cache.get(cache_key)
+  if cached and (now - cached.get("ts", 0)) < _SECTOR_CACHE_TTL:
+    return cached["data"]
+
+  sectors = SECTOR_INDICES.get(market, SECTOR_INDICES["india"])
+  symbols = [s["sector_symbol"] if "sector_symbol" in s else s["symbol"] for s in sectors]
+
+  period_map = {"1D": "2d", "1W": "7d", "1M": "1mo", "3M": "3mo", "6M": "6mo", "1Y": "1y"}
+  yf_period = period_map.get(period, "2d")
+  interval_map = {"1D": "1d", "1W": "1d", "1M": "1d", "3M": "1wk", "6M": "1wk", "1Y": "1mo"}
+  yf_interval = interval_map.get(period, "1d")
+
+  results = []
+  for entry in sectors:
+    sym = entry["symbol"]
+    try:
+      chart = fetch_yahoo_chart(sym, range_value=yf_period, interval=yf_interval)
+      closes = (chart or {}).get("indicators", {}).get("quote", [{}])[0].get("close") or []
+      closes = [c for c in closes if c is not None]
+      if len(closes) >= 2:
+        change_pct = round(((closes[-1] - closes[0]) / closes[0]) * 100, 2)
+        price = round(closes[-1], 2)
+      elif len(closes) == 1:
+        change_pct = 0.0
+        price = round(closes[0], 2)
+      else:
+        change_pct = 0.0
+        price = 0.0
+    except Exception:
+      change_pct = 0.0
+      price = 0.0
+    results.append({
+      "label": entry["label"],
+      "symbol": sym,
+      "sector": entry["sector"],
+      "changePct": change_pct,
+      "price": price,
+    })
+
+  data = {
+    "market": market,
+    "period": period,
+    "sectors": results,
+    "updatedAt": datetime.now(timezone.utc).isoformat(),
+  }
+  _sector_cache[cache_key] = {"ts": now, "data": data}
+  return data
+
+
 def build_overview_payload(symbols: list[str], active: str | None, region_key: str | None = None) -> dict:
   payload = build_live_quotes(symbols, active)
   active_item = payload.get("active") or {}
@@ -6073,6 +6343,11 @@ class FinancialBoardHandler(BaseHTTPRequestHandler):
           }
         ]
       return self.send_json({"results": results})
+    if parsed.path == "/api/sectors":
+      params = urllib.parse.parse_qs(parsed.query)
+      market = (params.get("market") or ["india"])[0].strip().lower()
+      period = (params.get("period") or ["1D"])[0].strip().upper()
+      return self.send_json(build_sector_matrix(market, period))
     if parsed.path == "/api/overview":
       params = urllib.parse.parse_qs(parsed.query)
       symbols = [item.upper() for item in ((params.get("symbols") or [""])[0].split(",")) if item]

@@ -849,7 +849,7 @@ function renderStockDossier(active) {
   const cards = {
     day: `
     <section id="dossier-day" class="dossier-card dossier-card-focus" draggable="true" data-dossier-card="day">
-      <button class="dossier-drag-handle" type="button" aria-label="Drag Day snapshot">Drag</button>
+      <button class="dossier-drag-handle" type="button" aria-label="Drag Day snapshot">⠿</button>
       <div class="dossier-card-head"><span>Day snapshot</span><strong>${active.symbol}</strong><small>${day.source || "Quote provider"}</small></div>
       <div class="dossier-metric-grid">
         <div><span>Open</span><strong>${dossierMetric(day.open, "currency", active.currency)}</strong></div>
@@ -862,7 +862,7 @@ function renderStockDossier(active) {
     </section>`,
     ma: `
     <section id="dossier-ma" class="dossier-card dossier-card-compact" draggable="true" data-dossier-card="ma">
-      <button class="dossier-drag-handle" type="button" aria-label="Drag Moving averages">Drag</button>
+      <button class="dossier-drag-handle" type="button" aria-label="Drag Moving averages">⠿</button>
       <div class="dossier-card-head"><span>Moving averages</span><strong>Trend stack</strong><small>5 / 20 / 25 / 50 / 200</small></div>
       <div class="ma-dossier-list">
         ${(dossier.movingAverages || []).map((item) => `
@@ -876,7 +876,7 @@ function renderStockDossier(active) {
     </section>`,
     fundamentals: `
     <section id="dossier-fundamentals" class="dossier-card dossier-card-focus" draggable="true" data-dossier-card="fundamentals">
-      <button class="dossier-drag-handle" type="button" aria-label="Drag Fundamentals">Drag</button>
+      <button class="dossier-drag-handle" type="button" aria-label="Drag Fundamentals">⠿</button>
       <div class="dossier-card-head"><span>Fundamentals</span><strong>Quality ${dossierMetric(fundamentals.scores?.quality)}</strong><small>${fundamentals.source || "Provider summary"}</small></div>
       <div class="dossier-score-row">
         <span>Valuation ${dossierMetric(fundamentals.scores?.valuation)}</span>
@@ -891,7 +891,7 @@ function renderStockDossier(active) {
     </section>`,
     consensus: `
     <section class="dossier-card dossier-card-compact" draggable="true" data-dossier-card="consensus">
-      <button class="dossier-drag-handle" type="button" aria-label="Drag Expert consensus">Drag</button>
+      <button class="dossier-drag-handle" type="button" aria-label="Drag Expert consensus">⠿</button>
       <div class="dossier-card-head"><span>Expert consensus</span><strong>${consensus.rating || "Unavailable"}</strong><small>${consensus.sourceLabel || "External source"}</small></div>
       <div class="consensus-stack">
         <span style="--w:${consensus.buy || 0}" class="positive">Buy ${consensus.buy || 0}%</span>
@@ -918,7 +918,7 @@ function renderStockDossier(active) {
     </section>`,
     peers: `
     <section id="dossier-peers" class="dossier-card dossier-card-table" draggable="true" data-dossier-card="peers">
-      <button class="dossier-drag-handle" type="button" aria-label="Drag Peer comparison">Drag</button>
+      <button class="dossier-drag-handle" type="button" aria-label="Drag Peer comparison">⠿</button>
       <div class="dossier-card-head"><span>Peer comparison</span><strong>5 closest peers</strong><small>Market cap, P/E, return, growth, ROE</small></div>
       <div class="peer-table">
         <div class="peer-row peer-head"><span>Peer</span><span>MCap</span><span>P/E</span><span>1Y</span><span>Sales</span><span>ROE</span></div>
@@ -929,13 +929,13 @@ function renderStockDossier(active) {
     </section>`,
     benchmarks: `
     <section id="dossier-benchmarks" class="dossier-card dossier-card-compact" draggable="true" data-dossier-card="benchmarks">
-      <button class="dossier-drag-handle" type="button" aria-label="Drag Benchmark comparison">Drag</button>
+      <button class="dossier-drag-handle" type="button" aria-label="Drag Benchmark comparison">⠿</button>
       <div class="dossier-card-head"><span>Benchmark comparison</span><strong>Normalized 1Y</strong><small>Selected vs region indices</small></div>
       ${renderBenchmarkBars(dossier.benchmarkComparison || [])}
     </section>`,
     activity: `
     <section id="dossier-activity" class="dossier-card dossier-card-band" draggable="true" data-dossier-card="activity">
-      <button class="dossier-drag-handle" type="button" aria-label="Drag Range watch">Drag</button>
+      <button class="dossier-drag-handle" type="button" aria-label="Drag Range watch">⠿</button>
       <div class="dossier-card-head"><span>Range watch</span><strong>${unusual.breakout || "Range watch"}</strong><small>Gap, breakout, volume, two-day move</small></div>
       <div class="activity-band-grid">
         <div><span>2D move</span><strong>${formatPercent(unusual.twoDayMove || 0)}</strong></div>
@@ -946,7 +946,7 @@ function renderStockDossier(active) {
     </section>`,
     links: `
     <section id="dossier-links" class="dossier-card dossier-card-table" draggable="true" data-dossier-card="links">
-      <button class="dossier-drag-handle" type="button" aria-label="Drag Influence graph">Drag</button>
+      <button class="dossier-drag-handle" type="button" aria-label="Drag Influence graph">⠿</button>
       <div class="dossier-card-head"><span>Influence / ownership graph</span><strong>${(influence.nodes || []).length} nodes</strong><small>Public cited only</small></div>
       <div class="influence-ledger">
         ${(influence.ledger || []).length ? (influence.ledger || []).map((item) => `
@@ -956,7 +956,7 @@ function renderStockDossier(active) {
     </section>`,
     metrics: `
     <section class="dossier-card dossier-card-table" draggable="true" data-dossier-card="metrics">
-      <button class="dossier-drag-handle" type="button" aria-label="Drag Show all metrics">Drag</button>
+      <button class="dossier-drag-handle" type="button" aria-label="Drag Show all metrics">⠿</button>
       <div class="dossier-card-head"><span>Show all metrics</span><strong>Drawer preview</strong><small>Grouped source-backed values</small></div>
       <div class="metric-drawer-preview">
         ${(dossier.metricDrawer || []).map((section) => `<div><strong>${section.section}</strong><span>${(section.metrics || []).join(" · ")}</span></div>`).join("")}
@@ -1955,7 +1955,10 @@ function drawProjection(svg, historyInput, projectedInput, features = {}, option
     const y = margin.top + ((height - margin.top - margin.bottom) * ratio);
     return { y, value };
   });
-  const xTickIndices = Array.from(new Set([0, Math.floor((historySeries.length - 1) / 2), historySeries.length - 1])).filter((index) => index >= 0);
+  const xTickCount = Math.min(5, historySeries.length);
+  const xTickIndices = Array.from(new Set(
+    Array.from({ length: xTickCount }, (_, i) => Math.round(i * (historySeries.length - 1) / Math.max(xTickCount - 1, 1)))
+  )).filter((index) => index >= 0 && index < historySeries.length);
   const xTicks = xTickIndices.map((index) => ({
     x: margin.left + ((index / (values.length - 1 || 1)) * (width - margin.left - margin.right)),
     label: formatAxisDate(historySeries[index]?.timestamp, options.range || "1M"),
@@ -2683,15 +2686,21 @@ function renderSearchResults(results = []) {
 
   node.innerHTML = results
     .map(
-      (item) => `
+      (item) => {
+        const sectorLabel = item.sector ? `<em class="search-result-sector">${item.sector}</em>` : "";
+        return `
         <button class="search-result" type="button" data-symbol="${item.symbol}">
           <div>
             <strong>${item.symbol}</strong>
             <p>${item.name || item.exchange || "Market listing"}</p>
           </div>
-          <span>${item.exchange || item.region || "Global"}</span>
+          <div class="search-result-right">
+            ${sectorLabel}
+            <span>${item.exchange || item.region || "Global"}</span>
+          </div>
         </button>
-      `,
+      `;
+      },
     )
     .join("");
 
@@ -4501,14 +4510,22 @@ function addTicker(symbol) {
 
 function removeTicker(symbol) {
   if (state.watchlist.length <= 1) return;
+  const wasActive = state.activeTicker === symbol;
   state.watchlist = state.watchlist.filter((item) => item !== symbol);
-  if (state.activeTicker === symbol) {
-    state.activeTicker = state.watchlist[0];
+  // Remove from dashboard watchlist cache so it vanishes immediately
+  if (state.dashboard?.watchlist) {
+    state.dashboard.watchlist = state.dashboard.watchlist.filter((item) => item.symbol !== symbol);
   }
-  state.labResult = null;
   persistWatchlist();
-  setStatus("Removing");
-  refreshDashboard();
+  if (wasActive) {
+    state.activeTicker = state.watchlist[0];
+    state.labResult = null;
+    refreshDashboard();
+  } else {
+    // Non-active delete: just re-render the watchlist instantly, no API call
+    renderWatchlist();
+    renderRecentTickers();
+  }
 }
 
 async function addTickerFromInput() {
@@ -4521,6 +4538,120 @@ async function addTickerFromInput() {
   addTicker(best?.symbol || query.toUpperCase());
   input.value = "";
   renderSearchResults(payload.results || []);
+}
+
+// ── Sector Performance Matrix ─────────────────────────────────────────────────
+
+const SECTOR_MATRIX_STORAGE_KEY = "financial-board-sector-history";
+
+function loadSectorHistory() {
+  try { return JSON.parse(localStorage.getItem(SECTOR_MATRIX_STORAGE_KEY) || "{}"); }
+  catch { return {}; }
+}
+
+function saveSectorHistory(market, period, sectors) {
+  try {
+    const history = loadSectorHistory();
+    if (!history[market]) history[market] = {};
+    if (!history[market][period]) history[market][period] = [];
+    const snap = { ts: Date.now(), sectors };
+    history[market][period].unshift(snap);
+    // Keep last 90 snapshots per market+period
+    history[market][period] = history[market][period].slice(0, 90);
+    localStorage.setItem(SECTOR_MATRIX_STORAGE_KEY, JSON.stringify(history));
+  } catch { /* quota */ }
+}
+
+function sectorHeatColor(pct) {
+  if (pct > 2) return "var(--positive, #22c55e)";
+  if (pct > 0.5) return "rgba(34,197,94,0.7)";
+  if (pct > 0) return "rgba(34,197,94,0.38)";
+  if (pct < -2) return "var(--negative, #ef4444)";
+  if (pct < -0.5) return "rgba(239,68,68,0.7)";
+  if (pct < 0) return "rgba(239,68,68,0.38)";
+  return "rgba(255,255,255,0.1)";
+}
+
+function renderSectorMatrix(sectors, updatedAt) {
+  const grid = document.getElementById("sector-matrix-grid");
+  const footer = document.getElementById("sector-matrix-updated");
+  if (!grid) return;
+  if (!sectors?.length) {
+    grid.innerHTML = `<div class="sector-matrix-empty">Loading sector data…</div>`;
+    return;
+  }
+  const sorted = [...sectors].sort((a, b) => b.changePct - a.changePct);
+  grid.innerHTML = sorted.map((s) => {
+    const pct = Number(s.changePct || 0);
+    const color = sectorHeatColor(pct);
+    const sign = pct >= 0 ? "+" : "";
+    const intensity = Math.min(Math.abs(pct) / 3, 1);
+    return `
+      <div class="sector-tile" style="--heat:${color}; --intensity:${intensity.toFixed(2)}">
+        <span class="sector-tile-label">${s.label}</span>
+        <strong class="sector-tile-pct ${pct >= 0 ? "positive" : "negative"}">${sign}${pct.toFixed(2)}%</strong>
+        ${s.price ? `<em class="sector-tile-price">${s.price.toLocaleString()}</em>` : ""}
+      </div>
+    `;
+  }).join("");
+  if (footer && updatedAt) {
+    const age = Math.round((Date.now() - new Date(updatedAt).getTime()) / 60000);
+    footer.textContent = `Updated ${age < 1 ? "just now" : `${age}m ago`} · cached 15 min · history saved locally`;
+  }
+}
+
+async function fetchSectorMatrix(market, period) {
+  const grid = document.getElementById("sector-matrix-grid");
+  if (grid) grid.innerHTML = `<div class="sector-matrix-empty">Fetching ${market} sectors…</div>`;
+  try {
+    const data = await api(`/api/sectors?market=${encodeURIComponent(market)}&period=${encodeURIComponent(period)}`);
+    if (data?.sectors?.length) {
+      saveSectorHistory(market, period, data.sectors);
+      renderSectorMatrix(data.sectors, data.updatedAt);
+    }
+  } catch {
+    // Fall back to last cached local history snapshot
+    const history = loadSectorHistory();
+    const snap = history?.[market]?.[period]?.[0];
+    if (snap?.sectors) {
+      renderSectorMatrix(snap.sectors, new Date(snap.ts).toISOString());
+    } else if (grid) {
+      grid.innerHTML = `<div class="sector-matrix-empty">Sector data unavailable. Server may still be starting.</div>`;
+    }
+  }
+}
+
+function initSectorMatrix() {
+  const marketSelect = document.getElementById("sector-matrix-market");
+  const periodTabs = document.querySelectorAll(".sector-period-tab");
+  if (!marketSelect) return;
+
+  let currentMarket = marketSelect.value;
+  let currentPeriod = "1D";
+
+  // Show last local snapshot immediately while fetching
+  const cachedSnap = loadSectorHistory()?.[currentMarket]?.[currentPeriod]?.[0];
+  if (cachedSnap?.sectors) renderSectorMatrix(cachedSnap.sectors, new Date(cachedSnap.ts).toISOString());
+
+  fetchSectorMatrix(currentMarket, currentPeriod);
+
+  marketSelect.addEventListener("change", () => {
+    currentMarket = marketSelect.value;
+    const snap = loadSectorHistory()?.[currentMarket]?.[currentPeriod]?.[0];
+    if (snap?.sectors) renderSectorMatrix(snap.sectors, new Date(snap.ts).toISOString());
+    fetchSectorMatrix(currentMarket, currentPeriod);
+  });
+
+  periodTabs.forEach((tab) => {
+    tab.addEventListener("click", () => {
+      periodTabs.forEach((t) => t.classList.remove("active"));
+      tab.classList.add("active");
+      currentPeriod = tab.dataset.period;
+      const snap = loadSectorHistory()?.[currentMarket]?.[currentPeriod]?.[0];
+      if (snap?.sectors) renderSectorMatrix(snap.sectors, new Date(snap.ts).toISOString());
+      fetchSectorMatrix(currentMarket, currentPeriod);
+    });
+  });
 }
 
 function bindEvents() {
@@ -4752,6 +4883,7 @@ async function init() {
   document.body.classList.add("app-booting");
   setStatus("Loading data");
   bindEvents();
+  initSectorMatrix();
   render();
   startMarketClockTimer();
   loadOverviewFast({ silent: true }).catch((error) => {
