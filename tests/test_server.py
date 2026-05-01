@@ -18,6 +18,8 @@ class TempDatabaseTestCase(unittest.TestCase):
     self.config_patcher = mock.patch.object(server, "CONFIG_PATH", self.config_path)
     self.db_patcher.start()
     self.config_patcher.start()
+    server.HISTORY_WARMUP_JOBS.clear()
+    server.HISTORY_INFLIGHT.clear()
     server.init_db()
 
   def tearDown(self):
@@ -224,6 +226,50 @@ class HistoryCacheTests(TempDatabaseTestCase):
     self.assertEqual(history[-1], 1263.4)
     self.assertEqual(meta["historySource"], "Yahoo Chart")
     self.assertNotEqual(history[-1], 1321.9)
+
+  def test_start_history_warmup_queues_background_cache_job_once(self):
+    captured = {}
+
+    class InlineThread:
+      def __init__(self, target, args, daemon=False):
+        captured["target"] = target
+        captured["args"] = args
+        captured["daemon"] = daemon
+
+      def start(self):
+        captured["started"] = True
+
+    with mock.patch.object(server.threading, "Thread", InlineThread):
+      first = server.start_history_warmup(["ICICIBANK.NS"], ["1D", "5D"], reason="unit")
+      second = server.start_history_warmup(["ICICIBANK.NS"], ["1D", "5D"], reason="unit")
+
+    self.assertEqual(first["status"], "queued")
+    self.assertEqual(second["status"], "queued")
+    self.assertTrue(captured["started"])
+    self.assertTrue(captured["daemon"])
+    self.assertEqual(first["jobKey"], second["jobKey"])
+    self.assertEqual(first["jobKey"], server.history_warmup_status()["jobs"][-1]["jobKey"])
+
+  def test_run_history_warmup_skips_fresh_ranges_and_fetches_missing_ranges(self):
+    job_key = server.history_warmup_key(["ICICIBANK.NS"], ["1D", "5D"])
+    server.HISTORY_WARMUP_JOBS[job_key] = {"status": "queued", "jobKey": job_key}
+    calls = []
+
+    def fake_is_fresh(symbol, chart_range):
+      return chart_range == "1D"
+
+    def fake_build_history(symbol, chart_range, allow_live_refresh=True):
+      calls.append((symbol, chart_range, allow_live_refresh))
+      return [1.0, 2.0], {"historySource": "Unit"}
+
+    with mock.patch.object(server, "history_cache_is_fresh", side_effect=fake_is_fresh), mock.patch.object(
+      server, "build_history", side_effect=fake_build_history
+    ):
+      server.run_history_warmup(job_key, ["ICICIBANK.NS"], ["1D", "5D"])
+
+    self.assertEqual(calls, [("ICICIBANK.NS", "5D", True)])
+    self.assertEqual(server.HISTORY_WARMUP_JOBS[job_key]["status"], "done")
+    self.assertEqual(server.HISTORY_WARMUP_JOBS[job_key]["completed"], 2)
 
   def test_save_and_load_derived_insight_round_trip(self):
     payload = {"state": "5D above 25D", "sma5": 105.0, "sma25": 100.0}

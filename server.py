@@ -468,6 +468,10 @@ DB_LOCK = threading.Lock()
 OUTBOUND_LOCK = threading.Lock()
 OUTBOUND_LAST_REQUEST_AT: dict[str, float] = {}
 OUTBOUND_RESPONSE_CACHE: dict[str, tuple[float, object]] = {}
+HISTORY_WARMUP_LOCK = threading.Lock()
+HISTORY_WARMUP_JOBS: dict[str, dict] = {}
+HISTORY_INFLIGHT_LOCK = threading.Lock()
+HISTORY_INFLIGHT: dict[str, threading.Event] = {}
 OUTBOUND_ALLOWED_HOSTS = {
   "query1.finance.yahoo.com",
   "query2.finance.yahoo.com",
@@ -1132,6 +1136,14 @@ def build_market_session(exchange: str, region: str, market_state: str, as_of: s
 
 def quote_freshness(as_of: str | None, session: dict | None = None, source: str = "") -> dict:
   if not as_of:
+    if source and any(label in source.lower() for label in {"fallback", "curated", "reference"}):
+      return {
+        "label": "Reference level",
+        "state": "reference",
+        "isStale": False,
+        "ageMinutes": None,
+        "note": f"{source} is a documented fallback level while live benchmark providers are unavailable.",
+      }
     return {
       "label": "No live timestamp",
       "state": "stale",
@@ -3125,6 +3137,8 @@ CHART_RANGE_CONFIG = {
   "1Y": ("1y", "1wk"),
 }
 
+HISTORY_PREFETCH_RANGES = ["1D", "3D", "5D", "1M", "1Y"]
+
 
 def history_points_from_meta(closes: list[float], meta: dict) -> list[dict]:
   timestamps = meta.get("timestamps") or []
@@ -3137,6 +3151,26 @@ def history_points_from_meta(closes: list[float], meta: dict) -> list[dict]:
     }
     for value, timestamp in zip(closes, timestamps)
   ]
+
+
+def history_cache_is_fresh(symbol: str, chart_range: str) -> bool:
+  cached = load_cached_history(symbol, chart_range)
+  if not cached:
+    normalized_range = chart_range.upper()
+    interval = CHART_RANGE_CONFIG.get(normalized_range, CHART_RANGE_CONFIG["1M"])[1]
+    historical_points = load_historical_records(symbol, interval, limit=2)
+    if not historical_points:
+      return False
+    latest_age = timestamp_age_seconds(historical_points[-1].get("timestamp"))
+    return latest_age is not None and latest_age <= history_cache_ttl(normalized_range)
+  closes, _, _, updated_at = cached
+  if len(closes) < 2:
+    return False
+  try:
+    age_seconds = max(0.0, (datetime.now(timezone.utc) - datetime.fromisoformat(updated_at)).total_seconds())
+  except ValueError:
+    return False
+  return age_seconds <= history_cache_ttl(chart_range)
 
 
 def timestamp_age_seconds(value: str | None) -> float | None:
@@ -3207,97 +3241,180 @@ def history_symbol_candidates(symbol: str) -> list[str]:
 
 def build_history(symbol: str, chart_range: str = "1M", allow_live_refresh: bool = True) -> tuple[list[float], dict]:
   normalized_range = chart_range.upper()
+  inflight_key = f"{normalize_symbol(symbol)}::{normalized_range}"
+  if allow_live_refresh:
+    with HISTORY_INFLIGHT_LOCK:
+      existing_event = HISTORY_INFLIGHT.get(inflight_key)
+      if existing_event:
+        should_fetch = False
+      else:
+        existing_event = threading.Event()
+        HISTORY_INFLIGHT[inflight_key] = existing_event
+        should_fetch = True
+    if not should_fetch:
+      existing_event.wait(timeout=12)
+      return build_history(symbol, normalized_range, allow_live_refresh=False)
+  else:
+    existing_event = None
+    should_fetch = False
+
   interval = CHART_RANGE_CONFIG.get(normalized_range, CHART_RANGE_CONFIG["1M"])[1]
-  historical_points = load_historical_records(symbol, interval, limit=380 if normalized_range == "1Y" else 40)
-  if len(historical_points) >= 2:
-    values = [point["value"] for point in historical_points]
-    timestamps = [point["timestamp"] for point in historical_points if point.get("timestamp")]
-    latest_age = timestamp_age_seconds(timestamps[-1] if timestamps else None)
-    historical_meta = {
-      "timestamps": timestamps if len(timestamps) == len(values) else [],
-      "historySource": historical_points[-1].get("source", "Historical records"),
-      "historyCacheState": "fresh" if latest_age is not None and latest_age <= history_cache_ttl(normalized_range) else "stale",
-      "historyCachedAt": timestamps[-1] if timestamps else datetime.now(timezone.utc).isoformat(),
-    }
-    if latest_age is not None and latest_age <= history_cache_ttl(normalized_range):
-      return values, historical_meta
+  try:
+    historical_points = load_historical_records(symbol, interval, limit=380 if normalized_range == "1Y" else 40)
+    if len(historical_points) >= 2:
+      values = [point["value"] for point in historical_points]
+      timestamps = [point["timestamp"] for point in historical_points if point.get("timestamp")]
+      latest_age = timestamp_age_seconds(timestamps[-1] if timestamps else None)
+      historical_meta = {
+        "timestamps": timestamps if len(timestamps) == len(values) else [],
+        "historySource": historical_points[-1].get("source", "Historical records"),
+        "historyCacheState": "fresh" if latest_age is not None and latest_age <= history_cache_ttl(normalized_range) else "stale",
+        "historyCachedAt": timestamps[-1] if timestamps else datetime.now(timezone.utc).isoformat(),
+      }
+      if latest_age is not None and latest_age <= history_cache_ttl(normalized_range):
+        return values, historical_meta
+      if not allow_live_refresh:
+        return values, historical_meta
+    cached = load_cached_history(symbol, normalized_range)
+    if cached:
+      closes, meta, source, updated_at = cached
+      try:
+        age_seconds = max(
+          0,
+          (datetime.now(timezone.utc) - datetime.fromisoformat(updated_at)).total_seconds(),
+        )
+      except ValueError:
+        age_seconds = history_cache_ttl(normalized_range) + 1
+      if len(closes) >= 2 and age_seconds <= history_cache_ttl(normalized_range):
+        return closes, build_cached_meta(meta, source or "Local cache", updated_at)
+      if len(closes) >= 2 and not allow_live_refresh:
+        return closes, build_cached_meta(meta, source or "Local cache", updated_at, stale=True)
+
     if not allow_live_refresh:
-      return values, historical_meta
-  cached = load_cached_history(symbol, normalized_range)
-  if cached:
-    closes, meta, source, updated_at = cached
-    try:
-      age_seconds = max(
-        0,
-        (datetime.now(timezone.utc) - datetime.fromisoformat(updated_at)).total_seconds(),
-      )
-    except ValueError:
-      age_seconds = history_cache_ttl(normalized_range) + 1
-    if len(closes) >= 2 and age_seconds <= history_cache_ttl(normalized_range):
-      return closes, build_cached_meta(meta, source or "Local cache", updated_at)
-    if len(closes) >= 2 and not allow_live_refresh:
-      return closes, build_cached_meta(meta, source or "Local cache", updated_at, stale=True)
+      return [], {}
 
-  if not allow_live_refresh:
-    return [], {}
+    range_value, interval = CHART_RANGE_CONFIG.get(normalized_range, CHART_RANGE_CONFIG["1M"])
+    config = load_config()
+    alpha_key = config.get("alphaVantageApiKey", "").strip()
+    for candidate_symbol in history_symbol_candidates(symbol):
+      chart = fetch_yahoo_chart(candidate_symbol, range_value=range_value, interval=interval)
+      if chart:
+        closes, meta = extract_yahoo_history_payload(chart)
+        if len(closes) >= 2:
+          if candidate_symbol != symbol:
+            meta["historyMappedSymbol"] = candidate_symbol
+          save_historical_records(symbol, interval, history_points_from_meta(closes, meta), "Yahoo Chart")
+          save_history_cache(symbol, normalized_range, closes, meta, "Yahoo Chart")
+          return closes, build_cached_meta(meta, "Yahoo Chart", datetime.now(timezone.utc).isoformat())
 
-  range_value, interval = CHART_RANGE_CONFIG.get(normalized_range, CHART_RANGE_CONFIG["1M"])
-  config = load_config()
-  alpha_key = config.get("alphaVantageApiKey", "").strip()
-  for candidate_symbol in history_symbol_candidates(symbol):
-    chart = fetch_yahoo_chart(candidate_symbol, range_value=range_value, interval=interval)
-    if chart:
-      closes, meta = extract_yahoo_history_payload(chart)
-      if len(closes) >= 2:
+      google_closes, google_meta = fetch_google_finance_history(candidate_symbol, fallback_meta(candidate_symbol).get("exchange", ""), normalized_range)
+      if len(google_closes) >= 2:
         if candidate_symbol != symbol:
-          meta["historyMappedSymbol"] = candidate_symbol
-        save_historical_records(symbol, interval, history_points_from_meta(closes, meta), "Yahoo Chart")
-        save_history_cache(symbol, normalized_range, closes, meta, "Yahoo Chart")
-        return closes, build_cached_meta(meta, "Yahoo Chart", datetime.now(timezone.utc).isoformat())
-
-    google_closes, google_meta = fetch_google_finance_history(candidate_symbol, fallback_meta(candidate_symbol).get("exchange", ""), normalized_range)
-    if len(google_closes) >= 2:
-      if candidate_symbol != symbol:
-        google_meta["historyMappedSymbol"] = candidate_symbol
-      google_interval = interval
-      save_historical_records(symbol, google_interval, history_points_from_meta(google_closes, google_meta), google_meta.get("historySource", "Google Finance Page"))
-      save_history_cache(symbol, normalized_range, google_closes, google_meta, google_meta.get("historySource", "Google Finance Page"))
-      return google_closes, build_cached_meta(
-        google_meta,
-        google_meta.get("historySource", "Google Finance Page"),
-        datetime.now(timezone.utc).isoformat(),
-      )
-
-    if alpha_key:
-      alpha_closes, alpha_meta = fetch_alpha_vantage_history(candidate_symbol, alpha_key, normalized_range)
-      if len(alpha_closes) >= 2:
-        if candidate_symbol != symbol:
-          alpha_meta["historyMappedSymbol"] = candidate_symbol
-        save_historical_records(symbol, interval, history_points_from_meta(alpha_closes, alpha_meta), alpha_meta.get("historySource", "Alpha Vantage Daily Adjusted"))
-        save_history_cache(symbol, normalized_range, alpha_closes, alpha_meta, alpha_meta.get("historySource", "Alpha Vantage Daily Adjusted"))
-        return alpha_closes, build_cached_meta(
-          alpha_meta,
-          alpha_meta.get("historySource", "Alpha Vantage Daily Adjusted"),
+          google_meta["historyMappedSymbol"] = candidate_symbol
+        google_interval = interval
+        save_historical_records(symbol, google_interval, history_points_from_meta(google_closes, google_meta), google_meta.get("historySource", "Google Finance Page"))
+        save_history_cache(symbol, normalized_range, google_closes, google_meta, google_meta.get("historySource", "Google Finance Page"))
+        return google_closes, build_cached_meta(
+          google_meta,
+          google_meta.get("historySource", "Google Finance Page"),
           datetime.now(timezone.utc).isoformat(),
         )
 
-    stooq_closes, stooq_meta = fetch_stooq_history(candidate_symbol, fallback_meta(candidate_symbol).get("exchange", ""), normalized_range)
-    if len(stooq_closes) >= 2:
-      if candidate_symbol != symbol:
-        stooq_meta["historyMappedSymbol"] = candidate_symbol
-      save_historical_records(symbol, interval, history_points_from_meta(stooq_closes, stooq_meta), stooq_meta.get("historySource", "Stooq CSV"))
-      save_history_cache(symbol, normalized_range, stooq_closes, stooq_meta, stooq_meta.get("historySource", "Stooq CSV"))
-      return stooq_closes, build_cached_meta(
-        stooq_meta,
-        stooq_meta.get("historySource", "Stooq CSV"),
-        datetime.now(timezone.utc).isoformat(),
-      )
+      if alpha_key:
+        alpha_closes, alpha_meta = fetch_alpha_vantage_history(candidate_symbol, alpha_key, normalized_range)
+        if len(alpha_closes) >= 2:
+          if candidate_symbol != symbol:
+            alpha_meta["historyMappedSymbol"] = candidate_symbol
+          save_historical_records(symbol, interval, history_points_from_meta(alpha_closes, alpha_meta), alpha_meta.get("historySource", "Alpha Vantage Daily Adjusted"))
+          save_history_cache(symbol, normalized_range, alpha_closes, alpha_meta, alpha_meta.get("historySource", "Alpha Vantage Daily Adjusted"))
+          return alpha_closes, build_cached_meta(
+            alpha_meta,
+            alpha_meta.get("historySource", "Alpha Vantage Daily Adjusted"),
+            datetime.now(timezone.utc).isoformat(),
+          )
 
-  if cached:
-    closes, meta, source, updated_at = cached
-    if len(closes) >= 2:
-      return closes, build_cached_meta(meta, source or "Local cache", updated_at, stale=True)
-  return [], {}
+      stooq_closes, stooq_meta = fetch_stooq_history(candidate_symbol, fallback_meta(candidate_symbol).get("exchange", ""), normalized_range)
+      if len(stooq_closes) >= 2:
+        if candidate_symbol != symbol:
+          stooq_meta["historyMappedSymbol"] = candidate_symbol
+        save_historical_records(symbol, interval, history_points_from_meta(stooq_closes, stooq_meta), stooq_meta.get("historySource", "Stooq CSV"))
+        save_history_cache(symbol, normalized_range, stooq_closes, stooq_meta, stooq_meta.get("historySource", "Stooq CSV"))
+        return stooq_closes, build_cached_meta(
+          stooq_meta,
+          stooq_meta.get("historySource", "Stooq CSV"),
+          datetime.now(timezone.utc).isoformat(),
+        )
+
+    if cached:
+      closes, meta, source, updated_at = cached
+      if len(closes) >= 2:
+        return closes, build_cached_meta(meta, source or "Local cache", updated_at, stale=True)
+    return [], {}
+  finally:
+    if allow_live_refresh and should_fetch and existing_event:
+      with HISTORY_INFLIGHT_LOCK:
+        HISTORY_INFLIGHT.pop(inflight_key, None)
+        existing_event.set()
+
+
+def history_warmup_key(symbols: list[str], ranges: list[str]) -> str:
+  cleaned_symbols = ",".join(sorted({normalize_symbol(symbol) for symbol in symbols if symbol}))
+  cleaned_ranges = ",".join(sorted({(item or "").upper() for item in ranges if item}))
+  return f"{cleaned_symbols}::{cleaned_ranges}"
+
+
+def run_history_warmup(job_key: str, symbols: list[str], ranges: list[str]) -> None:
+  with HISTORY_WARMUP_LOCK:
+    job = HISTORY_WARMUP_JOBS.get(job_key, {})
+    job.update({"status": "running", "startedAt": datetime.now(timezone.utc).isoformat(), "completed": 0, "errors": []})
+    HISTORY_WARMUP_JOBS[job_key] = job
+  total = max(1, len(symbols) * len(ranges))
+  for symbol in symbols:
+    for chart_range in ranges:
+      try:
+        if not history_cache_is_fresh(symbol, chart_range):
+          build_history(symbol, chart_range, allow_live_refresh=True)
+      except Exception as error:
+        with HISTORY_WARMUP_LOCK:
+          HISTORY_WARMUP_JOBS[job_key].setdefault("errors", []).append(f"{symbol}:{chart_range}:{error}")
+      finally:
+        with HISTORY_WARMUP_LOCK:
+          HISTORY_WARMUP_JOBS[job_key]["completed"] = min(total, int(HISTORY_WARMUP_JOBS[job_key].get("completed", 0)) + 1)
+          HISTORY_WARMUP_JOBS[job_key]["total"] = total
+  with HISTORY_WARMUP_LOCK:
+    HISTORY_WARMUP_JOBS[job_key]["status"] = "done"
+    HISTORY_WARMUP_JOBS[job_key]["finishedAt"] = datetime.now(timezone.utc).isoformat()
+
+
+def start_history_warmup(symbols: list[str], ranges: list[str] | None = None, reason: str = "dashboard") -> dict:
+  cleaned_symbols = list(dict.fromkeys([normalize_symbol(symbol) for symbol in symbols if symbol]))
+  cleaned_ranges = [item.upper() for item in (ranges or HISTORY_PREFETCH_RANGES) if item.upper() in CHART_RANGE_CONFIG]
+  if not cleaned_symbols or not cleaned_ranges:
+    return {"status": "skipped", "reason": "No symbols or ranges to warm."}
+  job_key = history_warmup_key(cleaned_symbols, cleaned_ranges)
+  with HISTORY_WARMUP_LOCK:
+    existing = HISTORY_WARMUP_JOBS.get(job_key)
+    if existing and existing.get("status") in {"queued", "running"}:
+      return {"status": existing.get("status"), "jobKey": job_key, "total": existing.get("total", 0), "completed": existing.get("completed", 0)}
+    HISTORY_WARMUP_JOBS[job_key] = {
+      "status": "queued",
+      "jobKey": job_key,
+      "symbols": cleaned_symbols,
+      "ranges": cleaned_ranges,
+      "reason": reason,
+      "total": len(cleaned_symbols) * len(cleaned_ranges),
+      "completed": 0,
+      "queuedAt": datetime.now(timezone.utc).isoformat(),
+    }
+  thread = threading.Thread(target=run_history_warmup, args=(job_key, cleaned_symbols, cleaned_ranges), daemon=True)
+  thread.start()
+  return {"status": "queued", "jobKey": job_key, "total": len(cleaned_symbols) * len(cleaned_ranges), "completed": 0}
+
+
+def history_warmup_status() -> dict:
+  with HISTORY_WARMUP_LOCK:
+    jobs = list(HISTORY_WARMUP_JOBS.values())[-12:]
+  return {"jobs": jobs, "active": [job for job in jobs if job.get("status") in {"queued", "running"}]}
 
 
 def load_universe_manifest() -> dict:
@@ -5762,6 +5879,7 @@ def build_dashboard(symbols: list[str], active: str | None, chart_range: str = "
   active_snapshot["decisionCockpit"] = build_decision_cockpit(active_snapshot, regions[active_region_key], radar)
   active_snapshot["featureCards"] = build_operator_feature_cards(active_snapshot, regions[active_region_key], radar)
   methodology = build_methodology_payload(active_snapshot, regions[active_region_key])
+  warmup = start_history_warmup(cleaned, HISTORY_PREFETCH_RANGES, reason="dashboard-loaded")
 
   return {
     "provider": load_config().get("provider", "yahoo"),
@@ -5778,6 +5896,7 @@ def build_dashboard(symbols: list[str], active: str | None, chart_range: str = "
     "regions": regions,
     "comparison": build_region_comparison(regions),
     "methodology": methodology,
+    "historyWarmup": warmup,
   }
 
 
@@ -5960,6 +6079,8 @@ class FinancialBoardHandler(BaseHTTPRequestHandler):
       active = ((params.get("active") or [""])[0] or "").upper() or None
       region = ((params.get("region") or [""])[0] or "").strip().lower() or None
       return self.send_json(build_overview_payload(symbols, active, region))
+    if parsed.path == "/api/history/status":
+      return self.send_json(history_warmup_status())
     if parsed.path == "/api/stream":
       params = urllib.parse.parse_qs(parsed.query)
       symbols = [item for item in ((params.get("symbols") or [""])[0].split(",")) if item]
@@ -5988,6 +6109,11 @@ class FinancialBoardHandler(BaseHTTPRequestHandler):
       chart_range = ((body or {}).get("chartRange") or "1M").upper()
       region = ((body or {}).get("region") or "").strip().lower() or None
       return self.send_json(build_dashboard(symbols, active, chart_range, region))
+
+    if parsed.path == "/api/history/warm":
+      symbols = [symbol.upper() for symbol in (body or {}).get("symbols", []) if symbol]
+      ranges = [item.upper() for item in (body or {}).get("ranges", []) if item]
+      return self.send_json(start_history_warmup(symbols, ranges or HISTORY_PREFETCH_RANGES, reason="client-idle"))
 
     if parsed.path == "/api/lab":
       symbol = ((body or {}).get("symbol") or "").strip().upper()

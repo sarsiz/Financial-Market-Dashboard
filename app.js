@@ -6,6 +6,7 @@ const STORAGE_KEYS = {
   chartFeatures: "financial-board-chart-features",
   eventCategory: "financial-board-event-category",
   boardHidden: "financial-board-market-board-hidden",
+  benchmarksCollapsed: "financial-board-benchmarks-collapsed",
   region: "financial-board-region",
   dossierOrder: "financial-board-dossier-order",
 };
@@ -194,6 +195,7 @@ const state = {
   radarTimer: null,
   radarGlobalPointerCleanupBound: false,
   boardHidden: localStorage.getItem(STORAGE_KEYS.boardHidden) === "1",
+  benchmarksCollapsed: localStorage.getItem(STORAGE_KEYS.benchmarksCollapsed) === "1",
   radarFloatsCollapsed: false,
   eventCategoryPinned: false,
   recentLastAdded: "",
@@ -205,6 +207,7 @@ const state = {
   impactResizeTimer: null,
   revealObserver: null,
   lastOverviewChartRefreshAt: 0,
+  historyWarmupKeys: new Set(),
   dossierOrder: loadStoredDossierOrder(),
 };
 
@@ -443,8 +446,10 @@ function buildPriceFlipMarkup(value, currency = "USD") {
     .join("");
 }
 
-function animateSvgRefresh(svg) {
+function animateSvgRefresh(svg, { force = false } = {}) {
   if (!svg?.animate) return;
+  if (!force && svg.dataset.hasAnimated === "1") return;
+  svg.dataset.hasAnimated = "1";
   svg.animate(
     [
       { opacity: 0.36, transform: "translateY(8px) scaleY(0.94)" },
@@ -1149,7 +1154,7 @@ function formatZonedDate(timeZone) {
 }
 
 function freshnessBadgeMarkup(freshness = {}) {
-  const stateLabel = freshness.isStale ? "stale" : "fresh";
+  const stateLabel = freshness.state || (freshness.isStale ? "stale" : "fresh");
   const label = freshness.label || (freshness.isStale ? "Stale quote" : "Fresh quote");
   return `<span class="freshness-badge ${stateLabel}" title="${freshness.note || ""}">${label}</span>`;
 }
@@ -1886,6 +1891,18 @@ function drawProjection(svg, historyInput, projectedInput, features = {}, option
   if (!projectedSeries?.length) {
     projectedSeries = [{ value: historySeries[historySeries.length - 1].value, timestamp: historySeries[historySeries.length - 1].timestamp }];
   }
+  const chartSignature = JSON.stringify({
+    range: options.range || "1M",
+    currency: options.currency || "USD",
+    features,
+    historyLength: historySeries.length,
+    first: historySeries[0],
+    last: historySeries[historySeries.length - 1],
+    projected: projectedSeries,
+  });
+  if (svg.dataset.chartSignature === chartSignature) return;
+  const shouldAnimate = options.animate !== false && svg.dataset.chartReady !== "1";
+  svg.dataset.chartSignature = chartSignature;
   const width = 640;
   const height = 240;
   const margin = { top: 12, right: 12, bottom: 34, left: 56 };
@@ -1969,7 +1986,10 @@ function drawProjection(svg, historyInput, projectedInput, features = {}, option
       <circle id="chart-hover-point" cx="${margin.left}" cy="${margin.top}" r="4.5" fill="#f3b85f" stroke="#131313" stroke-width="2" opacity="0"></circle>
     </g>
   `;
-  animateSvgRefresh(svg);
+  if (shouldAnimate) {
+    animateSvgRefresh(svg, { force: true });
+  }
+  svg.dataset.chartReady = "1";
 
   const hoverLine = svg.querySelector("#chart-hover-line");
   const hoverPoint = svg.querySelector("#chart-hover-point");
@@ -3966,54 +3986,68 @@ function renderGlobalMarketOverview() {
   if (!node) return;
   const markets = state.dashboard?.globalMarkets || [];
   if (!markets.length) {
+    node.classList.remove("collapsed");
     node.innerHTML = `
-      <div class="global-market-overview-head">
+      <button class="global-market-overview-head" type="button" disabled>
         <div>
           <span class="overview-panel-kicker">Global clocks</span>
           <strong>Loading market benchmarks</strong>
         </div>
-      </div>
+      </button>
     `;
     return;
   }
+  node.classList.toggle("collapsed", state.benchmarksCollapsed);
   node.innerHTML = `
-    <div class="global-market-overview-head">
+    <button class="global-market-overview-head" type="button" aria-expanded="${state.benchmarksCollapsed ? "false" : "true"}" aria-controls="global-market-benchmark-grid">
       <div>
         <span class="overview-panel-kicker">Global clocks</span>
         <strong>Major benchmarks</strong>
       </div>
-      <span class="overview-panel-note">Local time, session, latest quote age</span>
-    </div>
-    <div class="global-market-grid">
-      ${markets.map((market) => `
-        <article class="market-clock-card">
-          <div class="market-clock-top">
-            <div>
-              <strong>${market.label}</strong>
-              <span>${formatZonedDate(market.timezone)}</span>
-            </div>
-            <div class="market-clock-status ${market.session?.isOpen ? "open" : "closed"}">
-              ${market.session?.isOpen ? "Open" : "Closed"}
-            </div>
-          </div>
-          <div class="market-clock-meta">
-            <strong>${formatZonedTime(market.timezone)}</strong>
-            <span>${market.session?.hoursLabel || market.timezone}</span>
-          </div>
-          <div class="market-clock-indices">
-            ${(market.indices || []).map((item) => `
-              <div class="market-index-row ${item.quoteFreshness?.isStale ? "is-stale" : ""}">
-                <span>${item.label}</span>
-                <strong>${formatIndexLevel(item.price)}</strong>
-                <em class="${Number(item.changePercent || 0) >= 0 ? "positive" : "negative"}">${formatPercent(item.changePercent || 0)}</em>
-                ${freshnessBadgeMarkup(item.quoteFreshness || {})}
+      <span class="overview-panel-note">
+        Local time, session, latest quote age
+        <i class="benchmark-chevron" aria-hidden="true"></i>
+      </span>
+    </button>
+    <div class="global-market-collapse" id="global-market-benchmark-grid">
+      <div class="global-market-grid">
+        ${markets.map((market) => `
+          <article class="market-clock-card">
+            <div class="market-clock-top">
+              <div>
+                <strong>${market.label}</strong>
+                <span>${formatZonedDate(market.timezone)}</span>
               </div>
-            `).join("")}
-          </div>
-        </article>
-      `).join("")}
+              <div class="market-clock-status ${market.session?.isOpen ? "open" : "closed"}">
+                ${market.session?.isOpen ? "Open" : "Closed"}
+              </div>
+            </div>
+            <div class="market-clock-meta">
+              <strong>${formatZonedTime(market.timezone)}</strong>
+              <span>${market.session?.hoursLabel || market.timezone}</span>
+            </div>
+            <div class="market-clock-indices">
+              ${(market.indices || []).map((item) => `
+                <div class="market-index-row ${item.quoteFreshness?.isStale ? "is-stale" : ""}">
+                  <span>${item.label}</span>
+                  <strong>${formatIndexLevel(item.price)}</strong>
+                  <em class="${Number(item.changePercent || 0) >= 0 ? "positive" : "negative"}">${formatPercent(item.changePercent || 0)}</em>
+                  ${freshnessBadgeMarkup(item.quoteFreshness || {})}
+                </div>
+              `).join("")}
+            </div>
+          </article>
+        `).join("")}
+      </div>
     </div>
   `;
+  const toggle = node.querySelector(".global-market-overview-head");
+  toggle?.addEventListener("click", () => {
+    state.benchmarksCollapsed = !state.benchmarksCollapsed;
+    localStorage.setItem(STORAGE_KEYS.benchmarksCollapsed, state.benchmarksCollapsed ? "1" : "0");
+    node.classList.toggle("collapsed", state.benchmarksCollapsed);
+    toggle.setAttribute("aria-expanded", state.benchmarksCollapsed ? "false" : "true");
+  });
 }
 
 function renderCompactMenu() {
@@ -4145,16 +4179,11 @@ function applyLiveQuoteUpdate(payload) {
   renderWatchlist();
   renderBoard();
   if (state.dashboard.active) {
-    const now = Date.now();
-    const redrawChart = !state.lastOverviewChartRefreshAt || now - state.lastOverviewChartRefreshAt >= 2000;
     patchOverviewLiveSurface(
       state.dashboard.active,
       state.dashboard.active.forecast || emptyForecastPayload(),
-      { redrawChart },
+      { redrawChart: false },
     );
-    if (redrawChart) {
-      state.lastOverviewChartRefreshAt = now;
-    }
   }
   renderTopbar();
   flashStatus("Live now", 900);
@@ -4342,6 +4371,34 @@ function selectActiveTicker(symbol, { refresh = true } = {}) {
   refreshDashboard();
 }
 
+function scheduleHistoryWarmup({ immediate = false } = {}) {
+  const symbols = Array.from(new Set([...(state.watchlist || []), state.activeTicker].filter(Boolean).map((item) => item.toUpperCase())));
+  if (!symbols.length) return;
+  const ranges = ["1D", "3D", "5D", "1M", "1Y"];
+  const key = `${symbols.join(",")}::${ranges.join(",")}`;
+  if (state.historyWarmupKeys.has(key)) return;
+  state.historyWarmupKeys.add(key);
+  const run = () => {
+    api("/api/history/warm", {
+      method: "POST",
+      timeoutMs: 6000,
+      body: JSON.stringify({ symbols, ranges }),
+    }).catch((error) => {
+      state.historyWarmupKeys.delete(key);
+      logNonAbort(error);
+    });
+  };
+  if (immediate) {
+    run();
+    return;
+  }
+  if ("requestIdleCallback" in window) {
+    window.requestIdleCallback(run, { timeout: 3000 });
+  } else {
+    window.setTimeout(run, 900);
+  }
+}
+
 async function refreshDashboard() {
   const requestId = ++state.dashboardRequestId;
   setStatus("Refreshing");
@@ -4412,6 +4469,7 @@ async function refreshDashboard() {
   loadRadar({ silent: true }).catch((error) => {
     logNonAbort(error);
   });
+  scheduleHistoryWarmup();
 }
 
 async function runSearch() {
@@ -4485,6 +4543,7 @@ function bindEvents() {
     button.addEventListener("click", () => {
       state.chartRange = button.dataset.range;
       persistWatchlist();
+      scheduleHistoryWarmup({ immediate: true });
       refreshDashboard();
     });
   });
