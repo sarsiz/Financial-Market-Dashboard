@@ -59,14 +59,16 @@ This platform is built as a lightweight full-stack app with a browser client and
 - Academy and Research now degrade gracefully: they show market-structure-first content immediately, use shorter local-LLM time budgets, and fall back to web-grounded or rules-based answers when the LLM is slow
 - event flow is now timestamp-aware and significance-ranked, so important recent and prior events remain visible with source and publish time
 - market radar has its own refresh path and now auto-refreshes every 15 minutes without waiting for the full dashboard refresh
-- market radar surfaces floating event clouds only from live news items, with in-place expansion on click, a hide/show glass toggle, and fresh-item re-formation when more important stories arrive
+- market radar surfaces a compact news ticker, sentiment box, and event hotspots from live news items without the older floating cloud layer
 - market radar now blends live event headlines with macro pulse and active-ticker micro context, so the section reflects both top-down and stock-specific pressure
+- the stock dossier uses an auto-masonry card layout so peer comparison and other cards repack tightly across viewport sizes
+- the sector matrix renders benchmark-relative performance by market, benchmark, and period with a local-cache-first path
 - the dashboard now keeps a region-selected macro layer for bonds, inflation, policy, events, equity context, watchlist implications, and US-vs-India comparison
 - the main overview now carries a research methodology layer showing live formulas, cadence, and factor transmission for the active ticker
 - the dashboard now includes a dedicated methodology tab showing popular quant concepts, live inputs, cadence, and an animated factor flow
 - watchlist implications now use a dedicated graph workspace with pan/zoom and details instead of a cramped inline SVG
 - universe sync, historical backfill, and relation-graph generation are now explicit scripts so large-market datasets can be refreshed deterministically
-- the top watch overview can be compacted away with a user toggle, and radar clouds can be popped together so the panel shrinks upward when you want a denser layout
+- the top watch overview can be compacted away with a user toggle, and the radar panel stays dense by using ticker/hotspot surfaces instead of floating cards
 - news retrieval now blends Google News RSS with popular publisher RSS feeds like BBC and NPR, then dedupes and ranks them server-side
 - large charts now carry timestamp-aware history series, axis labels, and hover inspection instead of only raw close arrays
 - local-LLM features are pinned to `Bonsai-8B-1bit`, even if another model name is saved in config, to keep inference lighter and more predictable
@@ -87,7 +89,8 @@ flowchart LR
   B --> H["SSE Quote Stream<br/>sub-second live updates"]
   C --> C1["Timestamped History Series<br/>chart labels / hover inspection"]
   D --> D1["Event Significance Layer<br/>recency + catalyst scoring + source notes"]
-  D1 --> D2["Radar Cloud Layer<br/>live-only clouds / 15 min refresh / incremental re-forming"]
+  D1 --> D2["Radar Ticker + Hotspots<br/>compact news strip / sentiment / 15 min refresh"]
+  F --> F2["Sector Matrix Cache<br/>benchmark-relative local snapshots"]
 ```
 
 ## Run
@@ -134,6 +137,7 @@ This lets the UI show:
 The dashboard is moving toward the useful parts of Mint, Moneycontrol, Groww, and similar market tools while keeping the current local-first architecture:
 
 - `Market snapshot`: price, change, volume, session status, breadth, radar sentiment, and watchlist movement.
+- `Sector matrix`: benchmark-relative sector performance by market, benchmark, and period with local-cache-first rendering.
 - `Technical context`: 5D/25D moving-average spread, slope, trend confirmation, volatility, breakout pressure, and reversion stretch.
 - `Fundamental context`: valuation, quality, project exposure, supplier risk, and sector sensitivity where local data exists.
 - `Events`: market-relevant RSS/news, category filters, impact score, source timestamps, and major event overrides.
@@ -176,6 +180,7 @@ The current suite covers:
 - local LLM config pinning to `Bonsai-8B-1bit`
 - historical-record persistence and relation-graph wiring
 - recommendation and backtest regression checks
+- Wilder RSI, aligned MACD, benchmark sector matrix, and search-ranking regression checks
 - frontend HTML and JavaScript contract checks for the main dashboard panels and tabs
 
 ## What is functional now
@@ -186,6 +191,7 @@ The current suite covers:
 - cache previously fetched historical series locally so already-viewed tickers load faster on later visits
 - show urgent market banner headlines on the main screen
 - render timestamp-aware charts with X/Y axes and hoverable value/date inspection
+- switch sector matrix benchmark and period while reusing local snapshots before fetching the live edge
 - compute explainable forecast direction, confidence, fair-value gap, and factor attribution
 - compare classic quant signals with a modern overlay and surface whether both agree or diverge
 - run scenario tests with walk-forward validation, hit-rate, and error metrics

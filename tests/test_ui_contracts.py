@@ -93,12 +93,18 @@ class HtmlContractTests(unittest.TestCase):
     self.assertNotIn("cloud-puff", self.index_html)
     self.assertNotIn("radar-floats", self.index_html)
     self.assertNotIn("cloud-puff", self.app_js)
+    self.assertNotIn("floating event clouds", self.readme)
+    self.assertNotIn("Radar Cloud Layer", self.readme)
+    self.assertNotIn("radar clouds can be popped", self.readme)
     self.assertIn("headline-track", self.index_html)
     self.assertIn("ticker-track", self.index_html)
 
   def test_readme_documents_architecture_and_test_entrypoint(self):
     self.assertIn("## Technical Summary", self.readme)
     self.assertIn("## Architecture", self.readme)
+    self.assertIn("auto-masonry card layout", self.readme)
+    self.assertIn("Sector matrix", self.readme)
+    self.assertIn("Wilder RSI", self.readme)
 
 
 if __name__ == "__main__":
