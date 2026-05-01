@@ -198,6 +198,33 @@ class HistoryCacheTests(TempDatabaseTestCase):
     self.assertEqual(rows[0]["value"], 201.1)
     self.assertEqual(rows[1]["volume"], 1200.0)
 
+  def test_build_history_does_not_treat_old_records_as_fresh_quote_edge(self):
+    old_timestamp = (datetime.now(timezone.utc) - timedelta(days=20)).isoformat()
+    fresh_timestamp = int(datetime.now(timezone.utc).timestamp())
+    server.save_historical_records(
+      "ICICIBANK.NS",
+      "1d",
+      [
+        {"timestamp": (datetime.now(timezone.utc) - timedelta(days=21)).isoformat(), "value": 1281.3},
+        {"timestamp": old_timestamp, "value": 1321.9},
+      ],
+      "Historical records",
+    )
+
+    chart = {
+      "meta": {"currency": "INR", "regularMarketPrice": 1263.4},
+      "timestamp": [fresh_timestamp - 86400, fresh_timestamp],
+      "indicators": {"quote": [{"close": [1281.0, 1263.4]}]},
+    }
+    with mock.patch.object(server, "fetch_yahoo_chart", return_value=chart), mock.patch.object(
+      server, "fetch_google_finance_history", return_value=([], {})
+    ):
+      history, meta = server.build_history("ICICIBANK.NS", "1M")
+
+    self.assertEqual(history[-1], 1263.4)
+    self.assertEqual(meta["historySource"], "Yahoo Chart")
+    self.assertNotEqual(history[-1], 1321.9)
+
   def test_save_and_load_derived_insight_round_trip(self):
     payload = {"state": "5D above 25D", "sma5": 105.0, "sma25": 100.0}
 

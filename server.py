@@ -1173,7 +1173,7 @@ def quote_freshness(as_of: str | None, session: dict | None = None, source: str 
   }
 
 
-def json_get(url: str) -> dict | list | None:
+def json_get(url: str, timeout: int = 16) -> dict | list | None:
   candidates = [url]
   if "query1.finance.yahoo.com" in url:
     candidates.append(url.replace("query1.finance.yahoo.com", "query2.finance.yahoo.com"))
@@ -1194,7 +1194,7 @@ def json_get(url: str) -> dict | list | None:
         cached = OUTBOUND_RESPONSE_CACHE.get(cache_key)
         if cached and (time.time() - cached[0]) <= ttl_seconds:
           return cached[1]
-      body = secure_open_url(candidate, timeout=16, headers=headers)
+      body = secure_open_url(candidate, timeout=timeout, headers=headers)
       if body is None:
         continue
       try:
@@ -1723,6 +1723,76 @@ def fetch_live_quotes(symbols: list[str]) -> dict[str, dict]:
   return primary
 
 
+def epoch_from_iso(value: str | None) -> int | None:
+  if not value:
+    return None
+  try:
+    timestamp = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+  except ValueError:
+    return None
+  if timestamp.tzinfo is None:
+    timestamp = timestamp.replace(tzinfo=timezone.utc)
+  return int(timestamp.timestamp())
+
+
+def fetch_history_derived_quote(symbol: str, allow_live_refresh: bool = False) -> dict:
+  history, meta = build_history(symbol, "1M", allow_live_refresh=allow_live_refresh)
+  if len(history) < 2:
+    return {}
+  fallback = fallback_meta(symbol)
+  timestamps = meta.get("timestamps") or []
+  market_time = epoch_from_iso(timestamps[-1] if timestamps else None)
+  source = meta.get("historySource") or "History-derived"
+  return {
+    "symbol": symbol,
+    "shortName": fallback["name"],
+    "longName": fallback["name"],
+    "regularMarketPrice": float(history[-1]),
+    "regularMarketPreviousClose": float(history[-2]),
+    "regularMarketChangePercent": pct_change(float(history[-1]), float(history[-2])),
+    "regularMarketVolume": int((meta.get("volumes") or [0])[-1] if meta.get("volumes") else 0),
+    "averageDailyVolume3Month": 0,
+    "currency": meta.get("currency") or fallback["currency"],
+    "exchange": meta.get("exchangeName") or fallback["exchange"],
+    "fullExchangeName": meta.get("fullExchangeName") or meta.get("exchangeName") or fallback["exchange"],
+    "marketState": "CLOSED",
+    "regularMarketTime": market_time,
+    "quoteSource": source if "history" in source.lower() else f"{source} history",
+    "historyCacheState": meta.get("historyCacheState"),
+  }
+
+
+def fetch_yahoo_chart_quote(symbol: str) -> dict:
+  for range_value, interval in (("1d", "1m"), ("5d", "1d")):
+    chart = fetch_yahoo_chart(symbol, range_value=range_value, interval=interval)
+    meta = (chart or {}).get("meta") or {}
+    price = meta.get("regularMarketPrice")
+    previous_close = meta.get("previousClose") or meta.get("chartPreviousClose")
+    if price is None:
+      continue
+    return {
+      "symbol": symbol,
+      "shortName": meta.get("shortName") or meta.get("longName") or fallback_meta(symbol)["name"],
+      "longName": meta.get("longName") or meta.get("shortName") or fallback_meta(symbol)["name"],
+      "regularMarketPrice": price,
+      "regularMarketPreviousClose": previous_close,
+      "regularMarketChangePercent": pct_change(float(price), float(previous_close)) if previous_close else 0.0,
+      "regularMarketVolume": meta.get("regularMarketVolume") or 0,
+      "averageDailyVolume3Month": 0,
+      "currency": meta.get("currency") or fallback_meta(symbol)["currency"],
+      "exchange": meta.get("exchangeName") or fallback_meta(symbol)["exchange"],
+      "fullExchangeName": meta.get("fullExchangeName") or meta.get("exchangeName") or fallback_meta(symbol)["exchange"],
+      "marketState": meta.get("marketState") or "REGULAR",
+      "regularMarketTime": meta.get("regularMarketTime"),
+      "fiftyTwoWeekLow": meta.get("fiftyTwoWeekLow"),
+      "fiftyTwoWeekHigh": meta.get("fiftyTwoWeekHigh"),
+      "dayLow": meta.get("regularMarketDayLow"),
+      "dayHigh": meta.get("regularMarketDayHigh"),
+      "quoteSource": "Yahoo Chart",
+    }
+  return {}
+
+
 def post_json(url: str, payload: dict, timeout: int = 40) -> dict | None:
   if not is_allowed_outbound_url(url):
     return None
@@ -1861,7 +1931,7 @@ def fetch_yahoo_quotes(symbols: list[str]) -> dict[str, dict]:
   if not cleaned:
     return {}
   quoted = urllib.parse.quote(",".join(cleaned))
-  payload = json_get(f"https://query1.finance.yahoo.com/v7/finance/quote?symbols={quoted}")
+  payload = json_get(f"https://query1.finance.yahoo.com/v7/finance/quote?symbols={quoted}", timeout=6)
   results = {}
   quote_response = (payload or {}).get("quoteResponse", {})
   for item in quote_response.get("result", []):
@@ -1874,7 +1944,8 @@ def fetch_yahoo_quotes(symbols: list[str]) -> dict[str, dict]:
 def fetch_yahoo_chart(symbol: str, range_value: str = "6mo", interval: str = "1d") -> dict | None:
   quoted = urllib.parse.quote(symbol)
   payload = json_get(
-    f"https://query1.finance.yahoo.com/v8/finance/chart/{quoted}?range={range_value}&interval={interval}&includePrePost=false&events=div%2Csplits"
+    f"https://query1.finance.yahoo.com/v8/finance/chart/{quoted}?range={range_value}&interval={interval}&includePrePost=false&events=div%2Csplits",
+    timeout=8,
   )
   chart = (payload or {}).get("chart", {})
   results = chart.get("result", [])
@@ -3068,6 +3139,18 @@ def history_points_from_meta(closes: list[float], meta: dict) -> list[dict]:
   ]
 
 
+def timestamp_age_seconds(value: str | None) -> float | None:
+  if not value:
+    return None
+  try:
+    timestamp = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+  except ValueError:
+    return None
+  if timestamp.tzinfo is None:
+    timestamp = timestamp.replace(tzinfo=timezone.utc)
+  return max(0.0, (datetime.now(timezone.utc) - timestamp.astimezone(timezone.utc)).total_seconds())
+
+
 def extract_yahoo_history_payload(chart: dict) -> tuple[list[float], dict]:
   quote_indicator = (((chart.get("indicators") or {}).get("quote") or [{}])[0] or {})
   raw_closes = quote_indicator.get("close") or []
@@ -3122,20 +3205,23 @@ def history_symbol_candidates(symbol: str) -> list[str]:
   return dedupe_list([candidate for candidate in candidates if candidate])
 
 
-def build_history(symbol: str, chart_range: str = "1M") -> tuple[list[float], dict]:
+def build_history(symbol: str, chart_range: str = "1M", allow_live_refresh: bool = True) -> tuple[list[float], dict]:
   normalized_range = chart_range.upper()
   interval = CHART_RANGE_CONFIG.get(normalized_range, CHART_RANGE_CONFIG["1M"])[1]
   historical_points = load_historical_records(symbol, interval, limit=380 if normalized_range == "1Y" else 40)
   if len(historical_points) >= 2:
     values = [point["value"] for point in historical_points]
     timestamps = [point["timestamp"] for point in historical_points if point.get("timestamp")]
+    latest_age = timestamp_age_seconds(timestamps[-1] if timestamps else None)
     historical_meta = {
       "timestamps": timestamps if len(timestamps) == len(values) else [],
       "historySource": historical_points[-1].get("source", "Historical records"),
-      "historyCacheState": "fresh",
-      "historyCachedAt": datetime.now(timezone.utc).isoformat(),
+      "historyCacheState": "fresh" if latest_age is not None and latest_age <= history_cache_ttl(normalized_range) else "stale",
+      "historyCachedAt": timestamps[-1] if timestamps else datetime.now(timezone.utc).isoformat(),
     }
-    if normalized_range in {"1D", "3D", "5D", "1M", "1Y"}:
+    if latest_age is not None and latest_age <= history_cache_ttl(normalized_range):
+      return values, historical_meta
+    if not allow_live_refresh:
       return values, historical_meta
   cached = load_cached_history(symbol, normalized_range)
   if cached:
@@ -3149,6 +3235,11 @@ def build_history(symbol: str, chart_range: str = "1M") -> tuple[list[float], di
       age_seconds = history_cache_ttl(normalized_range) + 1
     if len(closes) >= 2 and age_seconds <= history_cache_ttl(normalized_range):
       return closes, build_cached_meta(meta, source or "Local cache", updated_at)
+    if len(closes) >= 2 and not allow_live_refresh:
+      return closes, build_cached_meta(meta, source or "Local cache", updated_at, stale=True)
+
+  if not allow_live_refresh:
+    return [], {}
 
   range_value, interval = CHART_RANGE_CONFIG.get(normalized_range, CHART_RANGE_CONFIG["1M"])
   config = load_config()
@@ -4521,9 +4612,10 @@ def build_ticker_snapshot(symbol: str, quote: dict | None = None, stress: str = 
   signal_map = extract_signal_map(headlines, symbol, sector, industry)
   event_focus = infer_event_focus(headlines, signal_map)
   volume_ratio = float(volume or 0) / float(avg_volume or volume or 1)
-  data_source = quote.get("quoteSource") or ("Live source" if quote else "Fallback data")
+  data_source = quote.get("quoteSource") or ("Live source" if quote else (chart_meta.get("historySource") or "History-derived"))
   market_time = quote.get("regularMarketTime") or chart_meta.get("regularMarketTime")
-  as_of = datetime.fromtimestamp(market_time, tz=timezone.utc).isoformat() if market_time else None
+  chart_timestamps = chart_meta.get("timestamps") or []
+  as_of = datetime.fromtimestamp(market_time, tz=timezone.utc).isoformat() if market_time else (chart_timestamps[-1] if chart_timestamps else None)
   exchange_name = quote.get("fullExchangeName") or quote.get("exchange") or chart_meta.get("exchangeName") or fallback["exchange"]
   region_name = quote.get("exchange") or fallback["exchange"]
   market_session = build_market_session(exchange_name, region_name, quote.get("marketState") or "REGULAR", as_of)
@@ -5610,11 +5702,12 @@ def build_dashboard(symbols: list[str], active: str | None, chart_range: str = "
     quote = quote_map.get(symbol, {})
     fallback = fallback_meta(symbol)
     history = None
+    history_meta = {}
     price = quote.get("regularMarketPrice")
     previous_close = quote.get("regularMarketPreviousClose")
     data_source = quote.get("quoteSource") or ("Live source" if quote else "Fallback data")
     if price is None or previous_close is None:
-      history = build_history(symbol, chart_range)[0]
+      history, history_meta = build_history(symbol, chart_range, allow_live_refresh=False)
       if len(history) >= 2:
         price = history[-1]
         previous_close = history[-2]
@@ -5632,6 +5725,12 @@ def build_dashboard(symbols: list[str], active: str | None, chart_range: str = "
         "currency": quote.get("currency") or fallback["currency"],
         "exchange": quote.get("fullExchangeName") or quote.get("exchange") or fallback["exchange"],
         "dataSource": data_source,
+        "asOf": (history_meta.get("timestamps") or [None])[-1] if data_source == "History-derived" and history_meta.get("timestamps") else None,
+        "quoteFreshness": quote_freshness(
+          (history_meta.get("timestamps") or [None])[-1] if data_source == "History-derived" and history_meta.get("timestamps") else None,
+          build_market_session(quote.get("fullExchangeName") or quote.get("exchange") or fallback["exchange"], quote.get("exchange") or fallback["exchange"], quote.get("marketState") or "REGULAR"),
+          data_source,
+        ),
       }
     )
 
@@ -5711,11 +5810,12 @@ def build_live_quotes(symbols: list[str], active: str | None) -> dict:
     quote = quote_map.get(symbol, {})
     fallback = fallback_meta(symbol)
     history = None
+    history_meta = {}
     price = quote.get("regularMarketPrice")
     previous_close = quote.get("regularMarketPreviousClose")
     data_source = quote.get("quoteSource") or ("Live source" if quote else "Fallback data")
     if price is None or previous_close is None:
-      history = build_history(symbol)[0]
+      history, history_meta = build_history(symbol, allow_live_refresh=False)
       if len(history) >= 2:
         price = history[-1]
         previous_close = history[-2]
@@ -5724,7 +5824,8 @@ def build_live_quotes(symbols: list[str], active: str | None) -> dict:
         price = None
         previous_close = None
     market_time = quote.get("regularMarketTime")
-    as_of = datetime.fromtimestamp(market_time, tz=timezone.utc).isoformat() if market_time else None
+    history_as_of = (history_meta.get("timestamps") or [None])[-1] if history_meta.get("timestamps") else None
+    as_of = datetime.fromtimestamp(market_time, tz=timezone.utc).isoformat() if market_time else history_as_of
     session = build_market_session(
       quote.get("fullExchangeName") or quote.get("exchange") or fallback["exchange"],
       quote.get("exchange") or fallback["exchange"],

@@ -423,35 +423,6 @@ function renderRegionPanels() {
   renderComparison();
 }
 
-function setSelectedRegion(nextRegion, { persist = true } = {}) {
-  if (!nextRegion || nextRegion === state.selectedRegion) return;
-  state.selectedRegion = nextRegion;
-  if (persist) {
-    persistWatchlist();
-  }
-  renderRegionPanels();
-}
-
-function renderRegionSelector() {
-  const node = document.getElementById("region-selector");
-  if (!node) return;
-  const options = state.dashboard?.regionOptions || Object.entries(REGION_LABELS).map(([key, label]) => ({ key, label }));
-  node.innerHTML = options
-    .map(
-      (item) => `
-        <button class="region-chip ${item.key === state.selectedRegion ? "active" : ""}" type="button" data-region="${item.key}">
-          ${item.label}
-        </button>
-      `,
-    )
-    .join("");
-  node.querySelectorAll("[data-region]").forEach((button) => {
-    button.addEventListener("click", () => {
-      setSelectedRegion(button.dataset.region);
-    });
-  });
-}
-
 function liveValueClass(key, value) {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) return "";
@@ -3242,7 +3213,7 @@ function renderOverview() {
       help: "Current traded volume.",
     },
     {
-      label: `${active.asOf ? new Date(active.asOf).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "Delayed"} ${liveBadgeMarkup()}`,
+      label: `${active.asOf ? new Date(active.asOf).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "Delayed"} ${freshnessBadgeMarkup(active.quoteFreshness || {})}`,
       help: "Last quote update time.",
     },
   ];
@@ -3987,7 +3958,6 @@ function renderTopbar() {
       ? `${region.label} macro, bonds, inflation, equities, and watchlist context`
       : "US and India macro, bond, inflation, and market context";
   }
-  renderRegionSelector();
   renderGlobalMarketOverview();
 }
 

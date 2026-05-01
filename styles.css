@@ -715,8 +715,8 @@ button[type="submit"],
   display: grid;
   gap: 6px;
   justify-items: end;
-  flex: 0 1 min(720px, 48vw);
-  min-width: min(560px, 46vw);
+  flex: 0 1 auto;
+  min-width: 0;
 }
 
 .live-cluster {
@@ -749,10 +749,11 @@ button[type="submit"],
 }
 
 .global-market-overview {
-  width: min(720px, 48vw);
-  padding: 8px 10px;
+  width: 100%;
+  padding: 10px 12px;
   display: grid;
-  gap: 6px;
+  gap: 8px;
+  align-self: stretch;
   background:
     radial-gradient(circle at top right, rgba(93, 214, 255, 0.08), transparent 24%),
     linear-gradient(180deg, rgba(255, 176, 0, 0.06), rgba(255, 255, 255, 0.02)),
@@ -793,15 +794,15 @@ button[type="submit"],
 
 .global-market-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 5px;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 6px;
 }
 
 .market-clock-card {
   display: grid;
-  gap: 4px;
-  padding: 7px 8px;
-  border-radius: 10px;
+  gap: 5px;
+  padding: 8px;
+  border-radius: 12px;
   border: 1px solid rgba(255, 176, 0, 0.1);
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.015)),
@@ -3639,6 +3640,10 @@ svg {
     max-width: none;
   }
 
+  .global-market-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
   .utility-grid {
     grid-template-columns: 1fr;
   }
@@ -3894,30 +3899,6 @@ svg {
     min-width: 0;
     flex: 1 1 0;
   }
-}
-
-.region-selector {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 10px;
-}
-
-.region-chip {
-  min-height: 30px;
-  padding: 0 12px;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 176, 0, 0.12);
-  background: rgba(255, 255, 255, 0.02);
-  color: var(--muted);
-  cursor: pointer;
-  transition: background 160ms ease, border-color 160ms ease, color 160ms ease;
-}
-
-.region-chip.active {
-  color: #fff0c8;
-  border-color: rgba(255, 176, 0, 0.3);
-  background: rgba(255, 176, 0, 0.1);
 }
 
 .macro-grid {
