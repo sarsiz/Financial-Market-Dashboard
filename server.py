@@ -5141,14 +5141,38 @@ def build_influence_graph(symbol: str, summary: dict) -> dict:
 
 
 def build_stock_dossier(symbol: str, snapshot: dict, quote: dict, summary: dict, history: list[float], model_history: list[float]) -> dict:
+  def numeric_or_none(value) -> float | None:
+    try:
+      parsed = float(value)
+    except (TypeError, ValueError):
+      return None
+    return parsed if math.isfinite(parsed) else None
+
+  def activity_metric(value, label: str, source: str, *, unit: str = "percent", available: bool = True, reason: str = "") -> dict:
+    if not available or value is None:
+      return {"value": None, "label": "Unavailable", "unit": unit, "source": source, "status": reason or "Provider value unavailable"}
+    return {"value": value, "label": label, "unit": unit, "source": source, "status": "Available"}
+
   currency = snapshot.get("currency") or fallback_meta(symbol)["currency"]
   region_key = infer_region_key(symbol, snapshot.get("exchange"), currency)
   financial_data = summary.get("financialData") or {}
   statistics_block = summary.get("defaultKeyStatistics") or {}
   summary_detail = summary.get("summaryDetail") or {}
-  latest = float(snapshot.get("price") or 0)
-  previous_close = float(snapshot.get("previousClose") or quote.get("regularMarketPreviousClose") or latest)
-  avg_volume = quote.get("averageDailyVolume3Month") or quote.get("averageDailyVolume10Day") or 0
+  latest = numeric_or_none(snapshot.get("price")) or 0.0
+  previous_close_raw = snapshot.get("previousClose") or quote.get("regularMarketPreviousClose")
+  previous_close_value = numeric_or_none(previous_close_raw)
+  previous_close = previous_close_value if previous_close_value is not None else latest
+  avg_volume = quote.get("averageDailyVolume3Month") or quote.get("averageDailyVolume10Day") or None
+  avg_volume_value = numeric_or_none(avg_volume)
+  volume_value = numeric_or_none(snapshot.get("volume"))
+  two_day_available = len(history) >= 3 and numeric_or_none(history[-1]) is not None and numeric_or_none(history[-3]) not in (None, 0)
+  two_day_move = pct_change(float(history[-1]), float(history[-3])) if two_day_available else None
+  gap_available = previous_close_value not in (None, 0) and latest > 0
+  gap_percent = pct_change(latest, previous_close_value) if gap_available else None
+  volume_available = volume_value is not None and avg_volume_value not in (None, 0)
+  volume_ratio = round(volume_value / avg_volume_value, 2) if volume_available else None
+  high_52w_value = numeric_or_none(quote.get("fiftyTwoWeekHigh"))
+  breakout_label = "52W breakout" if high_52w_value and latest >= high_52w_value * 0.995 else "Range watch"
   moving_average_periods = [5, 20, 25, 50, 200]
   moving_averages = []
   for period in moving_average_periods:
@@ -5206,10 +5230,16 @@ def build_stock_dossier(symbol: str, snapshot: dict, quote: dict, summary: dict,
     "benchmarkComparison": [normalized_return_series(item["label"], item["symbol"], item["history"]) for item in benchmark_items],
     "expertConsensus": build_expert_consensus(summary, snapshot.get("recommendation") or {}),
     "unusualActivity": {
-      "volumeRatio": round(float(snapshot.get("volume") or 0) / float(avg_volume or snapshot.get("volume") or 1), 2),
-      "twoDayMove": pct_change(history[-1], history[-3]) if len(history) >= 3 and history[-3] else 0.0,
-      "gapPercent": pct_change(latest, previous_close),
-      "breakout": "52W breakout" if quote.get("fiftyTwoWeekHigh") and latest >= float(quote.get("fiftyTwoWeekHigh")) * 0.995 else "Range watch",
+      "volumeRatio": volume_ratio,
+      "twoDayMove": two_day_move,
+      "gapPercent": gap_percent,
+      "breakout": breakout_label,
+      "metrics": {
+        "twoDayMove": activity_metric(two_day_move, f"{two_day_move:+.2f}%" if two_day_move is not None else "Unavailable", "Local historical cache", available=two_day_available, reason="Need at least 3 valid history points"),
+        "gapPercent": activity_metric(gap_percent, f"{gap_percent:+.2f}%" if gap_percent is not None else "Unavailable", snapshot.get("dataSource") or "Quote provider", available=gap_available, reason="Previous close missing or zero"),
+        "volumeRatio": activity_metric(volume_ratio, f"{volume_ratio:.2f}x" if volume_ratio is not None else "Unavailable", snapshot.get("dataSource") or "Quote provider", unit="ratio", available=volume_available, reason="Average volume missing or zero"),
+        "breakout": {"value": breakout_label, "label": breakout_label, "unit": "state", "source": snapshot.get("dataSource") or "Quote provider", "status": "52W high available" if high_52w_value else "52W high unavailable; using range watch"},
+      },
     },
     "metricDrawer": [
       {"section": "Day snapshot", "metrics": ["open", "previousClose", "dayLow", "dayHigh", "volume", "averageVolume"]},

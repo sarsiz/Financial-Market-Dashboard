@@ -9,6 +9,7 @@ const STORAGE_KEYS = {
   benchmarksCollapsed: "financial-board-benchmarks-collapsed",
   region: "financial-board-region",
   dossierOrder: "financial-board-dossier-order",
+  dataFlow: "financial-board-data-flow",
   sectorMatrix: "financial-board-sector-matrix",
 };
 
@@ -143,15 +144,42 @@ const COMPACT_SECTIONS = [
 
 const DEFAULT_DOSSIER_ORDER = [
   "day",
-  "fundamentals",
   "ma",
-  "consensus",
-  "activity",
   "peers",
   "benchmarks",
-  "links",
   "metrics",
+  "activity",
+  "fundamentals",
+  "consensus",
+  "links",
 ];
+
+const DOSSIER_CARD_META = {
+  day: { title: "Day snapshot", span: 3, tier: "primary", value: "live" },
+  ma: { title: "Moving averages", span: 3, tier: "primary", value: "predictive" },
+  peers: { title: "Peer comparison", span: 6, tier: "primary", value: "context" },
+  benchmarks: { title: "Benchmark comparison", span: 8, tier: "primary", value: "context" },
+  activity: { title: "Range watch", span: 4, tier: "primary", value: "predictive" },
+  metrics: { title: "Show all metrics", span: 12, tier: "metrics", value: "reference" },
+  fundamentals: { title: "Fundamentals", span: 4, tier: "support", value: "supporting" },
+  consensus: { title: "Expert consensus", span: 4, tier: "support", value: "external" },
+  links: { title: "Influence graph", span: 4, tier: "support", value: "source" },
+};
+
+function dossierCardClass(key, extra = "") {
+  const meta = DOSSIER_CARD_META[key] || {};
+  return [
+    "dossier-card",
+    `dossier-span-${meta.span || 3}`,
+    `dossier-tier-${meta.tier || "support"}`,
+    extra,
+  ].filter(Boolean).join(" ");
+}
+
+function dossierCardBody(markup, extra = "") {
+  const bodyClass = ["dossier-card-body", extra].filter(Boolean).join(" ");
+  return `<div class="${bodyClass}">${markup}</div>`;
+}
 
 const state = {
   watchlist: loadStoredWatchlist(),
@@ -204,6 +232,7 @@ const state = {
   lastOverviewChartRefreshAt: 0,
   historyWarmupKeys: new Set(),
   dossierOrder: loadStoredDossierOrder(),
+  dataFlow: loadStoredDataFlowState(),
 };
 
 if (state.watchlist.length === 0) {
@@ -253,6 +282,32 @@ function loadStoredDossierOrder() {
 
 function persistDossierOrder() {
   localStorage.setItem(STORAGE_KEYS.dossierOrder, JSON.stringify(state.dossierOrder));
+}
+
+function loadStoredDataFlowState() {
+  const fallback = {
+    expanded: false,
+    x: null,
+    y: null,
+    tasks: {},
+    history: { jobs: [], active: [] },
+    stream: "connecting",
+    lastUpdated: "",
+    polling: false,
+    hidden: false,
+    hideTimer: null,
+  };
+  try {
+    const stored = JSON.parse(localStorage.getItem(STORAGE_KEYS.dataFlow) || "{}") || {};
+    return { ...fallback, ...stored, tasks: {}, history: { jobs: [], active: [] }, polling: false, hidden: false, hideTimer: null };
+  } catch {
+    return fallback;
+  }
+}
+
+function persistDataFlowState() {
+  const { expanded, x, y } = state.dataFlow || {};
+  localStorage.setItem(STORAGE_KEYS.dataFlow, JSON.stringify({ expanded: Boolean(expanded), x, y }));
 }
 
 function persistWatchlist() {
@@ -308,6 +363,14 @@ function setupScrollReveal() {
   });
 }
 
+function applyRevealObserver() {
+  if (!state.revealObserver) return;
+  document.querySelectorAll("[data-reveal]:not(.reveal-on-scroll)").forEach((node) => {
+    node.classList.add("reveal-on-scroll");
+    state.revealObserver.observe(node);
+  });
+}
+
 function isFreshUpdate(timestamp, minutes = 30) {
   if (!timestamp) return false;
   const parsed = new Date(timestamp);
@@ -331,12 +394,17 @@ async function api(path, options = {}) {
   const timer = window.setTimeout(() => controller.abort(), timeoutMs);
   let response;
   const url = path.startsWith("http") ? path : `${API_BASE}${path}`;
+  const taskId = startDataFlowTask(path);
   try {
     response = await fetch(url, {
       headers: { "Content-Type": "application/json", ...(options.headers || {}) },
       signal: controller.signal,
       ...options,
     });
+    finishDataFlowTask(taskId, response.ok ? "done" : "error");
+  } catch (error) {
+    finishDataFlowTask(taskId, "error");
+    throw error;
   } finally {
     window.clearTimeout(timer);
   }
@@ -765,6 +833,212 @@ function renderBenchmarkBars(items = []) {
   `;
 }
 
+function dossierValueRecord(value, formatter, source = "Provider") {
+  const unavailable = value === null || value === undefined || value === "" || value === "Unavailable" || (typeof value === "number" && !Number.isFinite(value));
+  return {
+    label: unavailable ? "Unavailable" : formatter(value),
+    available: !unavailable,
+    source,
+  };
+}
+
+function activityMetricRecord(unusual = {}, key, fallbackValue, formatter, source = "Provider") {
+  const metric = unusual.metrics?.[key];
+  if (metric && typeof metric === "object") {
+    return {
+      label: metric.label || "Unavailable",
+      available: metric.value !== null && metric.value !== undefined,
+      source: metric.source || source,
+      status: metric.status || "",
+    };
+  }
+  return dossierValueRecord(fallbackValue, formatter, source);
+}
+
+function renderDossierCard(key, { kicker = "", title = "", subtitle = "", summary = "", body = "", extraClass = "" } = {}) {
+  const meta = DOSSIER_CARD_META[key] || {};
+  const panelId = `dossier-panel-${key}`;
+  return `
+    <section id="dossier-${key}" class="${dossierCardClass(key, extraClass)}" draggable="true" data-dossier-card="${key}" data-reveal>
+      <button class="dossier-drag-handle" type="button" aria-label="Drag ${meta.title || key}">Drag</button>
+      <div class="dossier-card-title" id="${panelId}-title">
+        <span>${kicker || meta.value || "Dossier"}</span>
+        <strong>${title || meta.title || key}</strong>
+        <small>${subtitle || "Source noted"}</small>
+      </div>
+      ${summary ? `<div class="dossier-card-summary">${summary}</div>` : ""}
+      <div id="${panelId}" class="dossier-card-body" aria-labelledby="${panelId}-title">
+        ${body}
+      </div>
+    </section>
+  `;
+}
+
+function buildMetricCommandGroups(active, dossier, day, fundamentals, unusual) {
+  const currency = active.currency;
+  const maItems = dossier.movingAverages || [];
+  const provenance = dossier.sourceProvenance || [];
+  const activity = unusual.metrics || {};
+  return [
+    {
+      section: "Quote",
+      source: day.source || active.dataSource || "Quote provider",
+      metrics: [
+        ["Price", active.price, (value) => formatCurrency(value, currency)],
+        ["Open", day.open, (value) => dossierMetric(value, "currency", currency)],
+        ["Previous close", day.previousClose, (value) => dossierMetric(value, "currency", currency)],
+        ["Session", active.marketState || active.marketSession?.status, (value) => String(value)],
+      ],
+    },
+    {
+      section: "Range",
+      source: day.source || "Quote provider",
+      metrics: [
+        ["Day low", day.dayLow, (value) => dossierMetric(value, "currency", currency)],
+        ["Day high", day.dayHigh, (value) => dossierMetric(value, "currency", currency)],
+        ["52W low", day.fiftyTwoWeekLow, (value) => dossierMetric(value, "currency", currency)],
+        ["52W high", day.fiftyTwoWeekHigh, (value) => dossierMetric(value, "currency", currency)],
+        ["Breakout", activity.breakout?.label || unusual.breakout, (value) => String(value)],
+      ],
+    },
+    {
+      section: "Volume",
+      source: day.source || "Quote provider",
+      metrics: [
+        ["Volume", day.volume, (value) => dossierMetric(value, "large")],
+        ["Avg volume", day.averageVolume, (value) => dossierMetric(value, "large")],
+        ["Volume ratio", activity.volumeRatio?.label || unusual.volumeRatio, (value) => typeof value === "string" ? value : dossierMetric(value, "ratio")],
+      ],
+    },
+    {
+      section: "Fundamentals",
+      source: fundamentals.source || "Quote summary",
+      metrics: [
+        ["EPS", fundamentals.eps, (value) => dossierMetric(value)],
+        ["Revenue", fundamentals.revenue, (value) => dossierMetric(value, "large")],
+        ["Net income", fundamentals.netIncome, (value) => dossierMetric(value, "large")],
+        ["ROE", fundamentals.roe, (value) => dossierMetric(Number(value) * 100, "percent")],
+        ["Sales growth", fundamentals.salesGrowth, (value) => dossierMetric(Number(value) * 100, "percent")],
+        ["Debt/equity", fundamentals.debtToEquity, (value) => dossierMetric(value)],
+      ],
+    },
+    {
+      section: "Trend",
+      source: "Local historical cache",
+      metrics: maItems.map((item) => [item.label, item.value, (value) => `${dossierMetric(value, "currency", currency)} · ${item.state || "Unknown"}`]),
+    },
+    {
+      section: "Benchmark",
+      source: "Local historical cache",
+      metrics: (dossier.benchmarkComparison || []).map((item) => [item.label, item.returnPercent, (value) => formatPercent(value)]),
+    },
+    {
+      section: "Provenance",
+      source: "Source labels",
+      metrics: provenance.map((item) => [item.label, item.usedFor, (value) => String(value)]),
+    },
+  ];
+}
+
+function renderMetricCommandCard(groups) {
+  const records = groups.flatMap((group) =>
+    group.metrics.map(([label, value, formatter]) => {
+      const record = dossierValueRecord(value, formatter, group.source);
+      return { ...record, labelName: label, group: group.section };
+    }),
+  );
+  const available = records.filter((item) => item.available).length;
+  const missing = records.length - available;
+  const top = records.filter((item) => item.available).slice(0, 3);
+  return {
+    summary: `
+      <div class="metric-command-summary">
+        <span>${available} available</span>
+        <span>${missing} unavailable</span>
+        ${top.map((item) => `<span>${item.labelName}: ${item.label}</span>`).join("")}
+      </div>
+    `,
+    body: `
+      <label class="metric-command-search">
+        <span>Find metric</span>
+        <input class="metric-filter-input" type="search" placeholder="Search ROE, SMA 50, volume…" data-metric-filter />
+      </label>
+      <div class="metric-command-grid">
+        ${groups.map((group) => `
+          <section class="metric-command-group" data-metric-group>
+            <strong>${group.section}</strong>
+            <small>${group.source}</small>
+            <div>
+              ${group.metrics.map(([label, value, formatter]) => {
+                const record = dossierValueRecord(value, formatter, group.source);
+                return `<span class="${record.available ? "" : "is-missing"}" data-metric-pill="${`${group.section} ${label} ${record.label}`.toLowerCase()}">${label}: ${record.label}<em>${record.source}</em></span>`;
+              }).join("")}
+            </div>
+          </section>
+        `).join("")}
+      </div>
+    `,
+  };
+}
+
+function renderRangeWatchStrip(unusual) {
+  const metrics = [
+    ["2D move", activityMetricRecord(unusual, "twoDayMove", unusual.twoDayMove, formatPercent, "Local history")],
+    ["Gap", activityMetricRecord(unusual, "gapPercent", unusual.gapPercent, formatPercent, "Quote provider")],
+    ["Volume", activityMetricRecord(unusual, "volumeRatio", unusual.volumeRatio, (value) => `${Number(value).toFixed(2)}x`, "Quote provider")],
+    ["Breakout", unusual.metrics?.breakout || { label: unusual.breakout || "Range watch", available: true, source: "Quote provider", status: "" }],
+  ];
+  return `
+    <section id="dossier-activity" class="${dossierCardClass("activity", "range-watch-card")}" draggable="true" data-dossier-card="activity" data-reveal>
+      <button class="dossier-drag-handle" type="button" aria-label="Drag Range watch">Drag</button>
+      <div class="dossier-card-title">
+        <span>Range watch</span>
+        <strong>${unusual.breakout || unusual.metrics?.breakout?.label || "Range watch"}</strong>
+        <small>Gap, 2D, volume</small>
+      </div>
+      <div class="range-watch-stack">
+        ${metrics.map(([label, item]) => `
+          <article class="${item.available === false ? "is-missing" : ""}">
+            <span>${label}</span>
+            <strong>${item.label || "Unavailable"}</strong>
+            <small>${item.status || item.source || "Source noted"}</small>
+          </article>
+        `).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function renderMarketDiscovery(discoveryItems, sourceLabel) {
+  return `
+    <div class="discovery-compact-head">
+      <div><span>Market discovery</span><strong>Unusual movers</strong></div>
+      <small>${sourceLabel || "Local scan"}</small>
+    </div>
+    <div class="discovery-chip-stack">
+      ${discoveryItems.length ? discoveryItems.map((item) => `
+        <button type="button" data-symbol="${item.symbol}">
+          <strong>${item.symbol}</strong>
+          <span>${formatPercent(item.latestMove)} latest</span>
+          <span>${formatPercent(item.twoDayMove)} 2D</span>
+          <em>${item.reason} · ${item.confidence}</em>
+        </button>
+      `).join("") : `<div class="dossier-empty">No unusual watchlist movers yet.</div>`}
+    </div>
+  `;
+}
+
+function setupDossierControls(container) {
+  container.querySelectorAll("[data-metric-filter]").forEach((input) => {
+    input.addEventListener("input", () => {
+      const query = input.value.trim().toLowerCase();
+      container.querySelectorAll("[data-metric-pill]").forEach((pill) => {
+        pill.hidden = Boolean(query) && !pill.dataset.metricPill.includes(query);
+      });
+    });
+  });
+}
+
 function setupDossierDrag(container) {
   const cards = Array.from(container.querySelectorAll("[data-dossier-card]"));
   if (!cards.length) return;
@@ -847,36 +1121,49 @@ function renderStockDossier(active) {
   const roeLabel = fundamentals.roe === null || fundamentals.roe === undefined || fundamentals.roe === ""
     ? "Unavailable"
     : dossierMetric(Number(fundamentals.roe) * 100, "percent");
-  nav.innerHTML = [
-    ["Snapshot", "dossier-day"],
-    ["Averages", "dossier-ma"],
-    ["Fundamentals", "dossier-fundamentals"],
-    ["Peers", "dossier-peers"],
-    ["Benchmarks", "dossier-benchmarks"],
-    ["Links", "dossier-links"],
-  ].map(([label, target]) => `<button type="button" data-scroll-target="${target}">${label}</button>`).join("");
+  nav.innerHTML = `
+    <div class="dossier-nav-scroll">
+      ${[
+        ["Snapshot", "dossier-day"],
+        ["Averages", "dossier-ma"],
+        ["Peers", "dossier-peers"],
+        ["Benchmarks", "dossier-benchmarks"],
+        ["Metrics", "dossier-metrics"],
+        ["Range", "dossier-activity"],
+        ["Sources", "dossier-links"],
+      ].map(([label, target]) => `<button type="button" data-scroll-target="${target}">${label}</button>`).join("")}
+    </div>
+  `;
   nav.querySelectorAll("button").forEach((button) => {
+    if (!button.dataset.scrollTarget) return;
     button.addEventListener("click", () => document.getElementById(button.dataset.scrollTarget)?.scrollIntoView({ behavior: "smooth", block: "nearest" }));
   });
+  const metricCard = renderMetricCommandCard(buildMetricCommandGroups(active, dossier, day, fundamentals, unusual));
+  const benchmarkSummary = (dossier.benchmarkComparison || [])
+    .slice(0, 3)
+    .map((item) => `<span>${item.label}: ${formatPercent(item.returnPercent || 0)}</span>`)
+    .join("");
   const cards = {
-    day: `
-    <section id="dossier-day" class="dossier-card dossier-card-focus" draggable="true" data-dossier-card="day">
-      <button class="dossier-drag-handle" type="button" aria-label="Drag Day snapshot">⠿</button>
-      <div class="dossier-card-head"><span>Day snapshot</span><strong>${active.symbol}</strong><small>${day.source || "Quote provider"}</small></div>
-      <div class="dossier-metric-grid">
+    day: renderDossierCard("day", {
+      kicker: "Live quote",
+      title: active.symbol,
+      subtitle: day.source || "Quote provider",
+      summary: `<div class="dossier-context-line"><span>${formatCurrency(active.price, active.currency)}</span><span>${formatPercent(active.changePercent || 0)}</span><span>${active.marketState || "Session pending"}</span></div>`,
+      body: `<div class="dossier-metric-grid">
         <div><span>Open</span><strong>${dossierMetric(day.open, "currency", active.currency)}</strong></div>
         <div><span>Previous</span><strong>${dossierMetric(day.previousClose, "currency", active.currency)}</strong></div>
         <div><span>Day range</span><strong>${dossierMetric(day.dayLow, "currency", active.currency)} - ${dossierMetric(day.dayHigh, "currency", active.currency)}</strong></div>
         <div><span>52W range</span><strong>${dossierMetric(day.fiftyTwoWeekLow, "currency", active.currency)} - ${dossierMetric(day.fiftyTwoWeekHigh, "currency", active.currency)}</strong></div>
         <div><span>Volume</span><strong>${dossierMetric(day.volume, "large")}</strong></div>
         <div><span>Avg volume</span><strong>${dossierMetric(day.averageVolume, "large")}</strong></div>
-      </div>
-    </section>`,
-    ma: `
-    <section id="dossier-ma" class="dossier-card dossier-card-compact" draggable="true" data-dossier-card="ma">
-      <button class="dossier-drag-handle" type="button" aria-label="Drag Moving averages">⠿</button>
-      <div class="dossier-card-head"><span>Moving averages</span><strong>Trend stack</strong><small>5 / 20 / 25 / 50 / 200</small></div>
-      <div class="ma-dossier-list">
+      </div>`,
+    }),
+    ma: renderDossierCard("ma", {
+      kicker: "Trend stack",
+      title: "Moving averages",
+      subtitle: "5 / 20 / 25 / 50 / 200",
+      summary: `<div class="dossier-context-line">${(dossier.movingAverages || []).slice(0, 3).map((item) => `<span>${item.label} ${item.state || ""}</span>`).join("")}</div>`,
+      body: `<div class="ma-dossier-list">
         ${(dossier.movingAverages || []).map((item) => `
           <div>
             <span>${item.label}</span>
@@ -884,13 +1171,42 @@ function renderStockDossier(active) {
             <em class="${item.state === "Above" ? "positive" : item.state === "Below" ? "negative" : ""}">${item.state}${item.distancePercent !== null && item.distancePercent !== undefined ? ` · ${formatPercent(item.distancePercent)}` : ""}</em>
           </div>
         `).join("")}
-      </div>
-    </section>`,
-    fundamentals: `
-    <section id="dossier-fundamentals" class="dossier-card dossier-card-focus" draggable="true" data-dossier-card="fundamentals">
-      <button class="dossier-drag-handle" type="button" aria-label="Drag Fundamentals">⠿</button>
-      <div class="dossier-card-head"><span>Fundamentals</span><strong>Quality ${dossierMetric(fundamentals.scores?.quality)}</strong><small>${fundamentals.source || "Provider summary"}</small></div>
-      <div class="dossier-score-row">
+      </div>`,
+    }),
+    peers: renderDossierCard("peers", {
+      kicker: "Context",
+      title: "Peer comparison",
+      subtitle: "Market cap, P/E, return, growth, ROE",
+      summary: `<div class="dossier-context-line">${(dossier.peerComparison || []).slice(0, 3).map((peer) => `<span>${peer.symbol} · ${peer.oneYearReturn}</span>`).join("")}</div>`,
+      body: `<div class="peer-table">
+        <div class="peer-row peer-head"><span>Peer</span><span>MCap</span><span>P/E</span><span>1Y</span><span>Sales</span><span>ROE</span></div>
+        ${(dossier.peerComparison || []).map((peer) => `
+          <div class="peer-row"><strong>${peer.symbol}</strong><span>${peer.marketCap}</span><span>${peer.pe}</span><span>${peer.oneYearReturn}</span><span>${peer.salesGrowth}</span><span>${peer.roe}</span></div>
+        `).join("")}
+      </div>`,
+    }),
+    benchmarks: renderDossierCard("benchmarks", {
+      kicker: "Relative path",
+      title: "Benchmark comparison",
+      subtitle: "Normalized 1Y",
+      summary: `<div class="dossier-context-line">${benchmarkSummary || "<span>Benchmark history unavailable</span>"}</div>`,
+      body: renderBenchmarkBars(dossier.benchmarkComparison || []),
+    }),
+    metrics: renderDossierCard("metrics", {
+      kicker: "Command drawer",
+      title: "Show all metrics",
+      subtitle: "Searchable source-backed facts",
+      summary: metricCard.summary,
+      body: metricCard.body,
+      extraClass: "metric-command-card",
+    }),
+    activity: renderRangeWatchStrip(unusual),
+    fundamentals: renderDossierCard("fundamentals", {
+      kicker: "Supporting",
+      title: `Quality ${dossierMetric(fundamentals.scores?.quality)}`,
+      subtitle: fundamentals.source || "Provider summary",
+      summary: `<div class="dossier-context-line"><span>Valuation ${dossierMetric(fundamentals.scores?.valuation)}</span><span>Risk ${dossierMetric(fundamentals.scores?.risk)}</span><span>ROE ${roeLabel}</span></div>`,
+      body: `<div class="dossier-score-row">
         <span>Valuation ${dossierMetric(fundamentals.scores?.valuation)}</span>
         <span>Risk ${dossierMetric(fundamentals.scores?.risk)}</span>
       </div>
@@ -899,13 +1215,14 @@ function renderStockDossier(active) {
         <div><span>Revenue</span><strong>${dossierMetric(fundamentals.revenue, "large")}</strong></div>
         <div><span>Net income</span><strong>${dossierMetric(fundamentals.netIncome, "large")}</strong></div>
         <div><span>ROE</span><strong>${roeLabel}</strong></div>
-      </div>
-    </section>`,
-    consensus: `
-    <section class="dossier-card dossier-card-compact" draggable="true" data-dossier-card="consensus">
-      <button class="dossier-drag-handle" type="button" aria-label="Drag Expert consensus">⠿</button>
-      <div class="dossier-card-head"><span>Expert consensus</span><strong>${consensus.rating || "Unavailable"}</strong><small>${consensus.sourceLabel || "External source"}</small></div>
-      <div class="consensus-stack">
+      </div>`,
+    }),
+    consensus: renderDossierCard("consensus", {
+      kicker: "External",
+      title: consensus.rating || "Unavailable",
+      subtitle: consensus.sourceLabel || "External source",
+      summary: `<div class="dossier-context-line"><span>Buy ${consensus.buy || 0}%</span><span>Hold ${consensus.hold || 0}%</span><span>Sell ${consensus.sell || 0}%</span></div>`,
+      body: `<div class="consensus-stack">
         <span style="--w:${consensus.buy || 0}" class="positive">Buy ${consensus.buy || 0}%</span>
         <span style="--w:${consensus.hold || 0}" class="neutral">Hold ${consensus.hold || 0}%</span>
         <span style="--w:${consensus.sell || 0}" class="negative">Sell ${consensus.sell || 0}%</span>
@@ -927,73 +1244,30 @@ function renderStockDossier(active) {
           <small>${expertOutlook.note || "External sources require verification."}</small>
         </div>
       ` : ""}
-    </section>`,
-    peers: `
-    <section id="dossier-peers" class="dossier-card dossier-card-table" draggable="true" data-dossier-card="peers">
-      <button class="dossier-drag-handle" type="button" aria-label="Drag Peer comparison">⠿</button>
-      <div class="dossier-card-head"><span>Peer comparison</span><strong>5 closest peers</strong><small>Market cap, P/E, return, growth, ROE</small></div>
-      <div class="peer-table">
-        <div class="peer-row peer-head"><span>Peer</span><span>MCap</span><span>P/E</span><span>1Y</span><span>Sales</span><span>ROE</span></div>
-        ${(dossier.peerComparison || []).map((peer) => `
-          <div class="peer-row"><strong>${peer.symbol}</strong><span>${peer.marketCap}</span><span>${peer.pe}</span><span>${peer.oneYearReturn}</span><span>${peer.salesGrowth}</span><span>${peer.roe}</span></div>
-        `).join("")}
-      </div>
-    </section>`,
-    benchmarks: `
-    <section id="dossier-benchmarks" class="dossier-card dossier-card-compact" draggable="true" data-dossier-card="benchmarks">
-      <button class="dossier-drag-handle" type="button" aria-label="Drag Benchmark comparison">⠿</button>
-      <div class="dossier-card-head"><span>Benchmark comparison</span><strong>Normalized 1Y</strong><small>Selected vs region indices</small></div>
-      ${renderBenchmarkBars(dossier.benchmarkComparison || [])}
-    </section>`,
-    activity: `
-    <section id="dossier-activity" class="dossier-card dossier-card-band" draggable="true" data-dossier-card="activity">
-      <button class="dossier-drag-handle" type="button" aria-label="Drag Range watch">⠿</button>
-      <div class="dossier-card-head"><span>Range watch</span><strong>${unusual.breakout || "Range watch"}</strong><small>Gap, breakout, volume, two-day move</small></div>
-      <div class="activity-band-grid">
-        <div><span>2D move</span><strong>${formatPercent(unusual.twoDayMove || 0)}</strong></div>
-        <div><span>Gap</span><strong>${formatPercent(unusual.gapPercent || 0)}</strong></div>
-        <div><span>Volume</span><strong>${Number(unusual.volumeRatio || 0).toFixed(2)}x</strong></div>
-        <div><span>Breakout</span><strong>${unusual.breakout || "Range watch"}</strong></div>
-      </div>
-    </section>`,
-    links: `
-    <section id="dossier-links" class="dossier-card dossier-card-table" draggable="true" data-dossier-card="links">
-      <button class="dossier-drag-handle" type="button" aria-label="Drag Influence graph">⠿</button>
-      <div class="dossier-card-head"><span>Influence / ownership graph</span><strong>${(influence.nodes || []).length} nodes</strong><small>Public cited only</small></div>
-      <div class="influence-ledger">
+      `,
+    }),
+    links: renderDossierCard("links", {
+      kicker: "Sources",
+      title: `${(influence.nodes || []).length} influence nodes`,
+      subtitle: "Public cited only",
+      summary: `<div class="dossier-context-line"><span>${(influence.ledger || []).length || 1} sourced notes</span><span>${influence.policy || "Public cited relationships only"}</span></div>`,
+      body: `<div class="influence-ledger">
         ${(influence.ledger || []).length ? (influence.ledger || []).map((item) => `
           <div><strong>${item.claim}</strong><span>${item.confidence} · ${item.sourceLabel || "Source noted"}</span><p>${item.status}</p></div>
         `).join("") : `<div><strong>No sourced sensitive links yet</strong><span>${influence.policy || "Public cited only"}</span><p>Unsourced political or shell-company claims are intentionally hidden.</p></div>`}
       </div>
-    </section>`,
-    metrics: `
-    <section class="dossier-card dossier-card-table" draggable="true" data-dossier-card="metrics">
-      <button class="dossier-drag-handle" type="button" aria-label="Drag Show all metrics">⠿</button>
-      <div class="dossier-card-head"><span>Show all metrics</span><strong>Drawer preview</strong><small>Grouped source-backed values</small></div>
-      <div class="metric-drawer-preview">
-        ${(dossier.metricDrawer || []).map((section) => `<div><strong>${section.section}</strong><span>${(section.metrics || []).join(" · ")}</span></div>`).join("")}
-      </div>
-      <div class="source-provenance">${(dossier.sourceProvenance || []).map((item) => `<span>${item.label}: ${item.usedFor}</span>`).join("")}</div>
-    </section>`,
+      <div class="source-provenance">${(dossier.sourceProvenance || []).map((item) => `<span>${item.label}: ${item.usedFor}</span>`).join("")}</div>`,
+    }),
   };
   const orderedKeys = state.dossierOrder.filter((key) => cards[key]).concat(DEFAULT_DOSSIER_ORDER.filter((key) => !state.dossierOrder.includes(key)));
   node.innerHTML = orderedKeys.map((key) => cards[key]).join("");
+  setupDossierControls(node);
   setupDossierDrag(node);
-  discoveryNode.innerHTML = `
-    <div class="dossier-card-head"><span>Market discovery</span><strong>Unusual movers</strong><small>${state.dashboard?.discovery?.source || "Local scan"}</small></div>
-    <div class="discovery-strip">
-      ${discoveryItems.length ? discoveryItems.map((item) => `
-        <button type="button" data-symbol="${item.symbol}">
-          <strong>${item.symbol}</strong>
-          <span>${formatPercent(item.twoDayMove)} 2D · ${formatPercent(item.latestMove)} latest</span>
-          <em>${item.reason} · ${item.confidence}</em>
-        </button>
-      `).join("") : `<div class="dossier-empty">No unusual watchlist movers yet.</div>`}
-    </div>
-  `;
+  discoveryNode.innerHTML = renderMarketDiscovery(discoveryItems, state.dashboard?.discovery?.source || "Local scan");
   discoveryNode.querySelectorAll("button[data-symbol]").forEach((button) => {
     button.addEventListener("click", () => selectActiveTicker(button.dataset.symbol));
   });
+  applyRevealObserver();
 }
 
 function patchOverviewLiveSurface(active, forecast, { redrawChart = false } = {}) {
@@ -1463,6 +1737,208 @@ function flashStatus(message, timeout = 1600) {
       setStatus("Live now");
     }
   }, timeout);
+}
+
+function dataFlowLabel(path = "") {
+  if (path.includes("/api/dashboard")) return "Dashboard refresh";
+  if (path.includes("/api/overview")) return "Quote overview";
+  if (path.includes("/api/sectors")) return "Sector matrix";
+  if (path.includes("/api/academy")) return "Learning context";
+  if (path.includes("/api/research")) return "Research workspace";
+  if (path.includes("/api/history/warm")) return "History warmup";
+  if (path.includes("/api/events")) return "Event flow";
+  if (path.includes("/api/radar")) return "Market radar";
+  if (path.includes("/api/search")) return "Symbol search";
+  return "";
+}
+
+function startDataFlowTask(path) {
+  if (String(path).includes("/api/history/status")) return "";
+  const label = dataFlowLabel(String(path));
+  if (!label) return "";
+  const id = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  state.dataFlow.tasks[id] = { id, label, status: "running", startedAt: Date.now(), progress: 18 };
+  renderDataFlowBar();
+  return id;
+}
+
+function finishDataFlowTask(id, status = "done") {
+  if (!id || !state.dataFlow?.tasks?.[id]) return;
+  state.dataFlow.tasks[id] = {
+    ...state.dataFlow.tasks[id],
+    status,
+    progress: status === "done" ? 100 : 100,
+    finishedAt: Date.now(),
+  };
+  window.setTimeout(() => {
+    if (state.dataFlow?.tasks?.[id]?.finishedAt && Date.now() - state.dataFlow.tasks[id].finishedAt >= 2200) {
+      delete state.dataFlow.tasks[id];
+      renderDataFlowBar();
+    }
+  }, 2400);
+  renderDataFlowBar();
+}
+
+function hasActiveDataFlowWork() {
+  const taskActive = Object.values(state.dataFlow?.tasks || {}).some((task) => ["queued", "running", "connecting", "retry"].includes(String(task.status).toLowerCase()));
+  const jobActive = (state.dataFlow?.history?.active || []).length > 0;
+  return taskActive || jobActive || state.dataFlow?.stream === "connecting" || state.dataFlow?.stream === "retry";
+}
+
+function scheduleDataFlowAutoHide(delay = 4200) {
+  if (!state.dataFlow) return;
+  window.clearTimeout(state.dataFlow.hideTimer);
+  if (state.dataFlow.expanded || hasActiveDataFlowWork()) {
+    state.dataFlow.hidden = false;
+    return;
+  }
+  state.dataFlow.hideTimer = window.setTimeout(() => {
+    if (!state.dataFlow.expanded && !hasActiveDataFlowWork()) {
+      const node = document.getElementById("data-flow-bar");
+      if (node) {
+        const rect = node.getBoundingClientRect();
+        state.dataFlow.x = window.innerWidth - 46;
+        state.dataFlow.y = Math.max(12, Math.min(window.innerHeight - Math.max(72, rect.height) - 12, rect.top));
+      }
+      state.dataFlow.hidden = true;
+      renderDataFlowBar({ skipAutoHide: true });
+    }
+  }, delay);
+}
+
+function revealDataFlow({ expand = false } = {}) {
+  if (!state.dataFlow) return;
+  const node = document.getElementById("data-flow-bar");
+  if (node && Number(state.dataFlow.x) > window.innerWidth - 90) {
+    const width = Math.min(node.offsetWidth || 420, window.innerWidth - 24);
+    state.dataFlow.x = Math.max(12, window.innerWidth - width - 18);
+  }
+  state.dataFlow.hidden = false;
+  if (expand) state.dataFlow.expanded = true;
+  persistDataFlowState();
+  renderDataFlowBar();
+}
+
+function dataFlowJobs() {
+  const requestTasks = Object.values(state.dataFlow?.tasks || {});
+  const historyJobs = (state.dataFlow?.history?.jobs || []).slice(-5).map((job) => {
+    const total = Number(job.total || 0);
+    const completed = Number(job.completed || 0);
+    const progress = total ? Math.round((completed / total) * 100) : job.status === "done" ? 100 : 0;
+    return {
+      id: job.jobKey || `history-${job.queuedAt || ""}`,
+      label: `History ${job.reason || "warmup"}`,
+      status: job.status || "queued",
+      progress,
+      detail: `${completed}/${total || "?"} ranges`,
+      errors: job.errors || [],
+    };
+  });
+  const streamJob = { id: "quote-stream", label: "Quote stream", status: state.dataFlow.stream || "connecting", progress: state.dataFlow.stream === "live" ? 100 : 40, detail: state.activeTicker || "watchlist" };
+  return [streamJob, ...requestTasks, ...historyJobs];
+}
+
+function renderDataFlowBar({ skipAutoHide = false } = {}) {
+  const node = document.getElementById("data-flow-bar");
+  if (!node || !state.dataFlow) return;
+  if (state.dataFlow.x !== null && state.dataFlow.y !== null) {
+    node.style.left = `${state.dataFlow.x}px`;
+    node.style.top = `${state.dataFlow.y}px`;
+    node.style.right = "auto";
+    node.style.bottom = "auto";
+  }
+  const jobs = dataFlowJobs();
+  const activeJobs = jobs.filter((job) => ["queued", "running", "connecting", "retry"].includes(String(job.status).toLowerCase()));
+  const progress = jobs.length ? Math.round(jobs.reduce((sum, job) => sum + Number(job.progress || 0), 0) / jobs.length) : 100;
+  const primary = activeJobs[0] || jobs[0] || { label: "Data flow", status: "ready", progress: 100 };
+  node.classList.toggle("is-expanded", Boolean(state.dataFlow.expanded));
+  node.classList.toggle("is-peek", Boolean(state.dataFlow.hidden && !state.dataFlow.expanded));
+  node.innerHTML = `
+    <div class="data-flow-shell">
+      <button class="data-flow-grip" type="button" aria-label="Drag data flow bar" data-data-flow-drag>Data Flow</button>
+      <button class="data-flow-main" type="button" aria-expanded="${state.dataFlow.expanded ? "true" : "false"}" data-data-flow-toggle>
+        <span>${primary.label}</span>
+        <strong>${activeJobs.length ? primary.status : "Ready"}</strong>
+        <em>${progress}%</em>
+      </button>
+      <div class="data-flow-meter"><span style="width:${Math.max(4, progress)}%"></span></div>
+      <div class="data-flow-detail">
+        ${jobs.map((job) => `
+          <article class="data-flow-job ${String(job.status).toLowerCase()}">
+            <span>${job.label}</span>
+            <strong>${job.status}</strong>
+            <em>${job.detail || `${job.progress || 0}%`}</em>
+            ${(job.errors || []).slice(0, 1).map((error) => `<small>${error}</small>`).join("")}
+          </article>
+        `).join("")}
+        <small>Updated ${state.dataFlow.lastUpdated ? new Date(state.dataFlow.lastUpdated).toLocaleTimeString() : "just now"}</small>
+      </div>
+    </div>
+  `;
+  bindDataFlowBar();
+  if (!skipAutoHide) scheduleDataFlowAutoHide(activeJobs.length ? 7200 : 4200);
+}
+
+function bindDataFlowBar() {
+  const node = document.getElementById("data-flow-bar");
+  if (!node || node.dataset.bound === "1") return;
+  node.dataset.bound = "1";
+  node.addEventListener("click", (event) => {
+    const target = event.target;
+    if (state.dataFlow.hidden) {
+      revealDataFlow({ expand: true });
+      return;
+    }
+    if (!(target instanceof Element) || !target.closest("[data-data-flow-toggle]")) return;
+    state.dataFlow.expanded = !state.dataFlow.expanded;
+    state.dataFlow.hidden = false;
+    persistDataFlowState();
+    renderDataFlowBar();
+  });
+  node.addEventListener("mouseenter", () => {
+    if (state.dataFlow.hidden) revealDataFlow();
+  });
+  let dragOffset = null;
+  node.addEventListener("pointerdown", (event) => {
+    const target = event.target;
+    if (!(target instanceof Element) || !target.closest("[data-data-flow-drag]")) return;
+    state.dataFlow.hidden = false;
+    const rect = node.getBoundingClientRect();
+    dragOffset = { x: event.clientX - rect.left, y: event.clientY - rect.top };
+    node.setPointerCapture(event.pointerId);
+  });
+  node.addEventListener("pointermove", (event) => {
+    if (!dragOffset) return;
+    const width = node.offsetWidth || 280;
+    const height = node.offsetHeight || 80;
+    state.dataFlow.x = Math.max(12, Math.min(window.innerWidth - width - 12, event.clientX - dragOffset.x));
+    state.dataFlow.y = Math.max(12, Math.min(window.innerHeight - height - 12, event.clientY - dragOffset.y));
+    node.style.left = `${state.dataFlow.x}px`;
+    node.style.top = `${state.dataFlow.y}px`;
+    node.style.right = "auto";
+    node.style.bottom = "auto";
+  });
+  node.addEventListener("pointerup", () => {
+    if (!dragOffset) return;
+    dragOffset = null;
+    persistDataFlowState();
+  });
+}
+
+async function pollHistoryProgress() {
+  if (state.dataFlow.polling) return;
+  state.dataFlow.polling = true;
+  try {
+    const payload = await api("/api/history/status", { timeoutMs: 5000 });
+    state.dataFlow.history = payload || { jobs: [], active: [] };
+    state.dataFlow.lastUpdated = new Date().toISOString();
+    renderDataFlowBar();
+  } catch (error) {
+    state.dataFlow.stream = state.dataFlow.stream || "retry";
+    logNonAbort(error);
+  } finally {
+    state.dataFlow.polling = false;
+  }
 }
 
 function setBootMessage(message, detail = "") {
@@ -4085,15 +4561,27 @@ function startQuoteStream() {
   const active = encodeURIComponent(state.activeTicker || "");
   const stream = new EventSource(`/api/stream?symbols=${symbols}&active=${active}`);
   state.quoteStream = stream;
+  state.dataFlow.stream = "connecting";
+  renderDataFlowBar();
+  stream.addEventListener("open", () => {
+    state.dataFlow.stream = "live";
+    state.dataFlow.lastUpdated = new Date().toISOString();
+    renderDataFlowBar();
+  });
   stream.addEventListener("quote", (event) => {
     try {
       const payload = JSON.parse(event.data);
+      state.dataFlow.stream = "live";
+      state.dataFlow.lastUpdated = new Date().toISOString();
       applyLiveQuoteUpdate(payload);
+      renderDataFlowBar();
     } catch (error) {
       logNonAbort(error);
     }
   });
   stream.onerror = () => {
+    state.dataFlow.stream = "retry";
+    renderDataFlowBar();
     setStatus("Stream retry");
   };
 }
@@ -4240,6 +4728,8 @@ function scheduleHistoryWarmup({ immediate = false } = {}) {
       method: "POST",
       timeoutMs: 6000,
       body: JSON.stringify({ symbols, ranges }),
+    }).then(() => {
+      pollHistoryProgress();
     }).catch((error) => {
       state.historyWarmupKeys.delete(key);
       logNonAbort(error);
@@ -4848,6 +5338,9 @@ function bindEvents() {
 async function init() {
   document.body.classList.add("app-booting");
   setStatus("Loading data");
+  renderDataFlowBar();
+  pollHistoryProgress();
+  window.setInterval(pollHistoryProgress, 3500);
   bindEvents();
   initSectorMatrix();
   initSectorStrip();

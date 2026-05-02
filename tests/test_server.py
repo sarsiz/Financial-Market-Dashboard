@@ -514,6 +514,34 @@ class ForecastAndLabTests(unittest.TestCase):
     self.assertIn("expertConsensus", dossier)
     self.assertTrue(dossier["influenceGraph"]["ledger"])
 
+  def test_stock_dossier_unusual_activity_uses_documented_fallbacks(self):
+    snapshot = {
+      "symbol": "TEST",
+      "exchange": "NASDAQ",
+      "currency": "USD",
+      "dataSource": "Unit quote",
+      "price": 100,
+      "previousClose": 0,
+      "volume": 1000,
+      "forecast": {"mae": 1.0},
+    }
+    quote = {"regularMarketOpen": 99}
+    with mock.patch.object(server, "build_peer_comparison", return_value=[]), mock.patch.object(
+      server, "benchmark_symbols_for_region", return_value=[]
+    ), mock.patch.object(server, "build_influence_graph", return_value={"nodes": [], "edges": [], "ledger": []}):
+      dossier = server.build_stock_dossier("TEST", snapshot, quote, {}, [100], [100])
+
+    unusual = dossier["unusualActivity"]
+    self.assertIsNone(unusual["twoDayMove"])
+    self.assertIsNone(unusual["gapPercent"])
+    self.assertIsNone(unusual["volumeRatio"])
+    self.assertEqual(unusual["breakout"], "Range watch")
+    self.assertEqual(unusual["metrics"]["twoDayMove"]["label"], "Unavailable")
+    self.assertIn("Need at least 3", unusual["metrics"]["twoDayMove"]["status"])
+    self.assertIn("Previous close missing", unusual["metrics"]["gapPercent"]["status"])
+    self.assertIn("Average volume missing", unusual["metrics"]["volumeRatio"]["status"])
+    self.assertIn("52W high unavailable", unusual["metrics"]["breakout"]["status"])
+
   def test_influence_graph_omits_unsourced_sensitive_claims(self):
     graph = server.build_influence_graph("TEST", {})
 
