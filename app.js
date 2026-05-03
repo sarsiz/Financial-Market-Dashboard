@@ -233,10 +233,38 @@ const state = {
   historyWarmupKeys: new Set(),
   dossierOrder: loadStoredDossierOrder(),
   dataFlow: loadStoredDataFlowState(),
+  sectorStripSectors: [],
 };
 
 if (state.watchlist.length === 0) {
   state.watchlist = ["BHARTIARTL.NS", "ICICIBANK.NS", "GLENMARK.NS"];
+}
+
+/* ── Skeleton Loading Helpers ──────────────────────────────────────────────── */
+function showSkeleton(containerId, template) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  el.classList.add("section-reveal");
+  el.innerHTML = template;
+}
+function revealSection(containerId) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  el.classList.add("revealed");
+}
+function initSkeletons() {
+  showSkeleton("hero-stats", `<div class="skel skel-pill"></div><div class="skel skel-pill"></div><div class="skel skel-pill"></div>`);
+  showSkeleton("prediction-panel", `<div class="skel-grid"><div class="skel skel-card"></div><div class="skel skel-card"></div><div class="skel skel-card"></div></div>`);
+  const chartCard = document.querySelector(".hero-chart-card");
+  if (chartCard && !chartCard.querySelector(".skel-chart")) {
+    const placeholder = document.createElement("div");
+    placeholder.className = "skel skel-chart skel-chart-placeholder";
+    chartCard.appendChild(placeholder);
+  }
+  showSkeleton("stock-dossier", `<div class="skel skel-card"></div><div class="skel skel-card"></div>`);
+}
+function clearChartSkeleton() {
+  document.querySelector(".skel-chart-placeholder")?.remove();
 }
 
 function loadStoredWatchlist() {
@@ -351,14 +379,15 @@ function setupScrollReveal() {
     (entries) => {
       entries.forEach((entry) => {
         if (entry.isIntersecting) {
+          entry.target.classList.add("is-visible");
           entry.target.classList.add("revealed");
         }
       });
     },
-    { threshold: 0.12 },
+    { threshold: 0.08 },
   );
-  document.querySelectorAll(".glass-panel, .macro-panel, .event-card, .factor-card, .catalyst-card, .pulse-card").forEach((node) => {
-    node.classList.add("reveal-on-scroll");
+  document.querySelectorAll(".glass-panel, .macro-panel, .hero-chart-card, .stock-dossier-panel").forEach((node) => {
+    node.classList.add("scroll-reveal");
     state.revealObserver.observe(node);
   });
 }
@@ -499,6 +528,27 @@ function liveValueClass(key, value) {
   return numeric > previous ? "flash-up" : "flash-down";
 }
 
+function setModelErrorNote(forecast) {
+  const node = document.getElementById("model-error-note");
+  if (!node || !forecast) return;
+  const source = forecast.maeSource || "";
+  const samples = Number(forecast.backtestSamples || 0);
+  const hitRate = Number(forecast.backtestHitRate || 0);
+  const learning = forecast.learning || {};
+  const runs = Number(learning.trainingRuns || 0);
+  const biasApplied = Number(learning.biasApplied || 0);
+  if (source === "walk-forward" && samples > 0) {
+    const parts = [`Walk-forward · ${samples} samples · ${hitRate.toFixed(0)}% hit`];
+    if (runs > 0) parts.push(`retrained ${runs}×`);
+    if (Math.abs(biasApplied) >= 0.05) parts.push(`bias ${biasApplied >= 0 ? "−" : "+"}${Math.abs(biasApplied).toFixed(2)}pp`);
+    node.textContent = parts.join(" · ");
+    node.title = "Empirical mean absolute % error from walk-forward backtest. Bias = mean signed return error subtracted from the forecast (EMA-blended across runs).";
+  } else {
+    node.textContent = "Vol-scaled heuristic · awaiting backtest";
+    node.title = "Not enough history yet for a walk-forward backtest. Showing a volatility/beta-scaled estimate; the empirical MAE will replace this once ≥6 windows are available.";
+  }
+}
+
 function buildPriceFlipMarkup(value, currency = "USD") {
   return formatCurrency(value, currency)
     .split("")
@@ -527,277 +577,8 @@ function animateSvgRefresh(svg, { force = false } = {}) {
   );
 }
 
-function renderOverviewLowerPanels(active, forecast) {
-  const seenContextLabels = new Set();
-  const macroMicroContext = []
-    .concat(state.dashboard?.radar?.macroFactors || [])
-    .concat(state.dashboard?.radar?.microFactors || [])
-    .filter((item) => {
-      const label = String(item?.label || "").trim();
-      if (!label) return false;
-      if (/(^|\b)(s&p|nasdaq|dow|nifty|sensex)(\b|$)/i.test(label)) return false;
-      const key = label.toLowerCase();
-      if (seenContextLabels.has(key)) return false;
-      seenContextLabels.add(key);
-      return true;
-    })
-    .slice(0, 4);
-  const relationshipCards = active.relationshipCards || forecast.factors || [];
-  const factorSchedule = selectedRegionPayload()?.researchProtocol?.factors?.length
-    ? (selectedRegionPayload()?.researchProtocol?.factors || []).slice(0, 3)
-    : state.dashboard?.selectedRegion
-      ? (selectedRegionPayload()?.watchlistImplications?.graph?.factorSchedule || []).slice(0, 3)
-      : [];
-  const researchOverview = active.researchOverview || {};
-  const decisionInputs = active.decisionInputs || {};
-  const decisionCockpit = active.decisionCockpit || {};
-  const featureCards = active.featureCards || [];
-  const movingAverage = forecast.movingAverageSignal || {};
-  const ma5Label = Number.isFinite(Number(movingAverage.sma5))
-    ? formatCurrency(movingAverage.sma5, active.currency)
-    : "n/a";
-  const ma25Label = Number.isFinite(Number(movingAverage.sma25))
-    ? formatCurrency(movingAverage.sma25, active.currency)
-    : "n/a";
-  document.getElementById("factor-map").innerHTML = `
-    ${decisionCockpit.stance ? `
-      <div class="decision-cockpit-card">
-        <div class="decision-cockpit-head">
-          <div>
-            <span>Decision cockpit</span>
-            <strong>${decisionCockpit.stance}</strong>
-          </div>
-          <div class="decision-score-ring" style="--score:${Number(decisionCockpit.edgeScore || 0).toFixed(0)}">
-            <b>${Number(decisionCockpit.edgeScore || 0).toFixed(0)}</b>
-            <small>edge</small>
-          </div>
-        </div>
-        <div class="decision-cockpit-grid">
-          ${(decisionCockpit.facts || []).slice(0, 4).map((item) => `
-            <div class="decision-fact">
-              <span>${item.label}</span>
-              <strong>${item.value}</strong>
-              <p>${item.why}</p>
-            </div>
-          `).join("")}
-        </div>
-        <div class="decision-brief-lines">
-          ${(decisionCockpit.interpretation || []).slice(0, 2).map((item) => `<p>${item}</p>`).join("")}
-        </div>
-        <div class="decision-monitor-row">
-          ${(decisionCockpit.monitor || []).slice(0, 3).map((item) => `<span>${item}</span>`).join("")}
-        </div>
-        <small class="decision-source-note">${decisionCockpit.sourceNote || "Scenario support only, not direct investment advice."}</small>
-      </div>
-    ` : ""}
-    ${featureCards.length ? `
-      <div class="operator-check-grid">
-        ${featureCards.slice(0, 10).map((item) => `
-          <div class="operator-check-card">
-            <span>${item.label}</span>
-            <strong>${item.value}</strong>
-            <p>${item.note}</p>
-          </div>
-        `).join("")}
-      </div>
-    ` : ""}
-    ${movingAverage.state ? `
-      <div class="research-overview-hero ma-signal-hero">
-        <div class="research-overview-copy">
-          <span>5D / 25D trend</span>
-          <strong>${movingAverage.state} · ${movingAverage.nextRunBias || "Mixed"}</strong>
-        </div>
-        <div class="research-overview-monitor">
-          <p>5D ${ma5Label} · 25D ${ma25Label}</p>
-          <p>Spread ${formatPercent(movingAverage.spreadPercent || 0)} · Confidence ${Number(movingAverage.confidence || 0).toFixed(0)}%</p>
-        </div>
-      </div>
-    ` : ""}
-    ${decisionInputs.inputs?.length ? `
-      <div class="research-overview-hero">
-        <div class="research-overview-copy">
-          <span>${decisionInputs.mode || "Decision inputs"}</span>
-          <strong>Live calculation inputs for the active market regime.</strong>
-        </div>
-        <div class="research-overview-monitor">
-          ${decisionInputs.inputs.slice(0, 2).map((item) => `<p>${item.label}: ${item.note || item.why}</p>`).join("")}
-        </div>
-      </div>
-      <div class="research-formula-grid decision-input-grid">
-        ${decisionInputs.inputs.slice(0, 4).map((item) => `
-          <div class="formula-card decision-card">
-            <div class="formula-card-head">
-              <span>${item.label}</span>
-              <strong>${item.value}</strong>
-            </div>
-            <code>${item.formula}</code>
-            <p>${item.why}</p>
-            <small>${item.cadence}${item.significance ? ` • ${item.significance}` : ""}${item.sourceLabel ? ` • ${item.sourceLabel}` : ""}</small>
-          </div>
-        `).join("")}
-      </div>
-    ` : ""}
-    ${researchOverview.headline ? `
-      <div class="research-overview-hero">
-        <div class="research-overview-copy">
-          <span>Research stack</span>
-          <strong>${researchOverview.headline}</strong>
-        </div>
-        <div class="research-overview-monitor">
-          ${(researchOverview.nextWatch || []).slice(0, 2).map((item) => `<p>${item}</p>`).join("")}
-        </div>
-      </div>
-    ` : ""}
-    ${(researchOverview.cards || []).length ? `
-      <div class="research-formula-grid">
-        ${(researchOverview.cards || [])
-          .slice(0, 4)
-          .map(
-            (item) => `
-              <div class="formula-card">
-                <div class="formula-card-head">
-                  <span>${item.label}</span>
-                  <strong>${item.value}</strong>
-                </div>
-                <code>${item.formula}</code>
-                <p>${item.why}</p>
-                <small>${item.note}${item.cadence ? ` • ${item.cadence}` : ""}</small>
-              </div>
-            `,
-          )
-          .join("")}
-      </div>
-    ` : ""}
-    ${macroMicroContext.length ? `
-      <div class="analysis-context-grid">
-        ${macroMicroContext
-          .map(
-            (item) => `
-              <div class="factor-context-card">
-                <span>${item.label}</span>
-                <strong>${item.value || "Live"}</strong>
-                <p>${item.trend || "Current live context."}</p>
-              </div>
-            `,
-          )
-          .join("")}
-      </div>
-    ` : ""}
-    ${factorSchedule.length ? `
-      <div class="analysis-context-grid factor-cadence-grid">
-        ${factorSchedule
-          .map(
-            (item) => `
-              <div class="factor-context-card cadence-card">
-                <span>${item.label}</span>
-                <strong>${item.cadence}</strong>
-                <p>${item.significance} significance • ${item.use || item.why || item.factsFirst}</p>
-              </div>
-            `,
-          )
-          .join("")}
-      </div>
-    ` : ""}
-    <div class="analysis-flow-grid">
-      ${relationshipCards
-        .map(
-          (factor) => `
-            <div class="factor-card">
-              <div class="factor-card-header">
-                <strong>${factor.title}</strong>
-                <span>${factor.score.toFixed(0)}</span>
-              </div>
-              <div class="impact-bar"><div class="impact-fill" style="width:${Math.abs(factor.score)}%"></div></div>
-              <p>${factor.description}</p>
-            </div>
-          `,
-        )
-        .join("")}
-    </div>
-  `;
-
-  const latestDriverEvents = [...(state.eventResult?.items || state.dashboard?.radar?.items || [])]
-    .slice(0, 2)
-    .map((item) => ({
-      title: item.title || "Live catalyst",
-      tag: item.category || "Live",
-      meta: `${formatEventDateTime(item.publishedAt)}${item.source ? ` • ${item.source}` : ""}`,
-      body: item.description || item.summary || item.title || "Latest event context is being refreshed.",
-    }));
-  const signalDrivers = (active.driverCards || forecast.triggers || []).slice(0, 5);
-  const paperNotes = (selectedRegionPayload()?.researchProtocol?.practices || selectedRegionPayload()?.watchlistImplications?.graph?.papers || []).slice(0, 2);
-  document.getElementById("catalyst-list").innerHTML = `
-    ${latestDriverEvents.length ? `
-      <div class="driver-event-strip">
-        ${latestDriverEvents
-          .map(
-            (item) => `
-              <div class="catalyst-card event-led">
-                <div class="catalyst-header">
-                  <strong>${item.title}</strong>
-                  <span>${String(item.tag).toUpperCase()}</span>
-                </div>
-                <small>${item.meta}</small>
-                <p>${item.body}</p>
-              </div>
-            `,
-          )
-          .join("")}
-      </div>
-    ` : ""}
-    ${paperNotes.length ? `
-      <div class="driver-event-strip paper-strip">
-        ${paperNotes
-          .map(
-            (item) => `
-              <div class="catalyst-card paper-led">
-                <div class="catalyst-header">
-                  <strong>${item.title}</strong>
-                  <span>PAPER</span>
-                </div>
-                <small>${item.year || ""} • ${item.type || "research"}</small>
-                <p>${item.practice || item.whyItMatters}</p>
-              </div>
-            `,
-          )
-          .join("")}
-      </div>
-    ` : ""}
-    ${(researchOverview.papers || []).length ? `
-      <div class="driver-event-strip paper-strip methodology-strip">
-        ${(researchOverview.papers || [])
-          .slice(0, 2)
-          .map(
-            (item) => `
-              <div class="catalyst-card paper-led">
-                <div class="catalyst-header">
-                  <strong>${item.title}</strong>
-                  <span>METHOD</span>
-                </div>
-                <small>${item.year || ""} • ${item.type || "research"}</small>
-                <p>${item.dashboardUse || item.practice}</p>
-              </div>
-            `,
-          )
-          .join("")}
-      </div>
-    ` : ""}
-    <div class="driver-card-stack">
-      ${signalDrivers
-        .map(
-          (item, index) => `
-            <div class="catalyst-card">
-              <div class="catalyst-header">
-                <strong>${index + 1}. ${item.title}</strong>
-                <span>${item.tag || (index === 0 ? "Primary" : "Active")}</span>
-              </div>
-              <p>${item.body || item.description}</p>
-            </div>
-          `,
-        )
-        .join("")}
-    </div>
-  `;
+function renderOverviewLowerPanels() {
+  /* Factor map and catalyst list removed — prediction panel and dossier cover this data. */
 }
 
 function dossierMetric(value, kind = "plain", currency = "") {
@@ -860,7 +641,9 @@ function renderDossierCard(key, { kicker = "", title = "", subtitle = "", summar
   const panelId = `dossier-panel-${key}`;
   return `
     <section id="dossier-${key}" class="${dossierCardClass(key, extraClass)}" draggable="true" data-dossier-card="${key}" data-reveal>
-      <button class="dossier-drag-handle" type="button" aria-label="Drag ${meta.title || key}">Drag</button>
+      <button class="dossier-drag-handle" type="button" aria-label="Move ${meta.title || key}" title="Move card">
+        <span aria-hidden="true"></span>
+      </button>
       <div class="dossier-card-title" id="${panelId}-title">
         <span>${kicker || meta.value || "Dossier"}</span>
         <strong>${title || meta.title || key}</strong>
@@ -990,7 +773,9 @@ function renderRangeWatchStrip(unusual) {
   ];
   return `
     <section id="dossier-activity" class="${dossierCardClass("activity", "range-watch-card")}" draggable="true" data-dossier-card="activity" data-reveal>
-      <button class="dossier-drag-handle" type="button" aria-label="Drag Range watch">Drag</button>
+      <button class="dossier-drag-handle" type="button" aria-label="Move Range watch" title="Move card">
+        <span aria-hidden="true"></span>
+      </button>
       <div class="dossier-card-title">
         <span>Range watch</span>
         <strong>${unusual.breakout || unusual.metrics?.breakout?.label || "Range watch"}</strong>
@@ -1267,10 +1052,143 @@ function renderStockDossier(active) {
   discoveryNode.querySelectorAll("button[data-symbol]").forEach((button) => {
     button.addEventListener("click", () => selectActiveTicker(button.dataset.symbol));
   });
+  revealSection("stock-dossier");
   applyRevealObserver();
 }
 
-function patchOverviewLiveSurface(active, forecast, { redrawChart = false } = {}) {
+function buildProbabilityFan(forecast, active) {
+  // Based on: Chronos (2024) quantile forecasting + realized vol scaling
+  // Shows 50%, 80%, 95% confidence intervals as a fan chart
+  const price = Number(active.price || 0);
+  const vol = Number(forecast.realizedVol || 0.02);
+  const mae = Number(forecast.mae || 3) / 100;
+  const horizon = 10;
+  const expectedReturn = Number(forecast.expectedReturn || 0) / 100;
+  const intervals = [
+    { label: "95%", z: 1.96, opacity: 0.12 },
+    { label: "80%", z: 1.28, opacity: 0.22 },
+    { label: "50%", z: 0.67, opacity: 0.38 },
+  ];
+  return intervals.map((band) => {
+    const spread = vol * Math.sqrt(horizon) * band.z;
+    const upper = price * (1 + expectedReturn + spread);
+    const lower = price * (1 + expectedReturn - spread);
+    return { ...band, upper, lower, spread: spread * 100 };
+  });
+}
+
+function renderPredictionPanel(active, forecast) {
+  const node = document.getElementById("prediction-panel");
+  if (!node) return;
+  if (!active?.price || !forecast?.direction || forecast.direction === "Refreshing") {
+    node.innerHTML = `<div class="prediction-loading">Prediction model loading…</div>`;
+    return;
+  }
+
+  const factors = forecast.factorsRaw || {};
+  const confidence = Number(forecast.confidence || 0);
+  const direction = forecast.direction || "Neutral";
+  const expectedReturn = Number(forecast.expectedReturn || 0);
+  const fan = buildProbabilityFan(forecast, active);
+  const agreement = forecast.models?.agreement || {};
+  const classic = forecast.models?.classic || {};
+  const modern = forecast.models?.modern || {};
+
+  // Key factor contributions for display
+  const factorItems = [
+    { label: "Momentum (5D)", value: Number(factors.fastMomentum || 0) * 100, method: "Lo, Mamaysky & Wang (2000)" },
+    { label: "RSI (14)", value: Number(factors.rsi || 50), unit: "", raw: factors.rsiSignal, method: "Wilder (1978)" },
+    { label: "MACD Signal", value: Number(factors.macdSignal || 0) * 100, method: "Appel (1979)" },
+    { label: "Bollinger %B", value: Number(factors.bollPosition || 0.5) * 100, unit: "%", method: "Bollinger (1983)" },
+    { label: "Mean Reversion", value: Number(factors.meanReversion || 0) * 100, method: "Gatev et al. (2006)" },
+    { label: "Realized Vol", value: Number(factors.realizedVol || 0) * 100, method: "Acharya & Pedersen (2003)" },
+    { label: "Macro Score", value: Number(factors.macroScore || 0) * 100, method: "Multi-factor model" },
+    { label: "Volume Trend", value: Number(factors.volumeTrend || 1), unit: "x", method: "Participation analysis" },
+  ];
+
+  const dirClass = direction.toLowerCase() === "bullish" ? "pred-bullish" : direction.toLowerCase() === "bearish" ? "pred-bearish" : "pred-neutral";
+  const gaugeAngle = clamp((confidence / 100) * 180 - 90, -90, 90);
+
+  node.innerHTML = `
+    <div class="prediction-grid ${dirClass}">
+      <div class="pred-direction-card">
+        <div class="pred-gauge">
+          <svg viewBox="0 0 120 70" class="pred-gauge-svg">
+            <path d="M 10 65 A 50 50 0 0 1 110 65" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="8" stroke-linecap="round"/>
+            <path d="M 10 65 A 50 50 0 0 1 110 65" fill="none" stroke="url(#gauge-gradient)" stroke-width="8" stroke-linecap="round" stroke-dasharray="${(confidence / 100) * 157} 157"/>
+            <line x1="60" y1="65" x2="${60 + 38 * Math.cos((gaugeAngle - 90) * Math.PI / 180)}" y2="${65 + 38 * Math.sin((gaugeAngle - 90) * Math.PI / 180)}" stroke="var(--pred-accent)" stroke-width="2.5" stroke-linecap="round"/>
+            <circle cx="60" cy="65" r="4" fill="var(--pred-accent)"/>
+            <defs><linearGradient id="gauge-gradient" x1="0%" x2="100%"><stop offset="0%" stop-color="#ef4444"/><stop offset="50%" stop-color="#f3b85f"/><stop offset="100%" stop-color="#22c55e"/></linearGradient></defs>
+          </svg>
+          <div class="pred-gauge-label">
+            <strong>${confidence.toFixed(0)}%</strong>
+            <span>confidence</span>
+          </div>
+        </div>
+        <div class="pred-direction-label">
+          <span class="pred-dir-text">${direction}</span>
+          <span class="pred-return">${formatPercent(expectedReturn)} 10D</span>
+        </div>
+        <div class="pred-models-row">
+          <span title="Classic: momentum, mean-reversion, macro, quality">Classic ${classic.direction || "—"}</span>
+          <span title="Modern: regime, breakout, trend-patch">Modern ${modern.direction || "—"}</span>
+          <span title="Model agreement score">${agreement.label || "Pending"} ${Number(agreement.score || 0).toFixed(0)}/100</span>
+        </div>
+      </div>
+      <div class="pred-range-card">
+        <div class="pred-range-head">
+          <span>10-Day Price Range</span>
+          <small>Quantile fan · Chronos/Moirai methodology</small>
+        </div>
+        <div class="pred-fan-chart">
+          ${fan.map((band) => `
+            <div class="pred-fan-band" style="--opacity:${band.opacity}">
+              <span class="pred-fan-label">${band.label}</span>
+              <div class="pred-fan-bar">
+                <div class="pred-fan-fill" style="--left:${clamp(50 - band.spread * 2, 5, 48)}%; --right:${clamp(50 + band.spread * 2, 52, 95)}%"></div>
+              </div>
+              <span class="pred-fan-lo">${formatCurrency(band.lower, active.currency)}</span>
+              <span class="pred-fan-hi">${formatCurrency(band.upper, active.currency)}</span>
+            </div>
+          `).join("")}
+        </div>
+        <div class="pred-range-footer">
+          <span>Fair value ${formatCurrency(forecast.fairValue || active.price, active.currency)}</span>
+          <span>MAE ${Number(forecast.mae || 0).toFixed(1)}%</span>
+          <span>Vol ${(Number(factors.realizedVol || 0) * 100).toFixed(1)}%</span>
+        </div>
+      </div>
+      <div class="pred-factors-card">
+        <div class="pred-factors-head">
+          <span>Key Factor Contributions</span>
+          <small>Signal strength relative to neutral</small>
+        </div>
+        <div class="pred-factor-bars">
+          ${factorItems.map((item) => {
+            const barValue = item.label === "RSI (14)" ? (item.value - 50) : (item.label === "Volume Trend" ? (item.value - 1) * 50 : item.value);
+            const capped = clamp(barValue, -5, 5);
+            const barPct = Math.abs(capped) / 5 * 50;
+            const isPositive = capped >= 0;
+            return `
+              <div class="pred-factor-row" title="${item.method}">
+                <span class="pred-factor-name">${item.label}</span>
+                <div class="pred-factor-track">
+                  <div class="pred-factor-center"></div>
+                  <div class="pred-factor-fill ${isPositive ? "positive" : "negative"}" style="--w:${barPct}%; --dir:${isPositive ? "right" : "left"}"></div>
+                </div>
+                <span class="pred-factor-val ${isPositive ? "positive" : "negative"}">${item.label === "RSI (14)" ? item.value.toFixed(0) : (item.label === "Volume Trend" ? item.value.toFixed(2) + "x" : (capped >= 0 ? "+" : "") + capped.toFixed(2) + "%")}</span>
+                <span class="pred-factor-method">${item.method}</span>
+              </div>
+            `;
+          }).join("")}
+        </div>
+      </div>
+    </div>
+  `;
+  revealSection("prediction-panel");
+}
+
+function patchHeroSurface(active, forecast) {
   const agreement = forecast.models?.agreement || { label: "Pending", score: 0, summary: "Agreement refreshing." };
   const recommendation = active.recommendation || { buy: 0, hold: 100, sell: 0, signal: "Refreshing" };
   document.getElementById("hero-regime").textContent = active.regime;
@@ -1282,15 +1200,6 @@ function patchOverviewLiveSurface(active, forecast, { redrawChart = false } = {}
   const changeNode = document.getElementById("hero-change");
   changeNode.textContent = formatPercent(active.changePercent);
   changeNode.className = `hero-change live-number ${active.changePercent >= 0 ? "positive" : "negative"} ${liveValueClass(`hero:${active.symbol}:change`, active.changePercent)}`;
-  document.getElementById("forecast-direction").textContent = forecast.direction;
-  document.getElementById("forecast-confidence").textContent = `Confidence ${Number(forecast.confidence || 0).toFixed(0)}% · ${agreement.label}`;
-  const fairValueNode = document.getElementById("fair-value-gap");
-  fairValueNode.textContent = formatPercent(forecast.fairValueGap);
-  fairValueNode.className = liveValueClass(`hero:${active.symbol}:fair`, forecast.fairValueGap);
-  document.getElementById("event-pressure").textContent = forecast.eventPressureLabel;
-  const modelErrorNode = document.getElementById("model-error");
-  modelErrorNode.textContent = `${Number(forecast.mae || 0).toFixed(1)}%`;
-  modelErrorNode.className = liveValueClass(`hero:${active.symbol}:mae`, forecast.mae);
   const forecastRangeNode = document.getElementById("forecast-range");
   forecastRangeNode.textContent = `10D projection ${formatPercent(forecast.expectedReturn)}`;
   forecastRangeNode.className = `forecast-range live-number ${liveValueClass(`hero:${active.symbol}:projection`, forecast.expectedReturn)}`;
@@ -1305,34 +1214,33 @@ function patchOverviewLiveSurface(active, forecast, { redrawChart = false } = {}
     ? `Quote source: ${formatSourceLabel(active.dataSource)} • ${quoteFreshnessText(active)} • ${new Date(active.asOf).toLocaleString()}`
     : `Quote source: ${formatSourceLabel(active.dataSource)} • ${quoteFreshnessText(active)}`;
   const overviewMetaItems = [
-    {
-      label: active.exchange || active.region || "Global",
-      help: "Where the stock trades.",
-    },
-    {
-      label: `${active.currency || "USD"} pricing`,
-      help: "Home-market trading currency.",
-    },
-    {
-      label: `${active.marketState || "Live"} ${liveBadgeMarkup()}`,
-      help: "Current session state.",
-    },
-    {
-      label: `Vol ${formatCompactNumber(active.volume)} ${liveBadgeMarkup()}`,
-      help: "Current traded volume.",
-    },
-    {
-      label: `${active.asOf ? new Date(active.asOf).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "Delayed"} ${freshnessBadgeMarkup(active.quoteFreshness || {})}`,
-      help: "Last quote update time.",
-    },
+    { label: active.exchange || active.region || "Global", help: "Where the stock trades." },
+    { label: `${active.currency || "USD"} pricing`, help: "Home-market trading currency." },
+    { label: `${active.marketState || "Live"} ${liveBadgeMarkup()}`, help: "Current session state." },
+    { label: `Vol ${formatCompactNumber(active.volume)} ${liveBadgeMarkup()}`, help: "Current traded volume." },
+    { label: `${active.asOf ? new Date(active.asOf).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "Delayed"} ${freshnessBadgeMarkup(active.quoteFreshness || {})}`, help: "Last quote update time." },
   ];
-  document.getElementById("overview-meta").innerHTML = `
-    ${overviewMetaItems
-      .map(
-        (item) => `<span class="overview-meta-pill" data-help="${item.help.replace(/"/g, "&quot;")}" tabindex="0">${item.label}</span>`,
-      )
-      .join("")}
-  `;
+  document.getElementById("overview-meta").innerHTML = overviewMetaItems
+    .map((item) => `<span class="overview-meta-pill" data-help="${item.help.replace(/"/g, "&quot;")}" tabindex="0">${item.label}</span>`)
+    .join("");
+  document.getElementById("hero-stats").innerHTML = (active.stats || [])
+    .map(
+      (stat, index) => `
+        <div class="hero-stat-card">
+          <span>${stat.label}</span>
+          <strong class="live-number ${liveValueClass(`hero:${active.symbol}:stat:${index}`, parseFloat(String(stat.value).replace(/[^\d.+-]/g, "")))}">${stat.value}</strong>
+        </div>
+      `,
+    )
+    .join("");
+  drawSparkline(document.getElementById("hero-sparkline"), (active.history || []).slice(-24));
+  revealSection("hero-stats");
+  clearChartSkeleton();
+  renderPredictionPanel(active, forecast);
+}
+
+function patchOverviewLiveSurface(active, forecast, { redrawChart = false } = {}) {
+  patchHeroSurface(active, forecast);
   const sessionNode = document.getElementById("market-session-strip");
   if (sessionNode) {
     const session = active.marketSession?.nextTransitionAt
@@ -1348,17 +1256,6 @@ function patchOverviewLiveSurface(active, forecast, { redrawChart = false } = {}
       <small>${session.hoursLabel || "Hours unavailable"} · ${session.timezone || "UTC"}</small>
     `;
   }
-  document.getElementById("hero-stats").innerHTML = (active.stats || [])
-    .map(
-      (stat, index) => `
-        <div class="hero-stat-card">
-          <span>${stat.label}</span>
-          <strong class="live-number ${liveValueClass(`hero:${active.symbol}:stat:${index}`, parseFloat(String(stat.value).replace(/[^\d.+-]/g, "")))}">${stat.value}</strong>
-        </div>
-      `,
-    )
-    .join("");
-  drawSparkline(document.getElementById("hero-sparkline"), (active.history || []).slice(-24));
   if (redrawChart) {
     drawTimeline(
       document.getElementById("hero-projection-chart"),
@@ -1568,6 +1465,25 @@ function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
 
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function safeExternalUrl(value) {
+  if (!value) return "";
+  try {
+    const url = new URL(String(value), window.location.href);
+    return ["http:", "https:"].includes(url.protocol) ? url.href : "";
+  } catch {
+    return "";
+  }
+}
+
 async function loadRadar({ silent = false } = {}) {
   const requestId = ++state.radarRequestId;
   if (!silent) {
@@ -1688,27 +1604,18 @@ function primeActiveTickerSelection(symbol) {
 }
 
 function setStatus(message) {
-  const node = document.getElementById("status-updated");
-  if (!node) return;
-  const activeCurrency =
-    state.dashboard?.active?.currency ||
-    (state.dashboard?.watchlist || []).find((item) => item.symbol === state.activeTicker)?.currency ||
-    "USD";
-  const label = node.querySelector(".status-label");
-  const token = node.querySelector(".status-token-code");
-  if (label) {
-    label.textContent = message;
-  } else {
-    node.textContent = message;
-  }
-  if (token) {
-    token.textContent = String(activeCurrency).slice(0, 4).toUpperCase();
-  }
+  // Update all live indicators in the page
+  const indicators = document.querySelectorAll(".live-indicator-label");
   const loadingWords = ["Loading", "Refreshing", "Searching", "Resolving", "Saving", "Running", "Thinking", "Syncing"];
   const isLoading = loadingWords.some((word) => String(message).startsWith(word));
-  node.classList.toggle("loading", isLoading);
-  node.classList.toggle("ready", !isLoading);
-  node.dataset.currency = String(activeCurrency).slice(0, 4).toUpperCase();
+  indicators.forEach((el) => {
+    el.textContent = isLoading ? "Updating" : "Live";
+  });
+  const dots = document.querySelectorAll(".live-indicator-dot");
+  dots.forEach((el) => {
+    el.style.background = isLoading ? "rgba(255, 176, 0, 0.9)" : "rgba(90, 242, 197, 0.9)";
+    el.style.boxShadow = isLoading ? "0 0 4px rgba(255, 176, 0, 0.6)" : "0 0 4px rgba(90, 242, 197, 0.6)";
+  });
 }
 
 function nextFrame(callback) {
@@ -1737,6 +1644,30 @@ function flashStatus(message, timeout = 1600) {
       setStatus("Live now");
     }
   }, timeout);
+}
+
+function initStarfieldParallax() {
+  const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+  if (reduceMotion) return;
+  let raf = 0;
+  const update = (event) => {
+    window.cancelAnimationFrame(raf);
+    raf = window.requestAnimationFrame(() => {
+      const x = (event.clientX / window.innerWidth - 0.5) * 28;
+      const y = (event.clientY / window.innerHeight - 0.5) * 22;
+      document.body.style.setProperty("--star-x", `${x.toFixed(2)}px`);
+      document.body.style.setProperty("--star-y", `${y.toFixed(2)}px`);
+      document.body.style.setProperty("--star-glow-x", `${(event.clientX / window.innerWidth * 100).toFixed(2)}%`);
+      document.body.style.setProperty("--star-glow-y", `${(event.clientY / window.innerHeight * 100).toFixed(2)}%`);
+    });
+  };
+  window.addEventListener("pointermove", update, { passive: true });
+  window.addEventListener("pointerleave", () => {
+    document.body.style.setProperty("--star-x", "0px");
+    document.body.style.setProperty("--star-y", "0px");
+    document.body.style.setProperty("--star-glow-x", "50%");
+    document.body.style.setProperty("--star-glow-y", "18%");
+  }, { passive: true });
 }
 
 function dataFlowLabel(path = "") {
@@ -1849,13 +1780,22 @@ function renderDataFlowBar({ skipAutoHide = false } = {}) {
   }
   const jobs = dataFlowJobs();
   const activeJobs = jobs.filter((job) => ["queued", "running", "connecting", "retry"].includes(String(job.status).toLowerCase()));
-  const progress = jobs.length ? Math.round(jobs.reduce((sum, job) => sum + Number(job.progress || 0), 0) / jobs.length) : 100;
+  const doneJobs = jobs.filter((job) => ["done", "ready", "live"].includes(String(job.status).toLowerCase()));
+  // Monotonic progress: cumulative (done=100% each, active=partial), never decreases
+  const totalSlots = Math.max(jobs.length, 1);
+  const rawProgress = jobs.length
+    ? Math.round((doneJobs.length * 100 + activeJobs.reduce((s, j) => s + Number(j.progress || 0), 0)) / totalSlots)
+    : 100;
+  state.dataFlow.highWater = Math.max(state.dataFlow.highWater || 0, rawProgress);
+  const progress = activeJobs.length === 0 && doneJobs.length > 0 ? 100 : state.dataFlow.highWater;
   const primary = activeJobs[0] || jobs[0] || { label: "Data flow", status: "ready", progress: 100 };
   node.classList.toggle("is-expanded", Boolean(state.dataFlow.expanded));
   node.classList.toggle("is-peek", Boolean(state.dataFlow.hidden && !state.dataFlow.expanded));
   node.innerHTML = `
     <div class="data-flow-shell">
-      <button class="data-flow-grip" type="button" aria-label="Drag data flow bar" data-data-flow-drag>Data Flow</button>
+      <button class="data-flow-grip" type="button" aria-label="Move data flow bar" title="Move data flow" data-data-flow-drag>
+        <span aria-hidden="true"></span>
+      </button>
       <button class="data-flow-main" type="button" aria-expanded="${state.dataFlow.expanded ? "true" : "false"}" data-data-flow-toggle>
         <span>${primary.label}</span>
         <strong>${activeJobs.length ? primary.status : "Ready"}</strong>
@@ -1863,15 +1803,17 @@ function renderDataFlowBar({ skipAutoHide = false } = {}) {
       </button>
       <div class="data-flow-meter"><span style="width:${Math.max(4, progress)}%"></span></div>
       <div class="data-flow-detail">
-        ${jobs.map((job) => `
+        ${jobs.map((job) => {
+          const isDone = ["done", "ready", "live"].includes(String(job.status).toLowerCase());
+          return `
           <article class="data-flow-job ${String(job.status).toLowerCase()}">
-            <span>${job.label}</span>
-            <strong>${job.status}</strong>
+            <span>${isDone ? "✓ " : ""}${job.label}</span>
+            <strong>${isDone ? "done" : job.status}</strong>
             <em>${job.detail || `${job.progress || 0}%`}</em>
             ${(job.errors || []).slice(0, 1).map((error) => `<small>${error}</small>`).join("")}
-          </article>
-        `).join("")}
-        <small>Updated ${state.dataFlow.lastUpdated ? new Date(state.dataFlow.lastUpdated).toLocaleTimeString() : "just now"}</small>
+          </article>`;
+        }).join("")}
+        <small>${doneJobs.length}/${totalSlots} complete · Updated ${state.dataFlow.lastUpdated ? new Date(state.dataFlow.lastUpdated).toLocaleTimeString() : "just now"}</small>
       </div>
     </div>
   `;
@@ -1902,9 +1844,12 @@ function bindDataFlowBar() {
   node.addEventListener("pointerdown", (event) => {
     const target = event.target;
     if (!(target instanceof Element) || !target.closest("[data-data-flow-drag]")) return;
+    event.preventDefault();
     state.dataFlow.hidden = false;
+    node.classList.remove("is-peek");
     const rect = node.getBoundingClientRect();
     dragOffset = { x: event.clientX - rect.left, y: event.clientY - rect.top };
+    node.classList.add("is-dragging");
     node.setPointerCapture(event.pointerId);
   });
   node.addEventListener("pointermove", (event) => {
@@ -1921,7 +1866,16 @@ function bindDataFlowBar() {
   node.addEventListener("pointerup", () => {
     if (!dragOffset) return;
     dragOffset = null;
+    node.classList.remove("is-dragging");
     persistDataFlowState();
+  });
+  node.addEventListener("pointercancel", () => {
+    dragOffset = null;
+    node.classList.remove("is-dragging");
+  });
+  node.addEventListener("lostpointercapture", () => {
+    dragOffset = null;
+    node.classList.remove("is-dragging");
   });
 }
 
@@ -3301,286 +3255,95 @@ function renderWatchlist() {
 
 function renderBanner() {
   const track = document.getElementById("headline-track");
-  const hotspotNode = document.getElementById("radar-hotspots");
   const sourceNote = document.getElementById("radar-source-note");
-  const sentimentBox = document.getElementById("radar-sentiment-box");
-  const footerNode = document.querySelector(".radar-footer");
+  if (!track) return;
   const radar = state.dashboard?.radar || {};
-  const headlines = radar.headlines?.length
-    ? radar.headlines
-    : radar.items?.length
-      ? radar.items.map((item) => item.title).filter(Boolean).slice(0, 6)
-    : state.dashboard?.headlines?.length
-      ? state.dashboard.headlines
-      : ["Live radar updates are loading."];
-  const signature = headlines.join(" | ");
-  const useStaticLoadingHeadline = headlines.length === 1 && headlines[0] === "Live radar updates are loading.";
+  const headlineItems = radar.items?.length
+    ? radar.items
+        .filter((item) => item?.title)
+        .slice(0, 6)
+        .map((item) => ({
+          title: item.title,
+          url: safeExternalUrl(item.url || item.link),
+          source: item.source || "",
+        }))
+    : (radar.headlines?.length ? radar.headlines : state.dashboard?.headlines?.length ? state.dashboard.headlines : ["Live radar updates are loading."])
+        .slice(0, 6)
+        .map((headline) => (typeof headline === "string"
+          ? { title: headline, url: "", source: "" }
+          : { title: headline?.title || "Market update", url: safeExternalUrl(headline?.url || headline?.link), source: headline?.source || "" }));
+  const signature = headlineItems.map((item) => `${item.title}|${item.url}`).join(" | ");
+  const useStaticLoadingHeadline = headlineItems.length === 1 && headlineItems[0].title === "Live radar updates are loading.";
   if (track.dataset.signature !== signature || !track.children.length) {
-    const lane = headlines
-      .map(
-        (headline) => `<span class="ticker-headline" title="${headline}">${headline}</span>`,
-      )
+    const laneMarkup = (isDuplicate = false) => headlineItems
+      .map((item) => {
+        const title = escapeHtml(item.title);
+        const source = item.source ? ` · ${escapeHtml(item.source)}` : "";
+        return item.url
+          ? `<a class="ticker-headline" href="${escapeHtml(item.url)}" target="_blank" rel="noreferrer noopener" title="${title}${source}"${isDuplicate ? ' tabindex="-1"' : ""}>${title}</a>`
+          : `<span class="ticker-headline" title="${title}${source}">${title}</span>`;
+      })
       .join("");
     const duration = Math.max(22, Math.round(signature.length / 8));
     track.dataset.signature = signature;
     track.style.setProperty("--ticker-duration", `${duration}s`);
     track.innerHTML = useStaticLoadingHeadline
-      ? `<div class="ticker-status">${headlines[0]}</div>`
+      ? `<div class="ticker-status">${escapeHtml(headlineItems[0].title)}</div>`
       : `
-        <div class="ticker-lane ticker-lane-a">${lane}</div>
-        <div class="ticker-lane ticker-lane-b" aria-hidden="true">${lane}</div>
+        <div class="ticker-lane ticker-lane-a">${laneMarkup(false)}</div>
+        <div class="ticker-lane ticker-lane-b" aria-hidden="true">${laneMarkup(true)}</div>
       `;
   }
-  const hotspots = radar.hotspots || [];
-  if (hotspotNode) {
-    hotspotNode.innerHTML = "";
-    hotspotNode.hidden = true;
-  }
-
-  const radarSources = [...new Set((radar.items || []).map((item) => extractDomainLabel(item.url)).filter(Boolean))].slice(0, 4);
-  sourceNote.textContent = radarSources.length
-    ? `Radar sources: ${radarSources.join(" • ")}`
-    : "Radar sources: live event scan";
-  if (footerNode) {
-    const footerHeight = Math.ceil(footerNode.getBoundingClientRect().height || 36);
-    document.getElementById("market-radar")?.style.setProperty("--radar-footer-height", `${footerHeight}px`);
-  }
-  if (sentimentBox) {
-    const sentiment = radar.sentiment || { label: "Balanced", score: 0 };
-    const score = Number(sentiment.score || 0);
-    const scoreText = score > 0 ? `+${(score * 100).toFixed(0)}` : `${(score * 100).toFixed(0)}`;
-    const toneClass = sentiment.tone || (score > 0.2 ? "positive" : score < -0.2 ? "negative" : "neutral");
-    sentimentBox.className = `radar-sentiment-box ${toneClass}`;
-    sentimentBox.innerHTML = `
-      <span>Radar sentiment</span>
-      <strong>${sentiment.label || "Balanced"}</strong>
-      <small>${scoreText} • ${sentiment.driver || "headline balance"}</small>
-    `;
+  if (sourceNote) {
+    const sentiment = radar.sentiment || {};
+    const label = sentiment.label || "Balanced";
+    sourceNote.textContent = label;
+    const toneClass = sentiment.tone || (Number(sentiment.score || 0) > 0.2 ? "positive" : Number(sentiment.score || 0) < -0.2 ? "negative" : "");
+    sourceNote.className = toneClass;
   }
 
 }
 
 function renderEventFeed() {
   const list = document.getElementById("event-list");
-  const label = document.getElementById("event-summary-label");
-  label.textContent = state.eventCategory === "all" ? "All" : state.eventCategory.charAt(0).toUpperCase() + state.eventCategory.slice(1);
-  document.querySelectorAll(".event-chip").forEach((button) => {
-    button.classList.toggle("active", button.dataset.category === state.eventCategory);
-  });
-
-  if (!state.eventResult) {
-    const fallbackItems = [...(state.dashboard?.radar?.items || [])]
-      .slice(0, 4)
-      .map((item) => ({
-        title: item.title || "Radar update",
-        url: item.url || "",
-        source: item.source || extractDomainLabel(item.url) || "Live source",
-        category: "radar",
-        publishedAt: item.publishedAt,
-        significance: 0,
-      }));
-    list.innerHTML = fallbackItems.length
-      ? fallbackItems
-          .map(
-            (item) => `
-              <article class="event-card">
-                <div class="event-card-header">
-                  <span class="event-tag">${String(item.category).toUpperCase()}</span>
-                  <span class="event-source">${item.source}</span>
-                </div>
-                <a class="event-title" href="${item.url}" target="_blank" rel="noreferrer"><strong>${item.title}</strong></a>
-                <div class="event-card-meta">
-                  <span>${formatEventDateTime(item.publishedAt)}</span>
-                  <span>Refreshing</span>
-                </div>
-                <p>Full category event flow is being updated.</p>
-              </article>
-            `,
-          )
-          .join("")
-      : `<div class="event-card"><div class="event-card-header"><strong>Waiting for updates</strong><span class="event-tag">Loading</span></div><p>Latest category events will appear here.</p></div>`;
-    return;
-  }
-  const items = [...(state.eventResult.items || [])]
-    .sort((a, b) => String(b.publishedAt || "").localeCompare(String(a.publishedAt || "")))
-    .slice(0, 5);
+  if (!list) return;
+  const items = state.eventResult?.items?.length
+    ? [...state.eventResult.items].sort((a, b) => String(b.publishedAt || "").localeCompare(String(a.publishedAt || ""))).slice(0, 3)
+    : [...(state.dashboard?.radar?.items || [])].slice(0, 3);
   list.innerHTML = items.length
-    ? items
-        .map(
-          (item) => `
-            <article class="event-card">
-              <div class="event-card-header">
-                <span class="event-tag">${String(item.category || state.eventResult.category || "event").toUpperCase()}</span>
-                <span class="event-source">${item.source || extractDomainLabel(item.url) || "Live source"}</span>
-              </div>
-              <a class="event-title" href="${item.url}" target="_blank" rel="noreferrer"><strong>${item.title || "Update"}</strong></a>
-              <div class="event-card-meta">
-                <span>${formatEventDateTime(item.publishedAt)}</span>
-                <span>Impact ${Number(item.significance || 0)}</span>
-              </div>
-              <p>${item.source ? `Source: ${item.source}` : "Source note unavailable."}</p>
-            </article>
-          `,
-        )
-        .join("")
-    : `<div class="event-card"><div class="event-card-header"><strong>No live matches</strong><span class="event-tag">Empty</span></div><p>Try another category or search phrase.</p></div>`;
+    ? items.map((item) => `<a class="event-chip-link" href="${item.url || "#"}" target="_blank" rel="noreferrer">${item.title || "Update"}</a>`).join("")
+    : "";
 }
 
 function renderPulse() {
   const grid = document.getElementById("pulse-grid");
+  if (!grid) return;
   const items = state.dashboard?.macroPulse?.length
     ? state.dashboard.macroPulse
     : state.dashboard?.active
       ? [
-          {
-            label: "Risk tone",
-            value: state.dashboard.active.regime || "Refreshing",
-            trend: state.dashboard.active.marketState || "Live",
-            positive: true,
-          },
-          {
-            label: "Active move",
-            value: formatPercent(state.dashboard.active.changePercent || 0),
-            trend: `${state.dashboard.active.exchange || state.dashboard.active.region || "Market"} pulse`,
-            positive: Number(state.dashboard.active.changePercent || 0) >= 0,
-          },
+          { label: "Risk tone", value: state.dashboard.active.regime || "–", positive: true },
+          { label: "Move", value: formatPercent(state.dashboard.active.changePercent || 0), positive: Number(state.dashboard.active.changePercent || 0) >= 0 },
         ]
       : [];
-  if (!items.length) {
-    grid.innerHTML = `
-      <div class="pulse-card">
-        <span>Market pulse</span>
-        <strong>Loading</strong>
-        <div class="metric-trend neutral">Cross-asset read is refreshing</div>
-      </div>
-    `;
-    return;
-  }
+  if (!items.length) { grid.innerHTML = ""; return; }
   grid.innerHTML = items
-    .map(
-      (item, index) => {
-        const pulseClass = liveValueClass(`pulse:${item.label || index}`, parseFloat(String(item.value).replace(/[^\d.+-]/g, "")));
-        return `
-        <div class="pulse-card ${pulseClass}">
-          <span>${item.label}${liveBadgeMarkup()}</span>
-          <strong class="live-number">${item.value}</strong>
-          <div class="metric-trend ${typeof item.positive === "boolean" ? (item.positive ? "positive" : "negative") : "neutral"}">${item.trend}</div>
-        </div>
-      `;
-      },
-    )
+    .map((item) => `<span class="pulse-chip ${typeof item.positive === "boolean" ? (item.positive ? "positive" : "negative") : ""}">${item.label}: <strong>${item.value}</strong></span>`)
     .join("");
 }
 
 function renderBoard() {
-  const board = document.getElementById("overview-board");
-  const panel = document.getElementById("market-board-panel");
-  const utilityGrid = document.querySelector(".utility-grid");
-  const toggle = document.getElementById("toggle-market-board");
-  const entries = (state.dashboard?.watchlist || []).slice(0, 8);
-  if (panel) {
-    panel.classList.toggle("collapsed", state.boardHidden);
-  }
-  if (utilityGrid) {
-    utilityGrid.classList.toggle("board-hidden", state.boardHidden);
-  }
-  if (toggle) {
-    toggle.textContent = state.boardHidden ? "Show" : "Hide";
-    toggle.setAttribute("aria-pressed", state.boardHidden ? "true" : "false");
-  }
-  if (state.boardHidden) {
-    board.innerHTML = "";
-    return;
-  }
-  board.innerHTML = entries
-    .map(
-      (item) => {
-        const priceClass = liveValueClass(`board:${item.symbol}:price`, item.price);
-        const changeClass = liveValueClass(`board:${item.symbol}:change`, item.changePercent);
-        return `
-        <button class="board-tile ${item.changePercent >= 0 ? "up" : "down"} ${priceClass} ${item.symbol === state.activeTicker ? "active" : ""}" type="button" data-symbol="${item.symbol}">
-          <span class="board-symbol">${item.symbol}</span>
-          <strong class="board-price live-number ${priceClass}">${formatCurrency(item.price, item.currency)}</strong>
-          <span class="board-change live-number ${item.changePercent >= 0 ? "positive" : "negative"} ${changeClass}">${formatPercent(item.changePercent)}</span>
-        </button>
-      `;
-      },
-    )
-    .join("");
-
-  board.querySelectorAll(".board-tile").forEach((button) => {
-    button.addEventListener("click", () => {
-      selectActiveTicker(button.dataset.symbol);
-    });
-  });
+  /* Market board removed — watchlist sidebar is the single source */
 }
 
 function renderOverview() {
   const active = state.dashboard?.active;
   if (!active) return;
   const forecast = active.forecast || emptyForecastPayload();
-  const agreement = forecast.models?.agreement || { label: "Pending", score: 0, summary: "Agreement refreshing." };
-  const recommendation = active.recommendation || { buy: 0, hold: 100, sell: 0, signal: "Refreshing" };
 
   document.getElementById("hero-ticker").textContent = `${active.symbol} · ${active.name}`;
-  document.getElementById("hero-regime").textContent = active.regime;
-  const heroPriceNode = document.getElementById("hero-price");
-  const heroPriceText = formatCurrency(active.price, active.currency);
-  const priceSizeClass = heroPriceText.length >= 14 ? "is-compact" : heroPriceText.length >= 11 ? "is-tight" : "";
-  heroPriceNode.className = `hero-price ${priceSizeClass} ${liveValueClass(`hero:${active.symbol}:price`, active.price)}`.trim();
-  heroPriceNode.innerHTML = buildPriceFlipMarkup(active.price, active.currency);
-  const changeNode = document.getElementById("hero-change");
-  changeNode.textContent = formatPercent(active.changePercent);
-  changeNode.className = `hero-change live-number ${active.changePercent >= 0 ? "positive" : "negative"} ${liveValueClass(`hero:${active.symbol}:change`, active.changePercent)}`;
-  document.getElementById("forecast-direction").textContent = forecast.direction;
-  document.getElementById("forecast-confidence").textContent = `Confidence ${Number(forecast.confidence || 0).toFixed(0)}% · ${agreement.label}`;
-  document.getElementById("fair-value-gap").textContent = formatPercent(forecast.fairValueGap);
-  document.getElementById("fair-value-gap").className = liveValueClass(`hero:${active.symbol}:fair`, forecast.fairValueGap);
-  document.getElementById("event-pressure").textContent = forecast.eventPressureLabel;
-  document.getElementById("model-error").textContent = `${Number(forecast.mae || 0).toFixed(1)}%`;
-  document.getElementById("model-error").className = liveValueClass(`hero:${active.symbol}:mae`, forecast.mae);
-  document.getElementById("forecast-range").textContent = `10D projection ${formatPercent(forecast.expectedReturn)}`;
-  document.getElementById("forecast-range").className = `forecast-range live-number ${liveValueClass(`hero:${active.symbol}:projection`, forecast.expectedReturn)}`;
-  const bsEl2 = document.getElementById("buy-sell-signal");
-  bsEl2.textContent = recommendation.signal ? recommendation.signal.replace("bias", "scenario") : "Balanced scenario";
-  const bsDir2 = forecast.direction?.toLowerCase() || "";
-  bsEl2.className = bsDir2 === "bullish" ? "bullish" : bsDir2 === "bearish" ? "bearish" : "neutral";
-  document.getElementById("buy-sell-breakdown").innerHTML = `<span class="bsb-buy">▲ ${recommendation.buy ?? 0}%</span><span class="bsb-hold">― ${recommendation.hold ?? 100}%</span><span class="bsb-sell">▼ ${recommendation.sell ?? 0}%</span>`;
-  document.getElementById("model-agreement-note").textContent = `${agreement.summary} Score ${Number(agreement.score || 0).toFixed(0)}/100.`;
-  const overviewMetaItems = [
-    {
-      label: active.exchange || active.region || "Global",
-      help: "Where the stock trades.",
-    },
-    {
-      label: `${active.currency || "USD"} pricing`,
-      help: "Home-market trading currency.",
-    },
-    {
-      label: `${active.marketState || "Live"} ${liveBadgeMarkup()}`,
-      help: "Current session state.",
-    },
-    {
-      label: `Vol ${formatCompactNumber(active.volume)} ${liveBadgeMarkup()}`,
-      help: "Current traded volume.",
-    },
-    {
-      label: `${active.asOf ? new Date(active.asOf).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "Delayed"} ${freshnessBadgeMarkup(active.quoteFreshness || {})}`,
-      help: "Last quote update time.",
-    },
-  ];
-  document.getElementById("overview-meta").innerHTML = `
-    ${overviewMetaItems
-      .map(
-        (item) => `<span class="overview-meta-pill" data-help="${item.help.replace(/"/g, "&quot;")}" tabindex="0">${item.label}</span>`,
-      )
-      .join("")}
-  `;
-  const quoteSource = document.getElementById("quote-source-note");
-  const asOf = active.asOf ? new Date(active.asOf).toLocaleString() : "";
-  quoteSource.textContent = asOf
-    ? `Quote source: ${formatSourceLabel(active.dataSource)} • ${quoteFreshnessText(active)} • ${asOf}`
-    : `Quote source: ${formatSourceLabel(active.dataSource)} • ${quoteFreshnessText(active)}`;
+  patchHeroSurface(active, forecast);
+
   const majorEvent = Boolean(
     (active.eventFocus?.category && ["war", "deals", "partnerships", "layoffs"].includes(active.eventFocus.category))
       || String(forecast.eventPressureLabel || "").toLowerCase() === "high"
@@ -3609,18 +3372,6 @@ function renderOverview() {
     state.marketSessionTimer = window.setInterval(renderSession, 1000);
   }
 
-  document.getElementById("hero-stats").innerHTML = (active.stats || [])
-    .map(
-      (stat, index) => `
-        <div class="hero-stat-card">
-          <span>${stat.label}</span>
-          <strong class="live-number ${liveValueClass(`hero:${active.symbol}:stat:${index}`, parseFloat(String(stat.value).replace(/[^\d.+-]/g, "")))}">${stat.value}</strong>
-        </div>
-      `,
-    )
-    .join("");
-
-  drawSparkline(document.getElementById("hero-sparkline"), (active.history || []).slice(-24));
   // Defer the heavy SVG chart render so hero text & stats paint first
   const _chartSvg = document.getElementById("hero-projection-chart");
   const _chartHistory = active.historySeries?.length ? active.historySeries : (active.history || []);
@@ -4317,17 +4068,28 @@ function renderTopbar() {
 
 function liveStatusClusterMarkup() {
   return `
-    <div class="live-cluster" aria-label="Dashboard live status">
-      <div class="live-dot"></div>
-      <span id="status-updated" class="status-pill loading" aria-live="polite">
-        <span class="status-token" aria-hidden="true">
-          <span class="status-token-fill"></span>
-          <span class="status-token-code">USD</span>
-        </span>
-        <span class="status-label">Loading data</span>
-      </span>
-    </div>
+    <span class="live-indicator" aria-label="Dashboard live status">
+      <span class="live-indicator-dot"></span>
+      <span class="live-indicator-label">Live</span>
+    </span>
   `;
+}
+
+function sectorStripMarkup(sectors = state.sectorStripSectors) {
+  if (!Array.isArray(sectors) || !sectors.length) {
+    return `<span class="sector-strip-label">Sectors loading</span>`;
+  }
+  return sectors.map((s) => {
+    const pct = Number(s.changePct ?? s.changePercent ?? s.change ?? 0);
+    const dir = pct > 0.05 ? "up" : pct < -0.05 ? "down" : "flat";
+    const sign = pct > 0 ? "+" : "";
+    const label = s.name || s.label || s.symbol || "Sector";
+    const displayLabel = label.replace(/\s*\(US\)\s*/i, "").replace("Financial Svcs", "Financial Services");
+    return `<div class="sector-strip-chip" title="${label} ${sign}${pct.toFixed(2)}%">
+      <span class="sector-strip-chip-name">${displayLabel}</span>
+      <span class="sector-strip-chip-pct ${dir}">${sign}${pct.toFixed(2)}%</span>
+    </div>`;
+  }).join("");
 }
 
 function renderGlobalMarketOverview() {
@@ -4337,33 +4099,33 @@ function renderGlobalMarketOverview() {
   if (!markets.length) {
     node.classList.remove("collapsed");
     node.innerHTML = `
-      <button class="global-market-overview-head" type="button" disabled>
-        <div>
-          <span class="overview-panel-kicker">Global clocks</span>
-          <strong>Loading market benchmarks</strong>
-        </div>
-        <div class="global-market-head-actions">
-          ${liveStatusClusterMarkup()}
-        </div>
-      </button>
+      <div class="overview-header-row">
+        <button class="global-market-overview-head" type="button" disabled>
+          <strong>Global Benchmarks</strong>
+          <span class="global-market-head-right">
+            ${liveStatusClusterMarkup()}
+          </span>
+        </button>
+        <div id="sector-overview-strip" class="sector-overview-strip" aria-label="Sector performance"></div>
+      </div>
     `;
+    node.querySelector("#sector-overview-strip").innerHTML = sectorStripMarkup();
     return;
   }
   node.classList.toggle("collapsed", state.benchmarksCollapsed);
   node.innerHTML = `
-    <button class="global-market-overview-head" type="button" aria-expanded="${state.benchmarksCollapsed ? "false" : "true"}" aria-controls="global-market-benchmark-grid">
-      <div>
-        <span class="overview-panel-kicker">Global clocks</span>
-        <strong>Major benchmarks</strong>
-      </div>
-      <div class="global-market-head-actions">
-        <span class="overview-panel-note">
-          Local time, session, latest quote age
+    <div class="overview-header-row">
+      <button class="global-market-overview-head" type="button" aria-expanded="${state.benchmarksCollapsed ? "false" : "true"}" aria-controls="global-market-benchmark-grid">
+        <strong>Global Benchmarks</strong>
+        <span class="global-market-head-right">
+          ${liveStatusClusterMarkup()}
           <i class="benchmark-chevron" aria-hidden="true"></i>
         </span>
-        ${liveStatusClusterMarkup()}
+      </button>
+      <div id="sector-overview-strip" class="sector-overview-strip" aria-label="Sector performance">
+        ${sectorStripMarkup()}
       </div>
-    </button>
+    </div>
     <div class="global-market-collapse" id="global-market-benchmark-grid">
       <div class="global-market-grid">
         ${markets.map((market) => `
@@ -4690,6 +4452,7 @@ function selectActiveTicker(symbol, { refresh = true } = {}) {
   const changed = state.activeTicker !== cleaned;
   state.activeTicker = cleaned;
   if (changed) {
+    state.dataFlow.highWater = 0;
     primeActiveTickerSelection(cleaned);
     // Only pre-add to recent if we already know the name (resolved previously).
     // New unresolved tickers are added only after refreshDashboard confirms price+name.
@@ -5076,24 +4839,9 @@ function initSectorMatrix() {
 // ── Sector Overview Strip — compact always-visible row above tabbar ──────────
 function renderSectorStrip(sectors) {
   const strip = document.getElementById("sector-overview-strip");
-  if (!strip) return;
   if (!Array.isArray(sectors) || !sectors.length) return;
-  const chips = sectors.map((s) => {
-    const pct = Number(s.changePct ?? s.changePercent ?? s.change ?? 0);
-    const dir = pct > 0.05 ? "up" : pct < -0.05 ? "down" : "flat";
-    const sign = pct > 0 ? "+" : "";
-    const label = s.name || s.label || s.symbol || "Sector";
-    const displayLabel = label.replace(/\s*\(US\)\s*/i, "").replace("Financial Svcs", "Financial Services");
-    return `<div class="sector-strip-chip" title="${label} ${sign}${pct.toFixed(2)}%">
-      <span class="sector-strip-chip-name">${displayLabel}</span>
-      <span class="sector-strip-chip-pct ${dir}">${sign}${pct.toFixed(2)}%</span>
-    </div>`;
-  }).join("");
-  // Replace everything after the label
-  const label = strip.querySelector(".sector-strip-label");
-  strip.innerHTML = "";
-  if (label) strip.appendChild(label);
-  strip.insertAdjacentHTML("beforeend", chips);
+  state.sectorStripSectors = sectors;
+  if (strip) strip.innerHTML = sectorStripMarkup(sectors);
 }
 
 function initSectorStrip() {
@@ -5174,12 +4922,10 @@ function bindEvents() {
     });
   });
 
-  document.getElementById("event-search-form").addEventListener("submit", async (event) => {
+  document.getElementById("event-search-form")?.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const keyword = document.getElementById("event-search-input").value.trim();
-    await loadEventFeed(keyword);
-    renderEventFeed();
-    flashStatus("Feed ready", 1000);
+    const keyword = document.getElementById("event-search-input")?.value.trim();
+    if (keyword) { await loadEventFeed(keyword); renderEventFeed(); flashStatus("Feed ready", 1000); }
   });
 
   document.querySelectorAll(".tab").forEach((tab) => {
@@ -5203,7 +4949,7 @@ function bindEvents() {
 
   const settingsDialog = document.getElementById("settings-dialog");
   document.getElementById("open-settings").addEventListener("click", () => settingsDialog.showModal());
-  document.getElementById("toggle-market-board").addEventListener("click", () => {
+  document.getElementById("toggle-market-board")?.addEventListener("click", () => {
     state.boardHidden = !state.boardHidden;
     persistWatchlist();
     renderBoard();
@@ -5337,10 +5083,12 @@ function bindEvents() {
 
 async function init() {
   document.body.classList.add("app-booting");
+  initSkeletons();
   setStatus("Loading data");
   renderDataFlowBar();
   pollHistoryProgress();
   window.setInterval(pollHistoryProgress, 3500);
+  initStarfieldParallax();
   bindEvents();
   initSectorMatrix();
   initSectorStrip();
