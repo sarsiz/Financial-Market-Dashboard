@@ -11,7 +11,19 @@ const STORAGE_KEYS = {
   dossierOrder: "financial-board-dossier-order",
   dataFlow: "financial-board-data-flow",
   sectorMatrix: "financial-board-sector-matrix",
+  dashboardCache: "financial-board-dashboard-cache-v1",
 };
+
+const REFRESH_INTERVALS = {
+  overview: 60_000,
+  dashboard: 600_000,
+  radar: 900_000,
+  events: 1_800_000,
+  historyActive: 3_500,
+  historyIdle: 30_000,
+};
+
+const DASHBOARD_CACHE_MAX_AGE_MS = 10 * 60_000;
 
 const RESEARCH_REFERENCES = [
   {
@@ -203,6 +215,9 @@ const state = {
   quoteStream: null,
   eventRequestId: 0,
   eventTimer: null,
+  overviewTimer: null,
+  dashboardTimer: null,
+  historyPollTimer: null,
   eventCache: {},
   eventLastQuery: "",
   liveQuoteMemory: {},
@@ -336,6 +351,62 @@ function loadStoredDataFlowState() {
 function persistDataFlowState() {
   const { expanded, x, y } = state.dataFlow || {};
   localStorage.setItem(STORAGE_KEYS.dataFlow, JSON.stringify({ expanded: Boolean(expanded), x, y }));
+}
+
+function dashboardCacheKey() {
+  return JSON.stringify({
+    active: state.activeTicker,
+    watchlist: state.watchlist,
+    chartRange: state.chartRange,
+    region: state.selectedRegion,
+  });
+}
+
+function saveDashboardCache(payload) {
+  if (!payload?.active?.symbol || !payload?.watchlist?.length) return;
+  try {
+    localStorage.setItem(STORAGE_KEYS.dashboardCache, JSON.stringify({
+      key: dashboardCacheKey(),
+      ts: Date.now(),
+      payload,
+    }));
+  } catch (_) { /* localStorage quota — cache is optional */ }
+}
+
+function loadDashboardCache() {
+  try {
+    const cached = JSON.parse(localStorage.getItem(STORAGE_KEYS.dashboardCache) || "null");
+    if (!cached?.payload || cached.key !== dashboardCacheKey()) return null;
+    if (Date.now() - Number(cached.ts || 0) > DASHBOARD_CACHE_MAX_AGE_MS) {
+      localStorage.removeItem(STORAGE_KEYS.dashboardCache);
+      return null;
+    }
+    return cached.payload;
+  } catch {
+    return null;
+  }
+}
+
+function hydrateDashboardFromPayload(payload, { fromCache = false } = {}) {
+  if (!payload?.active || !payload?.watchlist?.length) return false;
+  state.dashboard = payload;
+  state.selectedRegion = payload.selectedRegion || state.selectedRegion;
+  state.watchlist = payload.watchlist.map((item) => item.symbol);
+  state.activeTicker = payload.active.symbol;
+  if (!state.eventCategoryPinned) {
+    state.eventCategory = payload.active?.eventFocus?.category || state.eventCategory;
+  }
+  if (!state.labResult || state.labResult.symbol !== state.activeTicker) {
+    state.labResult = payload.active.lab;
+  }
+  state.academyDetail = state.academyCache[state.activeTicker] || null;
+  if (payload.active?.historySeries?.length) {
+    saveChartCache(payload.active.symbol, state.chartRange, payload.active.historySeries);
+  }
+  if (!fromCache && payload.active?.name && payload.active?.price) {
+    pushRecentTicker(payload.active.symbol, payload.active.name);
+  }
+  return true;
 }
 
 function persistWatchlist() {
@@ -1529,6 +1600,12 @@ async function loadOverviewFast({ silent = false } = {}) {
         buildClientMarketSession(result.active.exchange || result.active.region, result.active.marketState, result.active.region),
     };
   }
+  if (result.active?.price || (result.watchlist || []).length) {
+    markDashboardInteractive("Live quote loaded");
+    if (!state.quoteStream) {
+      startQuoteStream();
+    }
+  }
 
   nextFrame(() => {
     renderWatchlist();
@@ -1616,6 +1693,14 @@ function setStatus(message) {
     el.style.background = isLoading ? "rgba(255, 176, 0, 0.9)" : "rgba(90, 242, 197, 0.9)";
     el.style.boxShadow = isLoading ? "0 0 4px rgba(255, 176, 0, 0.6)" : "0 0 4px rgba(90, 242, 197, 0.6)";
   });
+}
+
+function markDashboardInteractive(message = "Live quote loaded") {
+  if (state.bootReady) return;
+  state.bootReady = true;
+  document.body.classList.add("app-ready");
+  document.body.classList.remove("app-booting");
+  setStatus(message);
 }
 
 function nextFrame(callback) {
@@ -1892,7 +1977,22 @@ async function pollHistoryProgress() {
     logNonAbort(error);
   } finally {
     state.dataFlow.polling = false;
+    scheduleHistoryProgressPoll();
   }
+}
+
+function hasActiveHistoryJobs() {
+  const history = state.dataFlow?.history || {};
+  const jobs = [...(history.active || []), ...(history.jobs || [])];
+  return jobs.some((job) => ["queued", "running"].includes(String(job.status || "").toLowerCase()));
+}
+
+function scheduleHistoryProgressPoll(delayMs = null) {
+  window.clearTimeout(state.historyPollTimer);
+  const delay = delayMs ?? (hasActiveHistoryJobs() ? REFRESH_INTERVALS.historyActive : REFRESH_INTERVALS.historyIdle);
+  state.historyPollTimer = window.setTimeout(() => {
+    pollHistoryProgress();
+  }, delay);
 }
 
 function setBootMessage(message, detail = "") {
@@ -4363,7 +4463,27 @@ function startRadarRefresh() {
     loadRadar({ silent: true }).catch((error) => {
       logNonAbort(error);
     });
-  }, 900000);
+  }, REFRESH_INTERVALS.radar);
+}
+
+function startOverviewRefresh() {
+  window.clearInterval(state.overviewTimer);
+  state.overviewTimer = window.setInterval(() => {
+    loadOverviewFast({ silent: true }).catch((error) => {
+      logNonAbort(error);
+      setStatus("Quote refresh delayed");
+    });
+  }, REFRESH_INTERVALS.overview);
+}
+
+function startDashboardRefresh() {
+  window.clearInterval(state.dashboardTimer);
+  state.dashboardTimer = window.setInterval(() => {
+    refreshDashboard().catch((error) => {
+      logNonAbort(error);
+      setStatus("Refresh delayed");
+    });
+  }, REFRESH_INTERVALS.dashboard);
 }
 
 async function loadConfig() {
@@ -4398,7 +4518,7 @@ function startEventRefresh() {
     loadEventFeed(state.eventLastQuery || "", { silent: true, force: true }).catch((error) => {
       logNonAbort(error);
     });
-  }, 1800000);
+  }, REFRESH_INTERVALS.events);
 }
 
 async function loadEventFeed(keyword = "", { silent = false, force = false } = {}) {
@@ -4492,6 +4612,7 @@ function scheduleHistoryWarmup({ immediate = false } = {}) {
       timeoutMs: 6000,
       body: JSON.stringify({ symbols, ranges }),
     }).then(() => {
+      scheduleHistoryProgressPoll(750);
       pollHistoryProgress();
     }).catch((error) => {
       state.historyWarmupKeys.delete(key);
@@ -4509,12 +4630,19 @@ function scheduleHistoryWarmup({ immediate = false } = {}) {
   }
 }
 
-async function refreshDashboard() {
+async function refreshDashboard({ primeFast = true, primeRadar = true } = {}) {
   const requestId = ++state.dashboardRequestId;
   setStatus("Refreshing");
-  loadOverviewFast({ silent: true }).catch((error) => {
-    logNonAbort(error);
-  });
+  if (primeFast) {
+    loadOverviewFast({ silent: true }).catch((error) => {
+      logNonAbort(error);
+    });
+  }
+  if (primeRadar) {
+    loadRadar({ silent: true }).catch((error) => {
+      logNonAbort(error);
+    });
+  }
   const payload = await api("/api/dashboard", {
     method: "POST",
     timeoutMs: 45000,
@@ -4527,25 +4655,8 @@ async function refreshDashboard() {
   });
   if (requestId !== state.dashboardRequestId) return;
 
-  state.dashboard = payload;
-  state.selectedRegion = payload.selectedRegion || state.selectedRegion;
-  state.watchlist = payload.watchlist.map((item) => item.symbol);
-  state.activeTicker = payload.active.symbol;
-  if (!state.eventCategoryPinned) {
-    state.eventCategory = payload.active?.eventFocus?.category || state.eventCategory;
-  }
-  if (!state.labResult || state.labResult.symbol !== state.activeTicker) {
-    state.labResult = payload.active.lab;
-  }
-  state.academyDetail = state.academyCache[state.activeTicker] || null;
-  // Cache chart history to localStorage for instant next-load render
-  if (payload.active?.historySeries?.length) {
-    saveChartCache(payload.active.symbol, state.chartRange, payload.active.historySeries);
-  }
-  // Only push to recent after confirmed resolution (name + price present)
-  if (payload.active?.name && payload.active?.price) {
-    pushRecentTicker(payload.active.symbol, payload.active.name);
-  }
+  hydrateDashboardFromPayload(payload);
+  saveDashboardCache(payload);
   persistWatchlist();
   nextFrame(() => {
     renderCorePanels();
@@ -4557,9 +4668,7 @@ async function refreshDashboard() {
     renderResearch();
   });
   startQuoteStream();
-  state.bootReady = true;
-  document.body.classList.add("app-ready");
-  document.body.classList.remove("app-booting");
+  markDashboardInteractive("Live now");
   flashStatus("Live now");
   loadEventFeed("", { silent: true })
     .then(() => {
@@ -5087,31 +5196,42 @@ async function init() {
   setStatus("Loading data");
   renderDataFlowBar();
   pollHistoryProgress();
-  window.setInterval(pollHistoryProgress, 3500);
   initStarfieldParallax();
   bindEvents();
   initSectorMatrix();
   initSectorStrip();
+  const cachedDashboard = loadDashboardCache();
+  if (cachedDashboard && hydrateDashboardFromPayload(cachedDashboard, { fromCache: true })) {
+    markDashboardInteractive("Cached dashboard");
+  }
   render();
   startMarketClockTimer();
+  startOverviewRefresh();
   loadOverviewFast({ silent: true }).catch((error) => {
     logNonAbort(error);
   });
-  const dashboardPromise = refreshDashboard();
+  loadRadar({ silent: true }).catch((error) => {
+    logNonAbort(error);
+  });
+  const dashboardPromise = refreshDashboard({ primeFast: false, primeRadar: false });
   const backgroundLoads = Promise.allSettled([loadConfig(), loadPresets(), loadSavedWatchlists()]);
-  try {
-    await dashboardPromise;
-  } catch (error) {
+  dashboardPromise.catch((error) => {
     logNonAbort(error);
     setStatus("Backend slow");
-    setBootMessage("Dashboard API is reachable, but the first full refresh is taking longer than usual.");
-  }
+    if (!state.bootReady) {
+      setBootMessage("Dashboard API is reachable, but the first full refresh is taking longer than usual.");
+    }
+  });
   startRadarRefresh();
   backgroundLoads.then(() => {
     flashStatus("Workspace ready", 1200);
   });
-  window.setInterval(refreshDashboard, 180000);
+  startDashboardRefresh();
   startEventRefresh();
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) return;
+    loadOverviewFast({ silent: true }).catch(logNonAbort);
+  });
 }
 
 init().catch((error) => {
