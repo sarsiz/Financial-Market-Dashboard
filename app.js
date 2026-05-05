@@ -11,7 +11,7 @@ const STORAGE_KEYS = {
   dossierOrder: "financial-board-dossier-order",
   dataFlow: "financial-board-data-flow",
   sectorMatrix: "financial-board-sector-matrix",
-  dashboardCache: "financial-board-dashboard-cache-v1",
+  dashboardCache: "financial-board-dashboard-cache-v2",
 };
 
 const REFRESH_INTERVALS = {
@@ -1262,6 +1262,7 @@ function renderPredictionPanel(active, forecast) {
 function patchHeroSurface(active, forecast) {
   const agreement = forecast.models?.agreement || { label: "Pending", score: 0, summary: "Agreement refreshing." };
   const recommendation = active.recommendation || { buy: 0, hold: 100, sell: 0, signal: "Refreshing" };
+  const displayFreshness = quoteFreshnessForDisplay(active);
   document.getElementById("hero-regime").textContent = active.regime;
   const heroPriceNode = document.getElementById("hero-price");
   const heroPriceText = formatCurrency(active.price, active.currency);
@@ -1282,14 +1283,14 @@ function patchHeroSurface(active, forecast) {
   document.getElementById("buy-sell-breakdown").innerHTML = `<span class="bsb-buy">▲ ${recommendation.buy ?? 0}%</span><span class="bsb-hold">― ${recommendation.hold ?? 100}%</span><span class="bsb-sell">▼ ${recommendation.sell ?? 0}%</span>`;
   document.getElementById("model-agreement-note").textContent = `${agreement.summary} Score ${Number(agreement.score || 0).toFixed(0)}/100.`;
   document.getElementById("quote-source-note").textContent = active.asOf
-    ? `Quote source: ${formatSourceLabel(active.dataSource)} • ${quoteFreshnessText(active)} • ${new Date(active.asOf).toLocaleString()}`
-    : `Quote source: ${formatSourceLabel(active.dataSource)} • ${quoteFreshnessText(active)}`;
+    ? `Quote source: ${formatSourceLabel(active.dataSource)} • ${quoteFreshnessText(active, displayFreshness)} • ${new Date(active.asOf).toLocaleString()}`
+    : `Quote source: ${formatSourceLabel(active.dataSource)} • ${quoteFreshnessText(active, displayFreshness)}`;
   const overviewMetaItems = [
     { label: active.exchange || active.region || "Global", help: "Where the stock trades." },
     { label: `${active.currency || "USD"} pricing`, help: "Home-market trading currency." },
     { label: `${active.marketState || "Live"} ${liveBadgeMarkup()}`, help: "Current session state." },
     { label: `Vol ${formatCompactNumber(active.volume)} ${liveBadgeMarkup()}`, help: "Current traded volume." },
-    { label: `${active.asOf ? new Date(active.asOf).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "Delayed"} ${freshnessBadgeMarkup(active.quoteFreshness || {})}`, help: "Last quote update time." },
+    { label: `${active.asOf ? new Date(active.asOf).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "Delayed"} ${freshnessBadgeMarkup(displayFreshness)}`, help: "Last quote update time." },
   ];
   document.getElementById("overview-meta").innerHTML = overviewMetaItems
     .map((item) => `<span class="overview-meta-pill" data-help="${item.help.replace(/"/g, "&quot;")}" tabindex="0">${item.label}</span>`)
@@ -1351,6 +1352,38 @@ function formatSourceLabel(value) {
   return String(value)
     .replace(/[_-]+/g, " ")
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function quoteSourceLooksHistorical(source = "") {
+  return /history|historical|cache|derived/i.test(String(source || ""));
+}
+
+function quoteFreshnessForDisplay(active = {}) {
+  const freshness = { ...(active.quoteFreshness || {}) };
+  if (!quoteSourceLooksHistorical(active.dataSource)) return freshness;
+  const sessionOpen = Boolean(active.marketSession?.isOpen) || String(active.marketState || "").toUpperCase() === "REGULAR";
+  const parsed = active.asOf ? new Date(active.asOf) : null;
+  const ageMinutes = parsed && !Number.isNaN(parsed.getTime())
+    ? Math.max(0, (Date.now() - parsed.getTime()) / 60000)
+    : null;
+  if (sessionOpen) {
+    return {
+      ...freshness,
+      label: "Historical fallback",
+      state: "stale",
+      isStale: true,
+      ageMinutes: ageMinutes === null ? freshness.ageMinutes : Math.round(ageMinutes * 10) / 10,
+      note: `${formatSourceLabel(active.dataSource)} is not a confirmed live quote while the market is open.`,
+    };
+  }
+  return {
+    ...freshness,
+    label: freshness.label && freshness.label !== "Live edge" ? freshness.label : "Last history close",
+    state: freshness.state === "stale" ? "stale" : "reference",
+    isStale: Boolean(freshness.isStale),
+    ageMinutes: ageMinutes === null ? freshness.ageMinutes : Math.round(ageMinutes * 10) / 10,
+    note: `${formatSourceLabel(active.dataSource)} is a historical/cache-derived level.`,
+  };
 }
 
 function extractDomainLabel(url) {
@@ -1417,8 +1450,8 @@ function freshnessBadgeMarkup(freshness = {}) {
   return `<span class="freshness-badge ${stateLabel}" title="${freshness.note || ""}">${label}</span>`;
 }
 
-function quoteFreshnessText(active = {}) {
-  const freshness = active.quoteFreshness || {};
+function quoteFreshnessText(active = {}, displayFreshness = null) {
+  const freshness = displayFreshness || quoteFreshnessForDisplay(active);
   if (freshness.label) return freshness.label;
   if (active.asOf) return `Updated ${new Date(active.asOf).toLocaleString()}`;
   return "No live timestamp";
@@ -1591,7 +1624,7 @@ async function loadOverviewFast({ silent = false } = {}) {
   state.dashboard.watchlist = result.watchlist || state.dashboard.watchlist || [];
   if (result.active) {
     const previousActive = state.dashboard.active || {};
-    state.dashboard.active = {
+    const mergedActive = {
       ...buildPendingActive(result.active.symbol),
       ...previousActive,
       ...result.active,
@@ -1599,6 +1632,7 @@ async function loadOverviewFast({ silent = false } = {}) {
         result.active.marketSession ||
         buildClientMarketSession(result.active.exchange || result.active.region, result.active.marketState, result.active.region),
     };
+    state.dashboard.active = mergeQuoteIntoActiveHistory(mergedActive, previousActive, result.updatedAt);
   }
   if (result.active?.price || (result.watchlist || []).length) {
     markDashboardInteractive("Live quote loaded");
@@ -2119,6 +2153,10 @@ function loadChartCache(symbol, range) {
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
+function normalizeChartRange(range = "1M") {
+  return String(range || "1M").toUpperCase();
+}
+
 function buildFallbackHistorySeries(history, range = "1M") {
   const values = (history || []).map((value) => Number(value)).filter((value) => Number.isFinite(value));
   if (!values.length) return [];
@@ -2155,6 +2193,37 @@ function normalizeHistorySeries(history, range = "1M") {
   return buildFallbackHistorySeries(history, range);
 }
 
+function mergeQuoteIntoActiveHistory(active = {}, previousActive = {}, updatedAt = "", range = state.chartRange) {
+  const price = Number(active.price);
+  if (!Number.isFinite(price)) return active;
+  const timestamp = active.asOf || updatedAt || new Date().toISOString();
+  const normalizedRange = normalizeChartRange(range);
+  const nextActive = { ...active };
+  const previousSeries = Array.isArray(previousActive.historySeries) ? previousActive.historySeries : [];
+  if (previousSeries.length) {
+    const nextPoint = { value: price, timestamp };
+    const nextSeries = [...previousSeries];
+    const lastPoint = nextSeries[nextSeries.length - 1] || {};
+    const lastTime = lastPoint.timestamp ? new Date(lastPoint.timestamp).getTime() : 0;
+    const nextTime = timestamp ? new Date(timestamp).getTime() : 0;
+    const canAppend = normalizedRange === "1D" && nextTime && lastTime && nextTime > lastTime + 30_000;
+    if (canAppend) {
+      nextSeries.push(nextPoint);
+      nextActive.historySeries = nextSeries.slice(-240);
+    } else {
+      nextSeries[nextSeries.length - 1] = { ...lastPoint, ...nextPoint };
+      nextActive.historySeries = nextSeries;
+    }
+  }
+  const previousHistory = Array.isArray(previousActive.history) ? previousActive.history : [];
+  if (previousHistory.length) {
+    const nextHistory = [...previousHistory];
+    nextHistory[nextHistory.length - 1] = price;
+    nextActive.history = nextHistory;
+  }
+  return nextActive;
+}
+
 function buildProjectedSeries(historySeries, projected, range = "1M") {
   const values = (projected || []).map((value) => Number(value)).filter((value) => Number.isFinite(value));
   if (!values.length) return [];
@@ -2180,10 +2249,13 @@ function buildProjectedSeries(historySeries, projected, range = "1M") {
 function formatAxisDate(timestamp, range = "1M") {
   if (!timestamp) return "";
   const date = new Date(timestamp);
+  const normalizedRange = normalizeChartRange(range);
   const longRanges = new Set(["2Y", "3Y", "5Y", "MAX"]);
-  const options = range === "1D"
+  const options = normalizedRange === "1D"
     ? { hour: "2-digit", minute: "2-digit" }
-    : (range === "1Y" || longRanges.has(range))
+    : (normalizedRange === "3D" || normalizedRange === "5D")
+      ? { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }
+      : (normalizedRange === "1Y" || longRanges.has(normalizedRange))
       ? { month: "short", year: "2-digit" }
       : { day: "2-digit", month: "short" };
   return date.toLocaleString([], options);
@@ -2192,8 +2264,9 @@ function formatAxisDate(timestamp, range = "1M") {
 function formatTooltipDate(timestamp, range = "1M") {
   if (!timestamp) return "Time unavailable";
   const date = new Date(timestamp);
-  const options = range === "1D"
-    ? { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }
+  const normalizedRange = normalizeChartRange(range);
+  const options = ["1D", "3D", "5D"].includes(normalizedRange)
+    ? { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }
     : { day: "2-digit", month: "short", year: "numeric" };
   return date.toLocaleString([], options);
 }
@@ -4369,6 +4442,7 @@ function applyLiveQuoteUpdate(payload) {
   });
 
   if (payload.active && state.dashboard.active?.symbol === payload.active.symbol) {
+    const previousActive = state.dashboard.active;
     state.dashboard.active = {
       ...state.dashboard.active,
       ...payload.active,
@@ -4376,30 +4450,18 @@ function applyLiveQuoteUpdate(payload) {
         payload.active.marketSession ||
         buildClientMarketSession(payload.active.exchange || payload.active.region, payload.active.marketState, payload.active.region),
     };
+    state.dashboard.active = mergeQuoteIntoActiveHistory(state.dashboard.active, previousActive, payload.updatedAt);
   } else if (payload.active) {
     const live = quoteMap.get(state.activeTicker);
     if (live && state.dashboard.active) {
+      const previousActive = state.dashboard.active;
       state.dashboard.active = {
         ...state.dashboard.active,
         ...live,
         marketSession: buildClientMarketSession(live.exchange || live.region, live.marketState, live.region),
       };
+      state.dashboard.active = mergeQuoteIntoActiveHistory(state.dashboard.active, previousActive, payload.updatedAt);
     }
-  }
-
-  if (state.dashboard.active?.price && Array.isArray(state.dashboard.active.historySeries) && state.dashboard.active.historySeries.length) {
-    const nextSeries = [...state.dashboard.active.historySeries];
-    nextSeries[nextSeries.length - 1] = {
-      ...nextSeries[nextSeries.length - 1],
-      value: Number(state.dashboard.active.price),
-      timestamp: payload.updatedAt || nextSeries[nextSeries.length - 1].timestamp,
-    };
-    state.dashboard.active.historySeries = nextSeries;
-  }
-  if (state.dashboard.active?.price && Array.isArray(state.dashboard.active.history) && state.dashboard.active.history.length) {
-    const nextHistory = [...state.dashboard.active.history];
-    nextHistory[nextHistory.length - 1] = Number(state.dashboard.active.price);
-    state.dashboard.active.history = nextHistory;
   }
 
   renderWatchlist();
@@ -4408,7 +4470,7 @@ function applyLiveQuoteUpdate(payload) {
     patchOverviewLiveSurface(
       state.dashboard.active,
       state.dashboard.active.forecast || emptyForecastPayload(),
-      { redrawChart: false },
+      { redrawChart: ["1D", "3D", "5D"].includes(normalizeChartRange(state.chartRange)) },
     );
   }
   renderTopbar();

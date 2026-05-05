@@ -158,6 +158,50 @@ class HistoryCacheTests(TempDatabaseTestCase):
     self.assertFalse(server.is_allowed_outbound_url("http://query1.finance.yahoo.com/v7/finance/quote"))
     self.assertFalse(server.is_allowed_outbound_url("https://example.com/data.json"))
 
+  def test_google_finance_quote_parser_reads_deep_quote_header(self):
+    html = """
+      <main>
+        <div>BHARTIARTL</div><div>Research</div><div>BHARTIARTL:NSE</div>
+        <div>check_indeterminate_small</div><div>Add to list</div>
+        <div>Bharti Airtel Ltd</div><div>&#8377;1,829.90</div>
+        <div>arrow_downward</div><div>-3.02%</div><div>(</div><div>-56.90</div><div>) Today</div>
+        <div>May 4, 2:55:25 PM GMT+5:30 &middot; INR</div>
+        <div>Open</div><div>&#8377;1,873.20</div>
+        <div>High</div><div>&#8377;1,895.30</div>
+        <div>Low</div><div>&#8377;1,824.20</div>
+        <div>Mkt. cap</div><div>11.14T</div>
+        <div>Avg. vol.</div><div>8.41M</div>
+        <div>Volume</div><div>9.05M</div>
+        <div>P/E ratio</div><div>36.17</div>
+        <div>52-wk high</div><div>&#8377;2,174.50</div>
+        <div>52-wk low</div><div>&#8377;1,746.90</div>
+      </main>
+    """
+    with mock.patch.object(server, "text_get", return_value=html):
+      quote = server.fetch_google_finance_quote("BHARTIARTL.NS", "NSE")
+
+    self.assertEqual(quote["regularMarketPrice"], 1829.90)
+    self.assertAlmostEqual(quote["regularMarketPreviousClose"], 1886.8)
+    self.assertEqual(quote["regularMarketChangePercent"], -3.02)
+    self.assertEqual(quote["regularMarketVolume"], 9050000)
+    self.assertEqual(quote["averageDailyVolume3Month"], 8410000)
+    self.assertEqual(quote["quoteSource"], "Google Finance")
+    self.assertIsInstance(quote["regularMarketTime"], int)
+
+  def test_quote_freshness_flags_history_during_open_market(self):
+    as_of = (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat()
+    freshness = server.quote_freshness(as_of, {"isOpen": True}, "History-derived")
+
+    self.assertEqual(freshness["label"], "Historical fallback")
+    self.assertEqual(freshness["state"], "stale")
+    self.assertTrue(freshness["isStale"])
+    self.assertIn("not a confirmed live quote", freshness["note"])
+
+  def test_google_finance_history_timestamps_use_exchange_timezone(self):
+    timestamp = server.timestamp_from_google_block([2026, 5, 4, 14, 55], "Asia/Kolkata")
+
+    self.assertEqual(timestamp, "2026-05-04T09:25:00+00:00")
+
   def test_get_or_refresh_cached_payload_prefers_fresh_cache(self):
     server.save_payload_cache("region_calendar::india", {"items": [{"title": "RBI event"}], "source": "RBI"}, "RBI")
 

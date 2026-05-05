@@ -1189,6 +1189,12 @@ button[type="submit"],
   color: var(--negative);
 }
 
+.freshness-badge.delayed {
+  border-color: rgba(255, 176, 0, 0.28);
+  background: rgba(255, 176, 0, 0.09);
+  color: #ffd074;
+}
+
 .freshness-badge.reference {
   border-color: rgba(93, 214, 255, 0.24);
   background: rgba(93, 214, 255, 0.08);

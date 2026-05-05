@@ -127,8 +127,9 @@ class HtmlContractTests(unittest.TestCase):
   def test_dashboard_boots_progressively_while_full_refresh_loads(self):
     self.assertIn("function markDashboardInteractive(", self.app_js)
     self.assertIn("markDashboardInteractive(\"Live quote loaded\")", self.app_js)
-    self.assertIn("function loadDashboardCache(", self.app_js)
+    self.assertIn("financial-board-dashboard-cache-v2", self.app_js)
     self.assertIn("function saveDashboardCache(", self.app_js)
+    self.assertIn("function loadDashboardCache(", self.app_js)
     self.assertIn("hydrateDashboardFromPayload(cachedDashboard", self.app_js)
     self.assertIn("refreshDashboard({ primeFast: false, primeRadar: false })", self.app_js)
     self.assertIn("loadRadar({ silent: true }).catch", self.app_js)
@@ -136,6 +137,10 @@ class HtmlContractTests(unittest.TestCase):
     self.assertIn("function startOverviewRefresh(", self.app_js)
     self.assertIn("function startDashboardRefresh(", self.app_js)
     self.assertIn("function scheduleHistoryProgressPoll(", self.app_js)
+    self.assertIn("function quoteFreshnessForDisplay(", self.app_js)
+    self.assertIn("Historical fallback", self.app_js)
+    self.assertIn("function mergeQuoteIntoActiveHistory(", self.app_js)
+    self.assertIn("normalizedRange === \"3D\" || normalizedRange === \"5D\"", self.app_js)
 
   def test_readme_documents_architecture_and_test_entrypoint(self):
     self.assertIn("## Technical Summary", self.readme)

@@ -22,7 +22,7 @@ from email.utils import parsedate_to_datetime
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -1042,14 +1042,17 @@ def load_historical_records(symbol: str, interval: str, limit: int = 0) -> list[
       rows = connection.execute(query, params).fetchall()
     finally:
       connection.close()
-  points = [
-    {
-      "timestamp": timestamp,
-      "value": float(close),
-      **({"volume": float(volume)} if volume is not None else {}),
-    }
-    for timestamp, close, volume in reversed(rows)
-  ]
+  points = []
+  for timestamp, close, volume in reversed(rows):
+    if timestamp_age_seconds(timestamp) is None:
+      continue
+    points.append(
+      {
+        "timestamp": timestamp,
+        "value": float(close),
+        **({"volume": float(volume)} if volume is not None else {}),
+      }
+    )
   return points
 
 
@@ -1321,8 +1324,11 @@ def build_market_session(exchange: str, region: str, market_state: str, as_of: s
 
 
 def quote_freshness(as_of: str | None, session: dict | None = None, source: str = "") -> dict:
+  source_lower = (source or "").lower()
+  is_reference_source = any(label in source_lower for label in {"fallback", "curated", "reference"})
+  is_history_source = any(label in source_lower for label in {"history", "historical", "cache", "derived"})
   if not as_of:
-    if source and any(label in source.lower() for label in {"fallback", "curated", "reference"}):
+    if source and is_reference_source:
       return {
         "label": "Reference level",
         "state": "reference",
@@ -1353,6 +1359,25 @@ def quote_freshness(as_of: str | None, session: dict | None = None, source: str 
   is_open = bool((session or {}).get("isOpen"))
   stale_after = 20 if is_open else 24 * 60
   is_stale = age_minutes > stale_after
+  if is_history_source:
+    if is_open:
+      label = "Historical fallback" if age_minutes <= stale_after else f"Stale history {age_minutes / 60:.1f}h"
+      return {
+        "label": label,
+        "state": "stale",
+        "isStale": True,
+        "ageMinutes": round(age_minutes, 1),
+        "staleAfterMinutes": 0,
+        "note": f"{source or 'History'} is not a confirmed live quote while the market is open; refresh or verify with the source before treating this as current.",
+      }
+    return {
+      "label": "Last history close" if age_minutes <= stale_after else f"Stale history {age_minutes / 1440:.1f}d",
+      "state": "reference" if age_minutes <= stale_after else "stale",
+      "isStale": age_minutes > stale_after,
+      "ageMinutes": round(age_minutes, 1),
+      "staleAfterMinutes": stale_after,
+      "note": f"{source or 'History'} is a historical/cache-derived level, not a confirmed live quote.",
+    }
   if age_minutes < 2:
     label = "Live edge"
   elif age_minutes < 20:
@@ -1608,6 +1633,54 @@ def extract_stat_after(lines: list[str], label: str, window: int = 4) -> str | N
   return None
 
 
+def extract_first_stat_after(lines: list[str], labels: list[str], window: int = 4) -> str | None:
+  for label in labels:
+    value = extract_stat_after(lines, label, window=window)
+    if value not in (None, ""):
+      return value
+  return None
+
+
+def parse_google_market_time(text: str | None) -> int | None:
+  if not text:
+    return None
+  timestamp_text = str(text).split("·", 1)[0].strip()
+  match = re.search(
+    r"([A-Za-z]{3,9})\s+(\d{1,2}),\s+(\d{1,2}:\d{2}(?::\d{2})?\s+[AP]M)\s+GMT([+-]\d{1,2})(?::?(\d{2}))?",
+    timestamp_text,
+    flags=re.IGNORECASE,
+  )
+  if not match:
+    return None
+  month_text, day_text, time_text, hour_offset_text, minute_offset_text = match.groups()
+  month = None
+  for fmt in ("%b", "%B"):
+    try:
+      month = datetime.strptime(month_text[:3] if fmt == "%b" else month_text, fmt).month
+      break
+    except ValueError:
+      continue
+  if month is None:
+    return None
+  for fmt in ("%I:%M:%S %p", "%I:%M %p"):
+    try:
+      parsed_time = datetime.strptime(time_text.upper(), fmt).time()
+      break
+    except ValueError:
+      parsed_time = None
+  if parsed_time is None:
+    return None
+  offset_hours = int(hour_offset_text)
+  offset_minutes = int(minute_offset_text or 0)
+  offset_delta = timedelta(hours=offset_hours, minutes=offset_minutes if offset_hours >= 0 else -offset_minutes)
+  tz = timezone(offset_delta)
+  now = datetime.now(timezone.utc)
+  timestamp = datetime(now.year, month, int(day_text), parsed_time.hour, parsed_time.minute, parsed_time.second, tzinfo=tz)
+  if timestamp.astimezone(timezone.utc) > now + timedelta(days=2):
+    timestamp = timestamp.replace(year=now.year - 1)
+  return int(timestamp.timestamp())
+
+
 def fetch_google_finance_quote(symbol: str, exchange_hint: str = "") -> dict:
   for google_symbol in google_exchange_candidates(symbol, exchange_hint):
     html_text = text_get(f"https://www.google.com/finance/quote/{urllib.parse.quote(google_symbol)}")
@@ -1618,24 +1691,39 @@ def fetch_google_finance_quote(symbol: str, exchange_hint: str = "") -> dict:
       continue
 
     symbol_anchor = google_symbol.replace(":", " • ")
-    anchor_index = next((index for index, line in enumerate(lines[:120]) if symbol_anchor in line), -1)
+    search_window = lines[:520]
+    anchor_index = next((index for index, line in enumerate(search_window) if symbol_anchor in line or line == google_symbol), -1)
     if anchor_index < 0:
       symbol_base = google_symbol.split(":")[0]
       exchange_base = google_symbol.split(":")[1]
       anchor_index = next(
-        (index for index, line in enumerate(lines[:120]) if symbol_base in line and exchange_base in line),
+        (
+          index
+          for index, line in enumerate(search_window)
+          if (line == symbol_base and any(candidate == google_symbol for candidate in lines[index:index + 6]))
+          or (symbol_base in line and exchange_base in line)
+        ),
         -1,
       )
     if anchor_index < 0:
       continue
 
-    window = lines[anchor_index:anchor_index + 16]
+    window = lines[anchor_index:anchor_index + 42]
+    skip_name_labels = {
+      "Research", "Add to list", "Area", "Line", "Candle", "Bar", "Compare", "All symbols",
+      "No data", "Symbol", "Price", "Change", "% Change", "Prev Close", "Overview",
+      "Earnings", "Financials", "Today", "close",
+    }
     name = next(
       (
         line for line in window[1:]
         if not re.search(r"[₹$€£¥]|^[\d,]+(?:\.\d+)?$", line)
         and "·" not in line
-        and line not in {"1D", "5D", "1M", "6M", "YTD", "1Y", "5Y", "MAX", "No data", "close"}
+        and line not in skip_name_labels
+        and line != google_symbol
+        and line != google_symbol.split(":")[0]
+        and not line.startswith(("arrow_", "check_", "area_chart", "show_chart", "candlestick_", "bar_chart", "stacked_", "search"))
+        and line not in {"1D", "5D", "1M", "6M", "YTD", "1Y", "5Y", "MAX"}
       ),
       fallback_meta(symbol)["name"],
     )
@@ -1647,19 +1735,32 @@ def fetch_google_finance_quote(symbol: str, exchange_hint: str = "") -> dict:
     if price is None:
       continue
 
-    timestamp_line = next((line for line in window if "·" in line and "Disclaimer" in line), "")
+    timestamp_line = next((line for line in window if "·" in line and re.search(r"\b[A-Z]{3}\b", line)), "")
     currency_match = re.search(r"·\s*([A-Z]{3})\s*·", timestamp_line)
+    if not currency_match:
+      currency_match = re.search(r"·\s*([A-Z]{3})\s*$", timestamp_line)
     exchange_match = re.search(r"·\s*[A-Z]{3}\s*·\s*([A-Z]+)", timestamp_line)
     currency = currency_match.group(1) if currency_match else fallback_meta(symbol)["currency"]
     exchange = exchange_match.group(1) if exchange_match else exchange_hint or fallback_meta(symbol)["exchange"]
-    previous_close = parse_number(extract_stat_after(lines, "Previous close") or "")
-    avg_volume = parse_compact_number(extract_stat_after(lines, "Avg Volume") or "")
-    trailing_pe = parse_number(extract_stat_after(lines, "P/E ratio") or "")
-    market_cap = parse_compact_number(extract_stat_after(lines, "Market cap") or "")
-    day_range = extract_stat_after(lines, "Day range") or ""
-    low_high = re.findall(r"[\d,]+(?:\.\d+)?", day_range)
-    fifty_two_week = extract_stat_after(lines, "Year range") or ""
-    year_low_high = re.findall(r"[\d,]+(?:\.\d+)?", fifty_two_week)
+    detail_lines = lines[anchor_index:]
+    change_percent = parse_number(next((line for line in window if "%" in line and re.search(r"[-+]?\d", line)), "") or "")
+    change_amount = None
+    for index, line in enumerate(window):
+      if line == "(" and index + 2 < len(window) and window[index + 2] == ") Today":
+        change_amount = parse_number(window[index + 1])
+        break
+    previous_close = parse_number(extract_first_stat_after(detail_lines, ["Previous close", "Prev close", "Prev Close"]) or "")
+    if previous_close is None and change_amount is not None:
+      previous_close = price - change_amount
+    avg_volume = parse_compact_number(extract_first_stat_after(detail_lines, ["Avg Volume", "Avg. vol.", "Avg vol"]) or "")
+    market_volume = parse_compact_number(extract_first_stat_after(detail_lines, ["Volume"], window=2) or "")
+    trailing_pe = parse_number(extract_first_stat_after(detail_lines, ["P/E ratio", "P/E Ratio"]) or "")
+    market_cap = parse_compact_number(extract_first_stat_after(detail_lines, ["Market cap", "Mkt. cap", "Mkt cap"]) or "")
+    day_low = parse_number(extract_first_stat_after(detail_lines, ["Low", "Day low"]) or "")
+    day_high = parse_number(extract_first_stat_after(detail_lines, ["High", "Day high"]) or "")
+    fifty_two_week_low = parse_number(extract_first_stat_after(detail_lines, ["52-wk low", "Year low"]) or "")
+    fifty_two_week_high = parse_number(extract_first_stat_after(detail_lines, ["52-wk high", "Year high"]) or "")
+    market_time = parse_google_market_time(timestamp_line)
 
     return {
       "symbol": symbol,
@@ -1667,19 +1768,20 @@ def fetch_google_finance_quote(symbol: str, exchange_hint: str = "") -> dict:
       "longName": name,
       "regularMarketPrice": price,
       "regularMarketPreviousClose": previous_close,
-      "regularMarketChangePercent": pct_change(price, previous_close) if previous_close else 0.0,
+      "regularMarketChangePercent": change_percent if change_percent is not None else (pct_change(price, previous_close) if previous_close else 0.0),
       "averageDailyVolume3Month": int(avg_volume or 0),
-      "regularMarketVolume": 0,
+      "regularMarketVolume": int(market_volume or 0),
       "trailingPE": trailing_pe,
       "marketCap": market_cap,
       "currency": currency,
       "exchange": exchange,
       "fullExchangeName": exchange,
       "marketState": "REGULAR",
-      "fiftyTwoWeekLow": parse_number(year_low_high[0]) if len(year_low_high) >= 2 else None,
-      "fiftyTwoWeekHigh": parse_number(year_low_high[1]) if len(year_low_high) >= 2 else None,
-      "dayLow": parse_number(low_high[0]) if len(low_high) >= 2 else None,
-      "dayHigh": parse_number(low_high[1]) if len(low_high) >= 2 else None,
+      "regularMarketTime": market_time,
+      "fiftyTwoWeekLow": fifty_two_week_low,
+      "fiftyTwoWeekHigh": fifty_two_week_high,
+      "dayLow": day_low,
+      "dayHigh": day_high,
       "quoteSource": "Google Finance",
     }
   return {}
@@ -1728,7 +1830,7 @@ def extract_google_finance_series(html_text: str) -> list[list]:
   return series
 
 
-def normalize_google_finance_history(series: list, chart_range: str) -> tuple[list[float], list[str]]:
+def normalize_google_finance_history(series: list, chart_range: str, time_zone: str = "UTC") -> tuple[list[float], list[str]]:
   normalized_range = chart_range.upper()
   intraday = []
   multi_day = []
@@ -1749,7 +1851,7 @@ def normalize_google_finance_history(series: list, chart_range: str) -> tuple[li
       if not isinstance(price, (int, float)):
         continue
       closes.append(float(price))
-      timestamps.append(timestamp_from_google_block(timestamp_block))
+      timestamps.append(timestamp_from_google_block(timestamp_block, time_zone))
       dates.add(tuple(timestamp_block[:3]))
     if len(closes) < 2:
       continue
@@ -1791,11 +1893,13 @@ def fetch_google_finance_history(symbol: str, exchange_hint: str = "", chart_ran
     if not html_text:
       continue
     series = extract_google_finance_series(html_text)
-    closes, timestamps = normalize_google_finance_history(series, chart_range)
+    time_zone = google_finance_timezone(google_symbol, exchange_hint)
+    closes, timestamps = normalize_google_finance_history(series, chart_range, time_zone)
     if len(closes) >= 2:
       payload = {
         "historySource": "Google Finance Page",
         "googleSymbol": google_symbol,
+        "timezone": time_zone,
       }
       if timestamps and len(timestamps) == len(closes):
         payload["timestamps"] = timestamps
@@ -3558,7 +3662,10 @@ def timestamp_age_seconds(value: str | None) -> float | None:
     return None
   if timestamp.tzinfo is None:
     timestamp = timestamp.replace(tzinfo=timezone.utc)
-  return max(0.0, (datetime.now(timezone.utc) - timestamp.astimezone(timezone.utc)).total_seconds())
+  delta_seconds = (datetime.now(timezone.utc) - timestamp.astimezone(timezone.utc)).total_seconds()
+  if delta_seconds < -300:
+    return None
+  return max(0.0, delta_seconds)
 
 
 def extract_yahoo_history_payload(chart: dict) -> tuple[list[float], dict]:
@@ -3585,7 +3692,21 @@ def extract_yahoo_history_payload(chart: dict) -> tuple[list[float], dict]:
   return closes, meta
 
 
-def timestamp_from_google_block(block: list) -> str | None:
+def google_finance_timezone(google_symbol: str, exchange_hint: str = "") -> str:
+  exchange = ((google_symbol or "").split(":")[-1] if ":" in (google_symbol or "") else exchange_hint or "").upper()
+  return {
+    "NSE": "Asia/Kolkata",
+    "BOM": "Asia/Kolkata",
+    "NASDAQ": "America/New_York",
+    "NYSE": "America/New_York",
+    "ASX": "Australia/Sydney",
+    "LON": "Europe/London",
+    "TYO": "Asia/Tokyo",
+    "ETR": "Europe/Berlin",
+  }.get(exchange, "UTC")
+
+
+def timestamp_from_google_block(block: list, time_zone: str = "UTC") -> str | None:
   if not isinstance(block, list) or len(block) < 3:
     return None
   try:
@@ -3598,8 +3719,9 @@ def timestamp_from_google_block(block: list) -> str | None:
       month = max(1, min(12, month + 1))
     hour = int(block[3]) if len(block) > 3 else 0
     minute = int(block[4]) if len(block) > 4 else 0
-    return datetime(year, month, day, hour, minute, tzinfo=timezone.utc).isoformat()
-  except (TypeError, ValueError):
+    tz = ZoneInfo(time_zone)
+    return datetime(year, month, day, hour, minute, tzinfo=tz).astimezone(timezone.utc).isoformat()
+  except (TypeError, ValueError, ZoneInfoNotFoundError):
     return None
 
 
@@ -3661,7 +3783,10 @@ def build_history(symbol: str, chart_range: str = "1M", allow_live_refresh: bool
         )
       except ValueError:
         age_seconds = history_cache_ttl(normalized_range) + 1
-      if len(closes) >= 2 and age_seconds <= history_cache_ttl(normalized_range):
+      cached_timestamps = meta.get("timestamps") or []
+      cached_latest_age = timestamp_age_seconds(cached_timestamps[-1]) if cached_timestamps else age_seconds
+      cache_timestamp_valid = cached_latest_age is not None
+      if len(closes) >= 2 and age_seconds <= history_cache_ttl(normalized_range) and cache_timestamp_valid:
         return closes, build_cached_meta(meta, source or "Local cache", updated_at)
       if len(closes) >= 2 and not allow_live_refresh:
         return closes, build_cached_meta(meta, source or "Local cache", updated_at, stale=True)
@@ -6716,7 +6841,7 @@ def build_overview_payload(symbols: list[str], active: str | None, region_key: s
   market_state = active_item.get("marketState") or "REGULAR"
   payload["active"] = {
     **active_item,
-    "marketSession": build_market_session(exchange, exchange, market_state),
+    "marketSession": active_item.get("marketSession") or build_market_session(exchange, exchange, market_state, active_item.get("asOf")),
     "regime": "Refreshing active view",
   }
   payload["selectedRegion"] = region_config(region_key or infer_region_key(active_item.get("symbol"), exchange, active_item.get("currency")))["key"]
