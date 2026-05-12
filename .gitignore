@@ -14,6 +14,12 @@ config.json
 .mypy_cache/
 
 .playwright-cli/
+.claude/
+.fuse_hidden*
+data/dashboard.db
+data/dashboard.db-shm
+data/dashboard.db-wal
+data/jobs/*refresh*.json
 
 # ── Proprietary signal data & trading playbooks ──────────────────────────────
 # Any file in here could directly reveal edge or decision logic.

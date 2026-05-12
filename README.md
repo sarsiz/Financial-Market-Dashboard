@@ -24,15 +24,16 @@ Full-stack dark financial dashboard with:
 - `data/papers/`: local paper registry for research-backed factor and graph design
 - `vendor/cytoscape.min.js`: local graph engine for the dependency workspace
 - `data/macro/`: local macro factor store and sync manifest
-- `vault/market-map/`: Obsidian-friendly markdown vault generated from universes, relation graphs, papers, and playbooks
+- `vault/market-map/`: local markdown notes generated from universes, relation graphs, papers, and playbooks
 - `config.json`: created automatically when you save provider settings
 - local LLM features are pinned to `Bonsai-8B-1bit` through the Ollama-compatible endpoint
 - `kb/`: durable local knowledge base for macro, region, sector, company, and playbook notes
 - `scripts/sync_macro_factor_store.py`: local macro-factor downloader / manifest builder
-- `scripts/build_research_protocol_vault.py`: Obsidian-friendly research note generator
-- `scripts/build_agent_memory_vault.py`: builds the Obsidian-friendly memory operating system around the vault
-- `vault/market-map/concepts/`: Obsidian-friendly quant concept notes
-- `vault/market-map/workflows/`: Obsidian-friendly methodology flow notes
+- `scripts/build_research_protocol_vault.py`: research note generator
+- `scripts/build_agent_memory_vault.py`: builds manifest, templates, and working-note folders
+- `scripts/update_knowledge_base.py`: refreshes generated markdown and checks docs for stale wording
+- `vault/market-map/concepts/`: quant concept notes
+- `vault/market-map/workflows/`: methodology flow notes
 - `vault/market-map/_meta/`: vault manifest and memory protocol
 - `vault/market-map/inbox/`, `sessions/`, `sources/`, `templates/`: working-memory and note-promotion structure
 
@@ -61,6 +62,8 @@ This platform is built as a lightweight full-stack app with a browser client and
 - market radar has its own refresh path and now auto-refreshes every 15 minutes without waiting for the full dashboard refresh
 - market radar surfaces a compact news ticker, sentiment box, and event hotspots from live news items without the older floating cloud layer
 - market radar now blends live event headlines with macro pulse and active-ticker micro context, so the section reflects both top-down and stock-specific pressure
+- the overview now includes a dense market heat map, using local universe manifests, live quotes where available, and documented sector/watchlist fallbacks when a provider is missing
+- every dashboard load now starts a bounded backend maintenance check, refreshes stale macro/universe scripts in the background, and exposes script status in the dashboard data-flow bar
 - the stock dossier uses an auto-masonry card layout so peer comparison and other cards repack tightly across viewport sizes
 - the sector matrix renders benchmark-relative performance by market, benchmark, and period with a local-cache-first path
 - the dashboard now keeps a region-selected macro layer for bonds, inflation, policy, events, equity context, watchlist implications, and US-vs-India comparison
@@ -73,6 +76,25 @@ This platform is built as a lightweight full-stack app with a browser client and
 - large charts now carry timestamp-aware history series, axis labels, and hover inspection instead of only raw close arrays
 - local-LLM features are pinned to `Bonsai-8B-1bit`, even if another model name is saved in config, to keep inference lighter and more predictable
 - factor governance and paper-backed protocol are now local datasets, so cadence, significance, provenance, and methodology are explicit rather than hidden in code
+
+## Data Sources
+
+The dashboard keeps provider usage factual and labelled. Current and candidate sources are:
+
+- SEC EDGAR APIs: US filings and XBRL company facts.
+- FRED API: US rates, inflation, policy, labor, and macro series.
+- Alpha Vantage: quotes, adjusted history, market status, earnings calendar, and estimates where API keys permit.
+- Google Finance: live quote edge fallback, especially for exchange-suffixed regional symbols.
+- Yahoo Finance: quote summary, chart live edge, fundamentals, and public consensus fields.
+- Stooq: daily CSV history fallback when live quote providers are unavailable.
+- Finnhub: candidate source for analyst price targets, recommendation trends, estimates, ownership, and company profiles.
+- Financial Modeling Prep: candidate source for analyst revenue/EPS estimates.
+- Nasdaq Trader Symbol Directory: current-day US symbol metadata for universe sync.
+- Reserve Bank of India: India policy, rates, circulars, and official macro context.
+- Federal Reserve: US policy statements, rate decisions, speeches, and calendars.
+- NSE India data products: official reference for India EOD/historical market data provenance.
+
+Consensus and analyst data should be shown as public context with source, timestamp, confidence, and limitations. It should not be converted into direct buy/sell advice.
 
 ## Architecture
 
@@ -119,9 +141,9 @@ The dashboard now keeps a local research-backed operating model:
 - `data/macro/manifest.json`: local macro-store coverage by region
 - `kb/playbooks/research-backed-dashboard-protocol.md`: the repo-level methodology rulebook
 - `kb/playbooks/quant-concepts-dashboard-map.md`: concise map from concepts to dashboard surfaces
-- `vault/market-map/research/`: Obsidian-friendly factor notes generated from the registry
-- `vault/market-map/concepts/`: Obsidian-friendly concept notes
-- `vault/market-map/workflows/`: Obsidian-friendly flow notes
+- `vault/market-map/research/`: factor notes generated from the registry
+- `vault/market-map/concepts/`: concept notes
+- `vault/market-map/workflows/`: flow notes
 - `vault/market-map/_meta/Agent Memory Protocol.md`: how agents should use durable vs working memory
 - `vault/market-map/_meta/Vault Manifest.md`: coverage snapshot for the current local memory system
 
@@ -142,11 +164,11 @@ The dashboard is moving toward the useful parts of Mint, Moneycontrol, Groww, an
 - `Fundamental context`: valuation, quality, project exposure, supplier risk, and sector sensitivity where local data exists.
 - `Events`: market-relevant RSS/news, category filters, impact score, source timestamps, and major event overrides.
 - `Decision support`: scenarios, confidence, unknowns, and monitor-next signals, not direct buy/sell instructions.
-- `Local database`: historical records, cached payloads, derived insights, relation graphs, and Obsidian markdown memory.
+- `Local database`: historical records, cached payloads, derived insights, relation graphs, and local markdown notes.
 
-## Obsidian Memory
+## Local Knowledge Base
 
-The repo now has a fuller Obsidian-style memory system, not just generated notes:
+The repo keeps durable market context as plain markdown, generated where possible:
 
 - durable memory:
   - `companies/`
@@ -169,6 +191,12 @@ Generate or refresh it with:
 python3 scripts/build_market_map_vault.py
 python3 scripts/build_research_protocol_vault.py
 python3 scripts/build_agent_memory_vault.py
+```
+
+Or refresh the generated notes and wording checks together:
+
+```bash
+python3 scripts/update_knowledge_base.py
 ```
 
 The current suite covers:
@@ -279,7 +307,7 @@ The relation layer is inspired by:
 - [Chronos](https://arxiv.org/abs/2403.07815)
 - [TimesFM](https://arxiv.org/abs/2310.10688)
 
-## Obsidian-style market map
+## Market Map Notes
 
 The repo now supports a local markdown vault in:
 
@@ -295,6 +323,12 @@ Build it with:
 python3 scripts/build_market_map_vault.py
 python3 scripts/build_research_protocol_vault.py
 python3 scripts/sync_macro_factor_store.py
+```
+
+To refresh the generated markdown and validate wording:
+
+```bash
+python3 scripts/update_knowledge_base.py
 ```
 
 This follows the same simple pattern:

@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Financial Board</title>
+    <link rel="icon" href="data:," />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <!-- DNS prefetch for data providers — resolves DNS early on cold load -->
@@ -18,6 +19,12 @@
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
+    <div id="starfield" class="starfield" aria-hidden="true">
+      <div class="starfield-layer starfield-layer-far"></div>
+      <div class="starfield-layer starfield-layer-mid"></div>
+      <div class="starfield-layer starfield-layer-near"></div>
+      <div class="starfield-glow"></div>
+    </div>
     <div id="alert-stack" class="alert-stack" aria-live="polite" aria-atomic="false"></div>
     <section id="data-flow-bar" class="data-flow-bar" aria-live="polite" aria-label="Backend data flow progress"></section>
     <div class="app-shell">
@@ -25,10 +32,7 @@
         <div>
           <p class="eyebrow">Markets</p>
           <h1>Financial Board</h1>
-          <p class="sidebar-copy">
-            Full-stack market dashboard with cross-market coverage, explainable forecasts,
-            latest catalyst tracking, and a built-in learning layer.
-          </p>
+          <p class="sidebar-copy">Cross-market forecasts, catalysts, and methodology.</p>
         </div>
 
         <div class="watchlist-panel">
@@ -51,6 +55,7 @@
           </form>
           <div id="search-results" class="search-results"></div>
           <div id="watchlist" class="watchlist"></div>
+          <div id="recent-tickers" class="recent-tickers"></div>
         </div>
 
         <div class="source-panel">
@@ -81,76 +86,35 @@
             <h2>Backend</h2>
             <span id="provider-badge">yahoo</span>
           </div>
-          <p class="muted">
-            The browser talks only to this app server. That keeps provider details and API keys off the client.
-          </p>
-          <button id="open-settings" class="ghost-button">Provider Settings</button>
+          <button id="open-settings" class="ghost-button">Settings</button>
         </div>
       </aside>
 
       <main class="dashboard">
-        <nav id="compact-section-menu" class="compact-section-menu" aria-label="Dashboard sections">
-          <button id="compact-menu-toggle" class="compact-menu-toggle" type="button" aria-expanded="false">
-            Sections
-          </button>
-          <div id="compact-menu-list" class="compact-menu-list"></div>
-        </nav>
 
-        <section id="global-market-overview" class="global-market-overview glass-panel" aria-live="polite"></section>
+        <section id="global-market-overview" class="global-market-overview" aria-live="polite"></section>
 
-        <section id="market-radar" class="ticker-banner glass-panel">
-          <div class="banner-topbar">
-            <div class="banner-label">Market radar</div>
-            <div id="radar-sentiment-box" class="radar-sentiment-box">
-              <span>Sentiment</span>
-              <strong>Scanning live</strong>
-              <small>Headlines and catalysts</small>
-            </div>
-          </div>
-          <div class="radar-layout">
-            <div class="radar-copy">
-              <div class="ticker-track-wrap">
-                <div id="headline-track" class="ticker-track"></div>
-              </div>
-            </div>
-            <div id="radar-hotspots" class="radar-hotspots"></div>
-          </div>
-          <div class="radar-footer">
-            <div id="radar-source-note" class="micro-note">Sources loading.</div>
+        <section id="market-radar" class="ticker-banner-compact">
+          <div id="headline-track" class="ticker-track"></div>
+          <div id="radar-hotspots" class="radar-hotspots" hidden></div>
+          <div id="radar-sentiment-box" class="radar-sentiment-chip">
+            <span id="radar-source-note">Live</span>
           </div>
         </section>
 
-        <div class="utility-grid">
-          <section id="market-board-panel" class="glass-panel board-strip-panel">
-            <div class="section-heading compact">
-              <h3>Market Board</h3>
-              <div class="section-heading-actions">
-                <span>Watch overview</span>
-                <button id="toggle-market-board" class="ghost-button compact-ghost" type="button">Hide</button>
-              </div>
-            </div>
-            <div id="overview-board" class="overview-board"></div>
-          </section>
-        </div>
-
-        <!-- Sector Overview Strip — always visible, all markets at a glance -->
-        <div id="sector-overview-strip" class="sector-overview-strip" aria-label="Sector performance overview">
-          <span class="sector-strip-label">Sectors</span>
-        </div>
-
         <nav class="tabbar">
           <button class="tab active" data-tab="overview">Overview</button>
-          <button class="tab" data-tab="bond-market">Bond Market</button>
+          <button class="tab" data-tab="bond-market">Bonds</button>
           <button class="tab" data-tab="inflation">Inflation</button>
-          <button class="tab" data-tab="equity-context">Equity Context</button>
-          <button class="tab" data-tab="events-calendar">Events &amp; Calendar</button>
-          <button class="tab" data-tab="methodology">Methodology</button>
-          <button class="tab" data-tab="watchlist-implications">Watchlist Implications</button>
+          <button class="tab" data-tab="equity-context">Equity</button>
+          <button class="tab" data-tab="events-calendar">Events</button>
+          <button class="tab" data-tab="methodology">Method</button>
+          <button class="tab" data-tab="watchlist-implications">Implications</button>
           <button class="tab" data-tab="comparison">Compare</button>
         </nav>
 
         <section id="overview" class="tab-panel active">
-          <div class="hero-grid">
+          <div id="overview-board" class="hero-grid">
             <article id="overview-spotlight" class="glass-panel spotlight">
               <div class="section-heading">
                 <h3 id="hero-ticker">AAPL</h3>
@@ -170,107 +134,74 @@
                   <svg id="hero-sparkline" viewBox="0 0 320 100" preserveAspectRatio="none"></svg>
                 </div>
               </div>
-              <div class="hero-chart-card">
-                <div class="section-heading compact">
-                  <h3>Price</h3>
-                  <div class="chart-range-tabs" id="chart-range-tabs">
-                    <button class="range-tab active" type="button" data-range="1D">1D</button>
-                    <button class="range-tab" type="button" data-range="3D">3D</button>
-                    <button class="range-tab" type="button" data-range="5D">5D</button>
-                    <button class="range-tab" type="button" data-range="1M">1M</button>
-                    <button class="range-tab" type="button" data-range="1Y">1Y</button>
-                    <button class="range-tab" type="button" data-range="2Y">2Y</button>
-                    <button class="range-tab" type="button" data-range="3Y">3Y</button>
-                    <button class="range-tab" type="button" data-range="5Y">5Y</button>
-                    <button class="range-tab" type="button" data-range="MAX">Max</button>
-                  </div>
-                </div>
-                <div class="chart-toolbar">
-                  <div class="chart-mode-tabs" id="chart-mode-tabs" aria-label="Chart display mode">
-                    <button class="chart-mode-tab active" type="button" data-chart-type="line">Line</button>
-                    <button class="chart-mode-tab" type="button" data-chart-type="area">Area</button>
-                    <button class="chart-mode-tab" type="button" data-chart-type="candles">Candles</button>
-                    <button class="chart-mode-tab" type="button" data-chart-type="bars">Bars</button>
-                  </div>
-                  <div class="chart-features">
-                    <label class="check-row compact"><input id="feature-sma20" type="checkbox" checked /> SMA 20</label>
-                    <label class="check-row compact"><input id="feature-sma50" type="checkbox" checked /> SMA 50</label>
-                    <label class="check-row compact"><input id="feature-bands" type="checkbox" /> Bands</label>
-                  </div>
-                  <div class="buy-sell-card">
-                    <span id="buy-sell-signal">Balanced</span>
-                    <strong id="buy-sell-breakdown">Buy 0% · Hold 100% · Sell 0%</strong>
-                  </div>
-                </div>
-                <div id="model-agreement-note" class="micro-note">Model agreement loading.</div>
-                <svg id="hero-projection-chart" viewBox="0 0 640 220" preserveAspectRatio="none"></svg>
-                <div id="hero-chart-hover" class="chart-hover-card" hidden></div>
-              </div>
-              <div class="signal-grid">
-                <div class="signal-card">
-                  <span>Forecast</span>
-                  <strong id="forecast-direction">Neutral</strong>
-                  <small id="forecast-confidence">Confidence 0%</small>
-                </div>
-                <div class="signal-card">
-                  <span>Fair value gap</span>
-                  <strong id="fair-value-gap">0.0%</strong>
-                  <small>Quant blend vs. spot</small>
-                </div>
-                <div class="signal-card">
-                  <span>Event pressure</span>
-                  <strong id="event-pressure">Low</strong>
-                  <small>News + volatility load</small>
-                </div>
-                <div class="signal-card">
-                  <span>Model error</span>
-                  <strong id="model-error">0.0%</strong>
-                  <small>Walk-forward MAE</small>
-                </div>
-              </div>
+              <div id="prediction-panel" class="prediction-panel"></div>
             </article>
 
-            <div class="overview-side-stack">
-              <article class="glass-panel recent-strip-panel side-recent-panel">
-                <div class="section-heading compact">
-                  <h3>Recent</h3>
+            <article class="hero-chart-card glass-panel">
+              <div class="section-heading compact">
+                <h3>Price</h3>
+                <div class="chart-range-tabs" id="chart-range-tabs">
+                  <button class="range-tab active" type="button" data-range="1D">1D</button>
+                  <button class="range-tab" type="button" data-range="3D">3D</button>
+                  <button class="range-tab" type="button" data-range="5D">5D</button>
+                  <button class="range-tab" type="button" data-range="1M">1M</button>
+                  <button class="range-tab" type="button" data-range="1Y">1Y</button>
+                  <button class="range-tab" type="button" data-range="2Y">2Y</button>
+                  <button class="range-tab" type="button" data-range="3Y">3Y</button>
+                  <button class="range-tab" type="button" data-range="5Y">5Y</button>
+                  <button class="range-tab" type="button" data-range="MAX">Max</button>
                 </div>
-                <div id="recent-tickers" class="recent-tickers compact"></div>
-              </article>
+              </div>
+              <div class="chart-toolbar">
+                <div class="chart-mode-tabs" id="chart-mode-tabs" aria-label="Chart display mode">
+                  <button class="chart-mode-tab active" type="button" data-chart-type="line">Line</button>
+                  <button class="chart-mode-tab" type="button" data-chart-type="area">Area</button>
+                  <button class="chart-mode-tab" type="button" data-chart-type="candles">Candles</button>
+                  <button class="chart-mode-tab" type="button" data-chart-type="bars">Bars</button>
+                </div>
+                <div class="chart-features">
+                  <label class="check-row compact"><input id="feature-sma20" type="checkbox" checked /> SMA 20</label>
+                  <label class="check-row compact"><input id="feature-sma50" type="checkbox" checked /> SMA 50</label>
+                  <label class="check-row compact"><input id="feature-bands" type="checkbox" /> Bands</label>
+                </div>
+                <div class="buy-sell-card">
+                  <span id="buy-sell-signal">Balanced</span>
+                  <strong id="buy-sell-breakdown">Buy 0% · Hold 100% · Sell 0%</strong>
+                </div>
+              </div>
+              <div id="model-agreement-note" class="micro-note">Model agreement loading.</div>
+              <svg id="hero-projection-chart" viewBox="0 0 640 220" preserveAspectRatio="none"></svg>
+              <div id="hero-chart-hover" class="chart-hover-card" hidden></div>
+              <div id="trade-plan-panel" class="trade-plan-panel" aria-live="polite"></div>
+            </article>
 
-              <article class="glass-panel metrics-panel">
-                <div class="section-heading">
-                  <h3>Market Pulse</h3>
-                  <span>Cross-asset read</span>
-                </div>
-                <div id="pulse-grid" class="pulse-grid"></div>
-              </article>
-
-              <article class="glass-panel event-panel compact-panel">
-                <div class="section-heading">
-                  <h3>Event Flow</h3>
-                  <span id="event-summary-label">Business</span>
-                </div>
-                <div class="event-toolbar">
-                  <div class="event-categories" id="event-categories">
-                    <button class="event-chip" type="button" data-category="all">All</button>
-                    <button class="event-chip active" type="button" data-category="business">Business</button>
-                    <button class="event-chip" type="button" data-category="world">World</button>
-                    <button class="event-chip" type="button" data-category="war">War</button>
-                    <button class="event-chip" type="button" data-category="layoffs">Layoffs</button>
-                    <button class="event-chip" type="button" data-category="partnerships">Partnerships</button>
-                    <button class="event-chip" type="button" data-category="deals">Deals</button>
-                    <button class="event-chip" type="button" data-category="brands">Brands</button>
-                  </div>
-                  <form id="event-search-form" class="event-search-form">
-                    <input id="event-search-input" type="text" placeholder="Search events or sector themes" />
-                    <button type="submit">Find</button>
-                  </form>
-                </div>
-                <div id="event-list" class="event-list compact-event-list"></div>
-              </article>
-            </div>
+            <aside class="overview-context-strip">
+              <div id="pulse-grid" class="pulse-strip"></div>
+              <div id="event-list" class="event-strip"></div>
+            </aside>
           </div>
+
+          <article id="market-heat-map-panel" class="glass-panel market-heat-map-panel">
+            <div class="section-heading market-heat-map-heading">
+              <div>
+                <h3>Market Heat Map</h3>
+                <span>Universe rank sizing, return color, source-labeled tiles</span>
+              </div>
+              <div class="market-heat-map-controls">
+                <select id="market-heat-map-region" class="sector-ctrl-select" aria-label="Heat map market">
+                  <option value="india" selected>India</option>
+                  <option value="us">US</option>
+                </select>
+                <div class="market-heat-map-tabs" aria-label="Heat map period">
+                  <button class="market-heat-map-tab active" type="button" data-period="1D">1D</button>
+                  <button class="market-heat-map-tab" type="button" data-period="5D">5D</button>
+                  <button class="market-heat-map-tab" type="button" data-period="1M">1M</button>
+                </div>
+              </div>
+            </div>
+            <div id="market-heat-map-grid" class="market-heat-map-grid" aria-live="polite"></div>
+            <div id="market-heat-map-footer" class="market-heat-map-footer">Heat map loading.</div>
+          </article>
 
           <article id="stock-dossier-panel" class="glass-panel stock-dossier-panel">
             <div class="section-heading">
@@ -282,23 +213,6 @@
             <div id="market-discovery" class="market-discovery"></div>
           </article>
 
-          <div class="content-grid">
-            <article class="glass-panel large-panel">
-              <div class="section-heading">
-                <h3>Factor Relationships</h3>
-                <span>Macro x micro x event linkage</span>
-              </div>
-              <div id="factor-map" class="factor-map"></div>
-            </article>
-
-            <article class="glass-panel large-panel">
-              <div class="section-heading">
-                <h3>Signal Drivers</h3>
-                <span>Policy, deals, sentiment, industry</span>
-              </div>
-              <div id="catalyst-list" class="catalyst-list"></div>
-            </article>
-          </div>
         </section>
 
         <section id="bond-market" class="tab-panel">

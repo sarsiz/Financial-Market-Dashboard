@@ -9,4 +9,9 @@
 - Use the local historical cache as the source of truth for older data. Fetch the live edge, then persist the older series and reuse it rather than scraping the same back history repeatedly.
 - Keep universe/history/relations pipelines scriptable and deterministic. Prefer plain JSON manifests plus resumable backfill jobs over hidden one-off logic.
 - Treat `vault/market-map/` as the local agent memory system. Durable notes go in stable folders like `companies/`, `concepts/`, `papers/`, `playbooks/`, `research/`, and `workflows/`; temporary captures should stay in `inbox/` or `sessions/` until promoted.
-- Keep Obsidian-friendly memory simple: plain markdown, frontmatter where helpful, wiki-linkable notes, and generated indexes/manifests from scripts rather than hand-maintained sprawl.
+- Keep local memory simple: plain markdown, frontmatter where helpful, wiki-linkable notes, and generated indexes/manifests from scripts rather than hand-maintained sprawl.
+- Read before writing: inspect callers, exports, shared helpers, response shapes, and local conventions before adding new code.
+- Keep changes surgical and deterministic. Use scripts/code for refreshes, routing, retries, status, and transforms; reserve model judgment for interpretation and tradeoffs.
+- Surface conflicts instead of blending contradictory patterns or sources. Keep source labels, fallback labels, timestamps, confidence, and unknowns visible.
+- Treat time, token, and network budgets as real constraints. Checkpoint after meaningful steps and state anything skipped or unverified.
+- Tests should verify the user-facing intent. Never claim tests pass, data is live, or a component works unless it was actually verified.

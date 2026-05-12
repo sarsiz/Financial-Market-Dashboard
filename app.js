@@ -11,6 +11,7 @@ const STORAGE_KEYS = {
   dossierOrder: "financial-board-dossier-order",
   dataFlow: "financial-board-data-flow",
   sectorMatrix: "financial-board-sector-matrix",
+  marketHeatMap: "financial-board-market-heat-map",
   dashboardCache: "financial-board-dashboard-cache-v2",
 };
 
@@ -245,15 +246,21 @@ const state = {
   pendingImpactGraph: null,
   revealObserver: null,
   lastOverviewChartRefreshAt: 0,
+  chartHoverFrame: null,
+  chartHoverEvent: null,
   historyWarmupKeys: new Set(),
   dossierOrder: loadStoredDossierOrder(),
   dataFlow: loadStoredDataFlowState(),
   sectorStripSectors: [],
+  marketHeatMap: null,
+  marketHeatMapRequestId: 0,
 };
 
 if (state.watchlist.length === 0) {
   state.watchlist = ["BHARTIARTL.NS", "ICICIBANK.NS", "GLENMARK.NS"];
 }
+
+const marketClockKeys = new WeakMap();
 
 /* ── Skeleton Loading Helpers ──────────────────────────────────────────────── */
 function showSkeleton(containerId, template) {
@@ -339,10 +346,22 @@ function loadStoredDataFlowState() {
     polling: false,
     hidden: false,
     hideTimer: null,
+    boot: { config: false, presets: false, watchlists: false },
+    lastError: "",
   };
   try {
     const stored = JSON.parse(localStorage.getItem(STORAGE_KEYS.dataFlow) || "{}") || {};
-    return { ...fallback, ...stored, tasks: {}, history: { jobs: [], active: [] }, polling: false, hidden: false, hideTimer: null };
+    return {
+      ...fallback,
+      ...stored,
+      tasks: {},
+      history: { jobs: [], active: [] },
+      boot: { ...fallback.boot },
+      polling: false,
+      hidden: false,
+      hideTimer: null,
+      lastError: "",
+    };
   } catch {
     return fallback;
   }
@@ -442,23 +461,68 @@ function liveBadgeMarkup(label = "Live update") {
   return `<span class="live-badge-inline" aria-label="${label}" title="${label}"></span>`;
 }
 
-function setupScrollReveal() {
-  if (state.revealObserver) {
-    state.revealObserver.disconnect();
+function setTextIfChanged(node, value) {
+  if (!node) return;
+  const text = String(value ?? "");
+  if (node.childNodes.length === 1 && node.firstChild?.nodeType === Node.TEXT_NODE) {
+    if (node.firstChild.nodeValue !== text) {
+      node.firstChild.nodeValue = text;
+    }
+    return;
   }
-  state.revealObserver = new IntersectionObserver(
-    (entries) => {
-      entries.forEach((entry) => {
-        if (entry.isIntersecting) {
-          entry.target.classList.add("is-visible");
-          entry.target.classList.add("revealed");
-        }
-      });
-    },
-    { threshold: 0.08 },
-  );
+  if (node.textContent !== text) {
+    node.textContent = text;
+  }
+}
+
+function setHTMLIfChanged(node, html) {
+  if (!node) return false;
+  const markup = String(html ?? "");
+  if (node.innerHTML !== markup) {
+    node.innerHTML = markup;
+    return true;
+  }
+  return false;
+}
+
+function setAttributeIfChanged(node, name, value) {
+  if (!node) return;
+  const next = String(value ?? "");
+  if (node.getAttribute(name) !== next) {
+    node.setAttribute(name, next);
+  }
+}
+
+function setClassIfChanged(node, className) {
+  if (!node) return;
+  const next = String(className ?? "");
+  if (node.className !== next) {
+    node.className = next;
+  }
+}
+
+function setupScrollReveal() {
+  if (!state.revealObserver) {
+    state.revealObserver = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add("is-visible");
+            entry.target.classList.add("revealed");
+          }
+        });
+      },
+      { threshold: 0.08 },
+    );
+  }
   document.querySelectorAll(".glass-panel, .macro-panel, .hero-chart-card, .stock-dossier-panel").forEach((node) => {
+    if (node.dataset.revealObserved === "1") return;
+    node.dataset.revealObserved = "1";
     node.classList.add("scroll-reveal");
+    const rect = node.getBoundingClientRect();
+    if (rect.top < window.innerHeight && rect.bottom > 0) {
+      node.classList.add("is-visible", "revealed");
+    }
     state.revealObserver.observe(node);
   });
 }
@@ -524,6 +588,17 @@ async function api(path, options = {}) {
 function formatPercent(value) {
   const numeric = Number(value || 0);
   return `${numeric >= 0 ? "+" : ""}${numeric.toFixed(2)}%`;
+}
+
+function isUnavailableSector(s = {}) {
+  const source = String(s.source || "").toLowerCase();
+  const price = Number(s.price);
+  const pct = Number(s.changePct ?? s.changePercent ?? s.change);
+  return source.includes("unavailable") && (!Number.isFinite(price) || price <= 0) && (!Number.isFinite(pct) || Math.abs(pct) < 0.0001);
+}
+
+function hasUsableSectorData(sectors = []) {
+  return Array.isArray(sectors) && sectors.some((sector) => !isUnavailableSector(sector));
 }
 
 function formatCurrency(value, currency = "USD") {
@@ -963,8 +1038,8 @@ function renderStockDossier(active) {
   const discoveryNode = document.getElementById("market-discovery");
   if (!panel || !nav || !node || !discoveryNode) return;
   if (!dossier.daySnapshot) {
-    node.innerHTML = `<div class="dossier-empty">Stock dossier is loading.</div>`;
-    discoveryNode.innerHTML = "";
+    setHTMLIfChanged(node, `<div class="dossier-empty">Stock dossier is loading.</div>`);
+    setHTMLIfChanged(discoveryNode, "");
     return;
   }
   const day = dossier.daySnapshot || {};
@@ -977,7 +1052,7 @@ function renderStockDossier(active) {
   const roeLabel = fundamentals.roe === null || fundamentals.roe === undefined || fundamentals.roe === ""
     ? "Unavailable"
     : dossierMetric(Number(fundamentals.roe) * 100, "percent");
-  nav.innerHTML = `
+  const navChanged = setHTMLIfChanged(nav, `
     <div class="dossier-nav-scroll">
       ${[
         ["Snapshot", "dossier-day"],
@@ -989,11 +1064,13 @@ function renderStockDossier(active) {
         ["Sources", "dossier-links"],
       ].map(([label, target]) => `<button type="button" data-scroll-target="${target}">${label}</button>`).join("")}
     </div>
-  `;
-  nav.querySelectorAll("button").forEach((button) => {
-    if (!button.dataset.scrollTarget) return;
-    button.addEventListener("click", () => document.getElementById(button.dataset.scrollTarget)?.scrollIntoView({ behavior: "smooth", block: "nearest" }));
-  });
+  `);
+  if (navChanged) {
+    nav.querySelectorAll("button").forEach((button) => {
+      if (!button.dataset.scrollTarget) return;
+      button.addEventListener("click", () => document.getElementById(button.dataset.scrollTarget)?.scrollIntoView({ behavior: "smooth", block: "nearest" }));
+    });
+  }
   const metricCard = renderMetricCommandCard(buildMetricCommandGroups(active, dossier, day, fundamentals, unusual));
   const benchmarkSummary = (dossier.benchmarkComparison || [])
     .slice(0, 3)
@@ -1116,15 +1193,20 @@ function renderStockDossier(active) {
     }),
   };
   const orderedKeys = state.dossierOrder.filter((key) => cards[key]).concat(DEFAULT_DOSSIER_ORDER.filter((key) => !state.dossierOrder.includes(key)));
-  node.innerHTML = orderedKeys.map((key) => cards[key]).join("");
-  setupDossierControls(node);
-  setupDossierDrag(node);
-  discoveryNode.innerHTML = renderMarketDiscovery(discoveryItems, state.dashboard?.discovery?.source || "Local scan");
-  discoveryNode.querySelectorAll("button[data-symbol]").forEach((button) => {
-    button.addEventListener("click", () => selectActiveTicker(button.dataset.symbol));
-  });
+  const dossierChanged = setHTMLIfChanged(node, orderedKeys.map((key) => cards[key]).join(""));
+  if (dossierChanged) {
+    setupDossierControls(node);
+    setupDossierDrag(node);
+  }
+  const discoveryChanged = setHTMLIfChanged(discoveryNode, renderMarketDiscovery(discoveryItems, state.dashboard?.discovery?.source || "Local scan"));
+  if (discoveryChanged) {
+    discoveryNode.querySelectorAll("button[data-symbol]").forEach((button) => {
+      button.addEventListener("click", () => selectActiveTicker(button.dataset.symbol));
+    });
+  }
   revealSection("stock-dossier");
   applyRevealObserver();
+  renderDataFlowBar();
 }
 
 function buildProbabilityFan(forecast, active) {
@@ -1148,11 +1230,138 @@ function buildProbabilityFan(forecast, active) {
   });
 }
 
+function percentile(values, ratio) {
+  const sorted = (values || []).map(Number).filter(Number.isFinite).sort((a, b) => a - b);
+  if (!sorted.length) return null;
+  const index = clamp(Math.round((sorted.length - 1) * ratio), 0, sorted.length - 1);
+  return sorted[index];
+}
+
+function buildShortTermSetup(active = {}, forecast = {}) {
+  const price = Number(active.price || 0);
+  const currency = active.currency || "USD";
+  const historySeries = normalizeHistorySeries(active.historySeries?.length ? active.historySeries : (active.history || []), state.chartRange);
+  const closes = historySeries.map((item) => Number(item.value)).filter(Number.isFinite);
+  const recent = closes.slice(-Math.min(40, closes.length));
+  const projected = (forecast.projected || []).map(Number).filter(Number.isFinite);
+  const factors = forecast.factorsRaw || {};
+  const lastProjected = projected.length ? projected[projected.length - 1] : price;
+  const expectedReturn = Number(forecast.expectedReturn || 0);
+  const maePct = Math.max(Number(forecast.mae || 0), 1.2);
+  const realizedVolPct = Math.max(Number(factors.realizedVol || forecast.realizedVol || 0) * 100, 0.8);
+  const bufferPct = clamp(Math.max(maePct * 0.45, realizedVolPct * 0.65), 0.8, 6.5);
+  const support = Math.min(
+    percentile(recent, 0.18) ?? price * (1 - bufferPct / 100),
+    price * (1 - Math.min(bufferPct, 5.5) / 100),
+  );
+  const resistance = Math.max(
+    percentile(recent, 0.82) ?? price * (1 + bufferPct / 100),
+    lastProjected || price,
+    price * (1 + Math.min(bufferPct, 6.5) / 100),
+  );
+  const entryLow = Math.min(price, support * 1.002);
+  const entryHigh = Math.max(entryLow, Math.min(price * 0.995, support * 1.018));
+  const invalidation = support * (1 - Math.min(bufferPct * 0.55, 3.2) / 100);
+  const upsidePct = price ? ((resistance - price) / price) * 100 : 0;
+  const downsidePct = price ? ((price - invalidation) / price) * 100 : 0;
+  const riskReward = downsidePct > 0 ? Math.max(0, upsidePct / downsidePct) : 0;
+  const trendScore = Number(factors.fastMomentum || 0) * 100 + Number(factors.macdSignal || 0) * 75 + Number(factors.meanReversion || 0) * 30;
+  const trend = trendScore > 0.35 ? "Uptrend bias" : trendScore < -0.35 ? "Downtrend risk" : "Range-bound";
+  const eventPressure = forecast.eventPressureLabel || "Pending";
+  const agreement = forecast.models?.agreement || {};
+  const confidence = Number(forecast.confidence || 0);
+  const direction = String(forecast.direction || "").toLowerCase();
+  const bearishSetup = expectedReturn < -1 || direction === "bearish";
+  const bullishSetup = expectedReturn > 1 || direction === "bullish";
+  const quality = bearishSetup
+    ? (confidence >= 60 ? "Defensive" : "Fragile")
+    : bullishSetup && confidence >= 68 && riskReward >= 1.15
+      ? "Constructive"
+      : confidence < 45 || riskReward < 0.7
+        ? "Fragile"
+        : "Balanced";
+  const entryLabel = bearishSetup ? "Re-entry watch" : "Entry watch";
+  const entryNote = bearishSetup ? "Better setup needs reclaim or calmer pullback." : "Pullback/support zone, not an order.";
+  const upsideNote = bearishSetup ? "Recovery ceiling to watch before trend improves." : `${formatPercent(upsidePct)} to resistance/projection.`;
+  const riskLabel = bearishSetup ? "Breakdown risk" : "Invalidation";
+  const riskNote = bearishSetup ? `${formatPercent(-downsidePct)} to lower risk line.` : `${formatPercent(-downsidePct)} downside buffer.`;
+  return {
+    currency,
+    price,
+    entryLow,
+    entryHigh,
+    resistance,
+    invalidation,
+    upsidePct,
+    downsidePct,
+    riskReward,
+    trend,
+    eventPressure,
+    expectedReturn,
+    confidence,
+    quality,
+    agreementLabel: agreement.label || "Pending",
+    agreementScore: Number(agreement.score || 0),
+    volatility: realizedVolPct,
+    modelError: maePct,
+    entryLabel,
+    entryNote,
+    upsideNote,
+    riskLabel,
+    riskNote,
+  };
+}
+
+function renderTradePlanPanel(active, forecast) {
+  const node = document.getElementById("trade-plan-panel");
+  if (!node || !active?.price) return;
+  const setup = buildShortTermSetup(active, forecast);
+  const entryText = setup.entryLow >= setup.entryHigh
+    ? formatCurrency(setup.entryLow, setup.currency)
+    : `${formatCurrency(setup.entryLow, setup.currency)}-${formatCurrency(setup.entryHigh, setup.currency)}`;
+  const html = `
+    <div class="trade-plan-head">
+      <div>
+        <span>Short-term setup</span>
+        <strong>${setup.quality} scenario</strong>
+      </div>
+      <em>${setup.trend} · ${formatPercent(setup.expectedReturn)} 10D</em>
+    </div>
+    <div class="trade-plan-grid">
+      <div class="trade-plan-tile watch">
+        <span>${setup.entryLabel}</span>
+        <strong>${entryText}</strong>
+        <small>${setup.entryNote}</small>
+      </div>
+      <div class="trade-plan-tile upside">
+        <span>Upside watch</span>
+        <strong>${formatCurrency(setup.resistance, setup.currency)}</strong>
+        <small>${setup.upsideNote}</small>
+      </div>
+      <div class="trade-plan-tile risk">
+        <span>${setup.riskLabel}</span>
+        <strong>${formatCurrency(setup.invalidation, setup.currency)}</strong>
+        <small>${setup.riskNote}</small>
+      </div>
+      <div class="trade-plan-tile params">
+        <span>Forecast params</span>
+        <strong>${setup.agreementLabel} ${setup.agreementScore.toFixed(0)}/100</strong>
+        <small>Conf ${setup.confidence.toFixed(0)}% · MAE ${setup.modelError.toFixed(1)}% · Vol ${setup.volatility.toFixed(1)}% · Event ${setup.eventPressure}</small>
+      </div>
+    </div>
+    <div class="trade-plan-foot">
+      <span>Risk/reward ${setup.riskReward.toFixed(2)}x</span>
+      <span>Scenario support only, not buy/sell advice.</span>
+    </div>
+  `;
+  setHTMLIfChanged(node, html);
+}
+
 function renderPredictionPanel(active, forecast) {
   const node = document.getElementById("prediction-panel");
   if (!node) return;
   if (!active?.price || !forecast?.direction || forecast.direction === "Refreshing") {
-    node.innerHTML = `<div class="prediction-loading">Prediction model loading…</div>`;
+    setHTMLIfChanged(node, `<div class="prediction-loading">Prediction model loading…</div>`);
     return;
   }
 
@@ -1180,7 +1389,7 @@ function renderPredictionPanel(active, forecast) {
   const dirClass = direction.toLowerCase() === "bullish" ? "pred-bullish" : direction.toLowerCase() === "bearish" ? "pred-bearish" : "pred-neutral";
   const gaugeAngle = clamp((confidence / 100) * 180 - 90, -90, 90);
 
-  node.innerHTML = `
+  const html = `
     <div class="prediction-grid ${dirClass}">
       <div class="pred-direction-card">
         <div class="pred-gauge">
@@ -1256,77 +1465,76 @@ function renderPredictionPanel(active, forecast) {
       </div>
     </div>
   `;
+  setHTMLIfChanged(node, html);
   revealSection("prediction-panel");
 }
 
-function patchHeroSurface(active, forecast) {
+function patchHeroSurface(active, forecast, { renderPrediction = true, renderStats = true, renderSparkline = true } = {}) {
   const agreement = forecast.models?.agreement || { label: "Pending", score: 0, summary: "Agreement refreshing." };
   const recommendation = active.recommendation || { buy: 0, hold: 100, sell: 0, signal: "Refreshing" };
   const displayFreshness = quoteFreshnessForDisplay(active);
-  document.getElementById("hero-regime").textContent = active.regime;
+  setTextIfChanged(document.getElementById("hero-ticker"), `${active.symbol} · ${active.name}`);
+  setTextIfChanged(document.getElementById("hero-regime"), active.regime);
   const heroPriceNode = document.getElementById("hero-price");
   const heroPriceText = formatCurrency(active.price, active.currency);
   const priceSizeClass = heroPriceText.length >= 14 ? "is-compact" : heroPriceText.length >= 11 ? "is-tight" : "";
-  heroPriceNode.className = `hero-price ${priceSizeClass} ${liveValueClass(`hero:${active.symbol}:price`, active.price)}`.trim();
-  heroPriceNode.innerHTML = buildPriceFlipMarkup(active.price, active.currency);
+  setClassIfChanged(heroPriceNode, `hero-price ${priceSizeClass} ${liveValueClass(`hero:${active.symbol}:price`, active.price)}`.trim());
+  setHTMLIfChanged(heroPriceNode, buildPriceFlipMarkup(active.price, active.currency));
   const changeNode = document.getElementById("hero-change");
-  changeNode.textContent = formatPercent(active.changePercent);
-  changeNode.className = `hero-change live-number ${active.changePercent >= 0 ? "positive" : "negative"} ${liveValueClass(`hero:${active.symbol}:change`, active.changePercent)}`;
+  setTextIfChanged(changeNode, formatPercent(active.changePercent));
+  setClassIfChanged(changeNode, `hero-change live-number ${active.changePercent >= 0 ? "positive" : "negative"} ${liveValueClass(`hero:${active.symbol}:change`, active.changePercent)}`);
   const forecastRangeNode = document.getElementById("forecast-range");
-  forecastRangeNode.textContent = `10D projection ${formatPercent(forecast.expectedReturn)}`;
-  forecastRangeNode.className = `forecast-range live-number ${liveValueClass(`hero:${active.symbol}:projection`, forecast.expectedReturn)}`;
+  setTextIfChanged(forecastRangeNode, `10D projection ${formatPercent(forecast.expectedReturn)}`);
+  setClassIfChanged(forecastRangeNode, `forecast-range live-number ${liveValueClass(`hero:${active.symbol}:projection`, forecast.expectedReturn)}`);
   const bsEl = document.getElementById("buy-sell-signal");
   const bsText = recommendation.signal ? recommendation.signal.replace("bias", "scenario") : "Balanced scenario";
-  bsEl.textContent = bsText;
+  setTextIfChanged(bsEl, bsText);
   const bsDir = forecast.direction?.toLowerCase() || "";
-  bsEl.className = bsDir === "bullish" ? "bullish" : bsDir === "bearish" ? "bearish" : "neutral";
-  document.getElementById("buy-sell-breakdown").innerHTML = `<span class="bsb-buy">▲ ${recommendation.buy ?? 0}%</span><span class="bsb-hold">― ${recommendation.hold ?? 100}%</span><span class="bsb-sell">▼ ${recommendation.sell ?? 0}%</span>`;
-  document.getElementById("model-agreement-note").textContent = `${agreement.summary} Score ${Number(agreement.score || 0).toFixed(0)}/100.`;
-  document.getElementById("quote-source-note").textContent = active.asOf
-    ? `Quote source: ${formatSourceLabel(active.dataSource)} • ${quoteFreshnessText(active, displayFreshness)} • ${new Date(active.asOf).toLocaleString()}`
-    : `Quote source: ${formatSourceLabel(active.dataSource)} • ${quoteFreshnessText(active, displayFreshness)}`;
+  setClassIfChanged(bsEl, bsDir === "bullish" ? "bullish" : bsDir === "bearish" ? "bearish" : "neutral");
+  setHTMLIfChanged(document.getElementById("buy-sell-breakdown"), `<span class="bsb-buy">▲ ${recommendation.buy ?? 0}%</span><span class="bsb-hold">― ${recommendation.hold ?? 100}%</span><span class="bsb-sell">▼ ${recommendation.sell ?? 0}%</span>`);
+  setTextIfChanged(document.getElementById("model-agreement-note"), `${agreement.summary} Score ${Number(agreement.score || 0).toFixed(0)}/100.`);
+  setTextIfChanged(document.getElementById("quote-source-note"), quoteSourceDisplayText(active, displayFreshness));
   const overviewMetaItems = [
     { label: active.exchange || active.region || "Global", help: "Where the stock trades." },
     { label: `${active.currency || "USD"} pricing`, help: "Home-market trading currency." },
     { label: `${active.marketState || "Live"} ${liveBadgeMarkup()}`, help: "Current session state." },
     { label: `Vol ${formatCompactNumber(active.volume)} ${liveBadgeMarkup()}`, help: "Current traded volume." },
-    { label: `${active.asOf ? new Date(active.asOf).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "Delayed"} ${freshnessBadgeMarkup(displayFreshness)}`, help: "Last quote update time." },
+    { label: `${quoteDisplayTime(active)} ${freshnessBadgeMarkup(displayFreshness)}`, help: "Last provider quote print and dashboard stream status." },
   ];
-  document.getElementById("overview-meta").innerHTML = overviewMetaItems
+  setHTMLIfChanged(document.getElementById("overview-meta"), overviewMetaItems
     .map((item) => `<span class="overview-meta-pill" data-help="${item.help.replace(/"/g, "&quot;")}" tabindex="0">${item.label}</span>`)
-    .join("");
-  document.getElementById("hero-stats").innerHTML = (active.stats || [])
-    .map(
-      (stat, index) => `
-        <div class="hero-stat-card">
-          <span>${stat.label}</span>
-          <strong class="live-number ${liveValueClass(`hero:${active.symbol}:stat:${index}`, parseFloat(String(stat.value).replace(/[^\d.+-]/g, "")))}">${stat.value}</strong>
-        </div>
-      `,
-    )
-    .join("");
-  drawSparkline(document.getElementById("hero-sparkline"), (active.history || []).slice(-24));
-  revealSection("hero-stats");
+    .join(""));
+  if (renderStats) {
+    setHTMLIfChanged(document.getElementById("hero-stats"), (active.stats || [])
+      .map(
+        (stat, index) => `
+          <div class="hero-stat-card">
+            <span>${stat.label}</span>
+            <strong class="live-number ${liveValueClass(`hero:${active.symbol}:stat:${index}`, parseFloat(String(stat.value).replace(/[^\d.+-]/g, "")))}">${stat.value}</strong>
+          </div>
+        `,
+      )
+      .join(""));
+    revealSection("hero-stats");
+  }
+  if (renderSparkline) {
+    drawSparkline(document.getElementById("hero-sparkline"), (active.history || []).slice(-24));
+  }
   clearChartSkeleton();
-  renderPredictionPanel(active, forecast);
+  if (renderPrediction) {
+    renderPredictionPanel(active, forecast);
+  }
+  renderTradePlanPanel(active, forecast);
 }
 
 function patchOverviewLiveSurface(active, forecast, { redrawChart = false } = {}) {
-  patchHeroSurface(active, forecast);
+  patchHeroSurface(active, forecast, { renderPrediction: false, renderStats: false, renderSparkline: redrawChart });
   const sessionNode = document.getElementById("market-session-strip");
   if (sessionNode) {
     const session = active.marketSession?.nextTransitionAt
       ? active.marketSession
       : buildClientMarketSession(active.exchange || active.region, active.marketState, active.region);
-    const nextTransitionAt = session.nextTransitionAt ? new Date(session.nextTransitionAt) : null;
-    const remainingSeconds = nextTransitionAt ? Math.max(0, Math.floor((nextTransitionAt.getTime() - Date.now()) / 1000)) : 0;
-    const countdown = nextTransitionAt ? formatDuration(remainingSeconds) : "--:--:--";
-    const nextLabel = session.transitionLabel === "close" ? "Closes in" : "Opens in";
-    sessionNode.innerHTML = `
-      <span class="market-session-pill ${session.isOpen ? "open" : "closed"}">${session.status || "Closed"}</span>
-      <strong>${nextLabel} ${countdown}</strong>
-      <small>${session.hoursLabel || "Hours unavailable"} · ${session.timezone || "UTC"}</small>
-    `;
+    patchMarketSessionStrip(sessionNode, session);
   }
   if (redrawChart) {
     drawTimeline(
@@ -1337,6 +1545,31 @@ function patchOverviewLiveSurface(active, forecast, { redrawChart = false } = {}
       { currency: active.currency, range: state.chartRange, overlayId: "hero-chart-hover" },
     );
   }
+}
+
+function renderHeroChartOnly(active = state.dashboard?.active) {
+  if (!active) return;
+  const forecast = active.forecast || emptyForecastPayload();
+  drawTimeline(
+    document.getElementById("hero-projection-chart"),
+    active.historySeries?.length ? active.historySeries : (active.history || []),
+    forecast.projected || [],
+    state.chartFeatures,
+    { currency: active.currency, range: state.chartRange, overlayId: "hero-chart-hover" },
+  );
+  document.querySelectorAll(".range-tab").forEach((button) => {
+    button.classList.toggle("active", button.dataset.range === state.chartRange);
+  });
+  document.querySelectorAll(".chart-mode-tab").forEach((button) => {
+    button.classList.toggle("active", button.dataset.chartType === (state.chartFeatures.chartType || "line"));
+  });
+  const sma20 = document.getElementById("feature-sma20");
+  const sma50 = document.getElementById("feature-sma50");
+  const bands = document.getElementById("feature-bands");
+  if (sma20) sma20.checked = Boolean(state.chartFeatures.sma20);
+  if (sma50) sma50.checked = Boolean(state.chartFeatures.sma50);
+  if (bands) bands.checked = Boolean(state.chartFeatures.bands);
+  renderDataFlowBar();
 }
 
 function formatDuration(seconds) {
@@ -1422,11 +1655,10 @@ function formatZonedTime(timeZone) {
       timeZone,
       hour: "2-digit",
       minute: "2-digit",
-      second: "2-digit",
       hour12: true,
     }).format(new Date());
   } catch {
-    return "--:--:--";
+    return "--:--";
   }
 }
 
@@ -1448,6 +1680,42 @@ function freshnessBadgeMarkup(freshness = {}) {
   const stateLabel = freshness.state || (freshness.isStale ? "stale" : "fresh");
   const label = freshness.label || (freshness.isStale ? "Stale quote" : "Fresh quote");
   return `<span class="freshness-badge ${stateLabel}" title="${freshness.note || ""}">${label}</span>`;
+}
+
+function streamFreshnessText(active = {}) {
+  const receivedAt = active.receivedAt || state.dashboard?.updatedAt || "";
+  if (!receivedAt) return "Stream pending";
+  const parsed = new Date(receivedAt);
+  if (Number.isNaN(parsed.getTime())) return "Stream active";
+  const ageSeconds = Math.max(0, Math.round((Date.now() - parsed.getTime()) / 1000));
+  if (ageSeconds < 15) return "Stream live now";
+  if (ageSeconds < 90) return "Stream live <1m ago";
+  return `Stream live ${Math.round(ageSeconds / 60)}m ago`;
+}
+
+function providerPrintText(active = {}, freshness = null) {
+  const displayFreshness = freshness || quoteFreshnessForDisplay(active);
+  const label = displayFreshness.label || quoteFreshnessText(active, displayFreshness);
+  return label === "Live edge" ? "provider print live" : `provider print ${String(label).toLowerCase()}`;
+}
+
+function quoteDisplayTime(active = {}) {
+  if (!active.asOf) return streamFreshnessText(active);
+  const printTime = new Date(active.asOf).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return `${streamFreshnessText(active)} · print ${printTime}`;
+}
+
+function quoteSourceDisplayText(active = {}, freshness = null) {
+  const displayFreshness = freshness || quoteFreshnessForDisplay(active);
+  const parts = [
+    `Quote source: ${formatSourceLabel(active.dataSource)}`,
+    streamFreshnessText(active),
+    providerPrintText(active, displayFreshness),
+  ];
+  if (active.asOf) {
+    parts.push(`print time ${new Date(active.asOf).toLocaleString()}`);
+  }
+  return parts.join(" • ");
 }
 
 function quoteFreshnessText(active = {}, displayFreshness = null) {
@@ -1635,7 +1903,9 @@ async function loadOverviewFast({ silent = false } = {}) {
     state.dashboard.active = mergeQuoteIntoActiveHistory(mergedActive, previousActive, result.updatedAt);
   }
   if (result.active?.price || (result.watchlist || []).length) {
+    setStatus("Live quote loaded");
     markDashboardInteractive("Live quote loaded");
+    renderDataFlowBar();
     if (!state.quoteStream) {
       startQuoteStream();
     }
@@ -1644,7 +1914,14 @@ async function loadOverviewFast({ silent = false } = {}) {
   nextFrame(() => {
     renderWatchlist();
     renderBoard();
-    renderOverview();
+    renderPulse();
+    if (state.dashboard?.active) {
+      patchOverviewLiveSurface(
+        state.dashboard.active,
+        state.dashboard.active.forecast || emptyForecastPayload(),
+        { redrawChart: ["1D", "3D", "5D"].includes(normalizeChartRange(state.chartRange)) },
+      );
+    }
     renderTopbar();
   });
 }
@@ -1716,16 +1993,19 @@ function primeActiveTickerSelection(symbol) {
 
 function setStatus(message) {
   // Update all live indicators in the page
+  document.body.classList.toggle("status-updated", Boolean(message));
   const indicators = document.querySelectorAll(".live-indicator-label");
   const loadingWords = ["Loading", "Refreshing", "Searching", "Resolving", "Saving", "Running", "Thinking", "Syncing"];
   const isLoading = loadingWords.some((word) => String(message).startsWith(word));
   indicators.forEach((el) => {
-    el.textContent = isLoading ? "Updating" : "Live";
+    setTextIfChanged(el, isLoading ? "Updating" : "Live");
   });
   const dots = document.querySelectorAll(".live-indicator-dot");
+  const background = isLoading ? "rgba(255, 176, 0, 0.9)" : "rgba(90, 242, 197, 0.9)";
+  const boxShadow = isLoading ? "0 0 4px rgba(255, 176, 0, 0.6)" : "0 0 4px rgba(90, 242, 197, 0.6)";
   dots.forEach((el) => {
-    el.style.background = isLoading ? "rgba(255, 176, 0, 0.9)" : "rgba(90, 242, 197, 0.9)";
-    el.style.boxShadow = isLoading ? "0 0 4px rgba(255, 176, 0, 0.6)" : "0 0 4px rgba(90, 242, 197, 0.6)";
+    if (el.style.background !== background) el.style.background = background;
+    if (el.style.boxShadow !== boxShadow) el.style.boxShadow = boxShadow;
   });
 }
 
@@ -1767,9 +2047,17 @@ function flashStatus(message, timeout = 1600) {
 
 function initStarfieldParallax() {
   const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
-  if (reduceMotion) return;
+  const finePointer = window.matchMedia?.("(pointer: fine)")?.matches;
+  if (reduceMotion || !finePointer || window.innerWidth < 1100 || !document.body.classList.contains("enable-ambient-motion")) return;
   let raf = 0;
+  let lastPaint = 0;
   const update = (event) => {
+    if (event.target instanceof Element && event.target.closest(".hero-chart-card, #overview")) {
+      return;
+    }
+    const now = performance.now();
+    if (now - lastPaint < 160) return;
+    lastPaint = now;
     window.cancelAnimationFrame(raf);
     raf = window.requestAnimationFrame(() => {
       const x = (event.clientX / window.innerWidth - 0.5) * 28;
@@ -1793,6 +2081,8 @@ function dataFlowLabel(path = "") {
   if (path.includes("/api/dashboard")) return "Dashboard refresh";
   if (path.includes("/api/overview")) return "Quote overview";
   if (path.includes("/api/sectors")) return "Sector matrix";
+  if (path.includes("/api/market-map")) return "Market heat map";
+  if (path.includes("/api/data-sources")) return "Source registry";
   if (path.includes("/api/academy")) return "Learning context";
   if (path.includes("/api/research")) return "Research workspace";
   if (path.includes("/api/history/warm")) return "History warmup";
@@ -1817,9 +2107,12 @@ function finishDataFlowTask(id, status = "done") {
   state.dataFlow.tasks[id] = {
     ...state.dataFlow.tasks[id],
     status,
-    progress: status === "done" ? 100 : 100,
+    progress: status === "done" ? 100 : 0,
     finishedAt: Date.now(),
   };
+  if (status !== "done") {
+    state.dataFlow.lastError = `${state.dataFlow.tasks[id].label} failed`;
+  }
   window.setTimeout(() => {
     if (state.dataFlow?.tasks?.[id]?.finishedAt && Date.now() - state.dataFlow.tasks[id].finishedAt >= 2200) {
       delete state.dataFlow.tasks[id];
@@ -1831,8 +2124,9 @@ function finishDataFlowTask(id, status = "done") {
 
 function hasActiveDataFlowWork() {
   const taskActive = Object.values(state.dataFlow?.tasks || {}).some((task) => ["queued", "running", "connecting", "retry"].includes(String(task.status).toLowerCase()));
-  const jobActive = (state.dataFlow?.history?.active || []).length > 0;
-  return taskActive || jobActive || state.dataFlow?.stream === "connecting" || state.dataFlow?.stream === "retry";
+  const jobActive = (state.dataFlow?.history?.active || []).length > 0 || (state.dataFlow?.history?.scriptActive || []).length > 0;
+  const readinessActive = readinessJobs().some((job) => !["done", "ready"].includes(String(job.status).toLowerCase()));
+  return readinessActive || taskActive || jobActive || state.dataFlow?.stream === "connecting" || state.dataFlow?.stream === "retry";
 }
 
 function scheduleDataFlowAutoHide(delay = 4200) {
@@ -1884,8 +2178,131 @@ function dataFlowJobs() {
       errors: job.errors || [],
     };
   });
-  const streamJob = { id: "quote-stream", label: "Quote stream", status: state.dataFlow.stream || "connecting", progress: state.dataFlow.stream === "live" ? 100 : 40, detail: state.activeTicker || "watchlist" };
-  return [streamJob, ...requestTasks, ...historyJobs];
+  const scriptJobs = (state.dataFlow?.history?.scripts || []).slice(-5).map((job) => {
+    const steps = job.steps || [];
+    const total = Number(job.total || steps.length || 0);
+    const completed = Number(job.completed || steps.filter((step) => ["done", "skipped"].includes(String(step.status).toLowerCase())).length);
+    const activeStep = steps.find((step) => ["queued", "running"].includes(String(step.status).toLowerCase())) || steps.find((step) => String(step.status).toLowerCase() === "error") || steps[0];
+    const progress = total ? Math.round((completed / total) * 100) : job.status === "done" ? 100 : 0;
+    return {
+      id: job.jobKey || `script-${job.queuedAt || ""}`,
+      label: "Backend scripts",
+      status: job.status || "queued",
+      progress,
+      detail: activeStep ? `${activeStep.label || activeStep.script}: ${activeStep.status}` : `${completed}/${total || "?"} scripts`,
+      errors: job.errors || [],
+      background: true,
+    };
+  });
+  const quoteProviders = state.dataFlow?.history?.quoteProviders || [];
+  const quoteProviderJob = {
+    id: "quote-source-chain",
+    label: "Quote source chain",
+    status: quoteProviders.some((provider) => provider.status === "available") ? "ready" : "retry",
+    progress: quoteProviders.length ? Math.round((quoteProviders.filter((provider) => provider.status === "available").length / quoteProviders.length) * 100) : 0,
+    detail: quoteProviders.length ? `${quoteProviders.filter((provider) => provider.status === "available").length}/${quoteProviders.length} sources available` : "waiting for provider registry",
+    errors: quoteProviders.filter((provider) => provider.status === "cooldown").slice(0, 2).map((provider) => `${provider.label} cooling down`),
+    background: true,
+  };
+  const streamJob = {
+    id: "quote-stream",
+    label: "Quote stream",
+    status: state.dataFlow.stream || "connecting",
+    progress: state.dataFlow.stream === "live" ? 100 : 40,
+    detail: state.activeTicker || "watchlist",
+    background: true,
+  };
+  return [...readinessJobs(), streamJob, quoteProviderJob, ...requestTasks, ...scriptJobs, ...historyJobs];
+}
+
+function readinessJobs() {
+  const active = state.dashboard?.active;
+  const hasQuote = Boolean(active?.symbol && Number.isFinite(Number(active.price)));
+  const hasDashboardPayload = Boolean(active?.forecast && active?.stockDossier?.daySnapshot);
+  const hasChart = document.getElementById("hero-projection-chart")?.dataset.chartReady === "1";
+  const hasVisibleDossier = document.querySelectorAll("#stock-dossier .dossier-card").length > 0;
+  const hasVisiblePrediction = Boolean(document.querySelector("#prediction-panel .prediction-grid"));
+  const boot = state.dataFlow?.boot || {};
+  const workspaceReady = Boolean(boot.config && boot.presets && boot.watchlists);
+  const hasSectorContext = (state.sectorStripSectors || []).length > 0 || Boolean(document.querySelector("#sector-overview-strip")?.children.length);
+  const hasMarketHeatMap = (state.marketHeatMap?.tiles || []).length > 0 || document.querySelectorAll("#market-heat-map-grid .market-heat-tile").length > 0;
+  const dashboardFailed = Boolean(state.dataFlow?.lastError && !hasDashboardPayload);
+  return [
+    {
+      id: "ready-quote",
+      label: "Quote overview",
+      status: hasQuote ? "done" : "running",
+      progress: hasQuote ? 100 : 35,
+      detail: hasQuote ? active.symbol : "loading active quote",
+      readiness: true,
+    },
+    {
+      id: "ready-dashboard",
+      label: "Dashboard payload",
+      status: hasDashboardPayload ? "done" : dashboardFailed ? "error" : "running",
+      progress: hasDashboardPayload ? 100 : dashboardFailed ? 0 : 45,
+      detail: hasDashboardPayload ? "forecast + dossier data" : (state.dataFlow?.lastError || "loading full API payload"),
+      readiness: true,
+    },
+    {
+      id: "ready-chart",
+      label: "Price chart",
+      status: hasChart ? "done" : hasDashboardPayload ? "running" : "queued",
+      progress: hasChart ? 100 : hasDashboardPayload ? 65 : 0,
+      detail: hasChart ? "rendered" : "waiting for history",
+      readiness: true,
+    },
+    {
+      id: "ready-panels",
+      label: "Visible panels",
+      status: hasVisibleDossier && hasVisiblePrediction ? "done" : hasDashboardPayload ? "running" : "queued",
+      progress: hasVisibleDossier && hasVisiblePrediction ? 100 : hasDashboardPayload ? 70 : 0,
+      detail: hasVisibleDossier ? "dossier/prediction painting" : "waiting for full dashboard",
+      readiness: true,
+    },
+    {
+      id: "ready-workspace",
+      label: "Workspace setup",
+      status: workspaceReady ? "done" : "running",
+      progress: workspaceReady ? 100 : 50,
+      detail: `config ${boot.config ? "ok" : "..."}, presets ${boot.presets ? "ok" : "..."}, lists ${boot.watchlists ? "ok" : "..."}`,
+      readiness: true,
+    },
+    {
+      id: "ready-sectors",
+      label: "Sector context",
+      status: hasSectorContext ? "done" : "running",
+      progress: hasSectorContext ? 100 : 40,
+      detail: hasSectorContext ? "sector strip ready" : "loading market context",
+      readiness: true,
+    },
+    {
+      id: "ready-market-map",
+      label: "Market heat map",
+      status: hasMarketHeatMap ? "done" : hasSectorContext ? "running" : "queued",
+      progress: hasMarketHeatMap ? 100 : hasSectorContext ? 60 : 0,
+      detail: hasMarketHeatMap ? "tiles painted" : "waiting for quote/proxy tiles",
+      readiness: true,
+    },
+  ];
+}
+
+function ensureDataFlowShell(node) {
+  if (!node || node.querySelector(".data-flow-shell")) return;
+  node.innerHTML = `
+    <div class="data-flow-shell">
+      <button class="data-flow-grip" type="button" aria-label="Move data flow bar" title="Move data flow" data-data-flow-drag>
+        <span aria-hidden="true"></span>
+      </button>
+      <button class="data-flow-main" type="button" aria-expanded="false" data-data-flow-toggle>
+        <span data-flow-label></span>
+        <strong data-flow-status></strong>
+        <em data-flow-progress></em>
+      </button>
+      <div class="data-flow-meter"><span data-flow-meter></span></div>
+      <div class="data-flow-detail" data-flow-detail></div>
+    </div>
+  `;
 }
 
 function renderDataFlowBar({ skipAutoHide = false } = {}) {
@@ -1899,45 +2316,50 @@ function renderDataFlowBar({ skipAutoHide = false } = {}) {
   }
   const jobs = dataFlowJobs();
   const activeJobs = jobs.filter((job) => ["queued", "running", "connecting", "retry"].includes(String(job.status).toLowerCase()));
-  const doneJobs = jobs.filter((job) => ["done", "ready", "live"].includes(String(job.status).toLowerCase()));
-  // Monotonic progress: cumulative (done=100% each, active=partial), never decreases
-  const totalSlots = Math.max(jobs.length, 1);
-  const rawProgress = jobs.length
-    ? Math.round((doneJobs.length * 100 + activeJobs.reduce((s, j) => s + Number(j.progress || 0), 0)) / totalSlots)
+  const errorJobs = jobs.filter((job) => String(job.status).toLowerCase() === "error");
+  const readiness = jobs.filter((job) => job.readiness);
+  const backgroundJobs = jobs.filter((job) => job.background);
+  const readinessProgress = readiness.length
+    ? Math.round(readiness.reduce((sum, job) => sum + Number(job.progress || 0), 0) / readiness.length)
     : 100;
-  state.dataFlow.highWater = Math.max(state.dataFlow.highWater || 0, rawProgress);
-  const progress = activeJobs.length === 0 && doneJobs.length > 0 ? 100 : state.dataFlow.highWater;
-  const primary = activeJobs[0] || jobs[0] || { label: "Data flow", status: "ready", progress: 100 };
+  const readinessDone = readiness.length > 0 && readiness.every((job) => ["done", "ready"].includes(String(job.status).toLowerCase()));
+  const blockingErrors = errorJobs.filter((job) => job.readiness);
+  const progress = readinessDone ? 100 : Math.min(readinessProgress, 99);
+  const primary =
+    blockingErrors[0]
+    || readiness.find((job) => !["done", "ready"].includes(String(job.status).toLowerCase()))
+    || activeJobs.find((job) => !job.background)
+    || backgroundJobs[0]
+    || jobs[0]
+    || { label: "Data flow", status: "ready", progress: 100 };
   node.classList.toggle("is-expanded", Boolean(state.dataFlow.expanded));
   node.classList.toggle("is-peek", Boolean(state.dataFlow.hidden && !state.dataFlow.expanded));
-  node.innerHTML = `
-    <div class="data-flow-shell">
-      <button class="data-flow-grip" type="button" aria-label="Move data flow bar" title="Move data flow" data-data-flow-drag>
-        <span aria-hidden="true"></span>
-      </button>
-      <button class="data-flow-main" type="button" aria-expanded="${state.dataFlow.expanded ? "true" : "false"}" data-data-flow-toggle>
-        <span>${primary.label}</span>
-        <strong>${activeJobs.length ? primary.status : "Ready"}</strong>
-        <em>${progress}%</em>
-      </button>
-      <div class="data-flow-meter"><span style="width:${Math.max(4, progress)}%"></span></div>
-      <div class="data-flow-detail">
-        ${jobs.map((job) => {
-          const isDone = ["done", "ready", "live"].includes(String(job.status).toLowerCase());
-          return `
-          <article class="data-flow-job ${String(job.status).toLowerCase()}">
-            <span>${isDone ? "✓ " : ""}${job.label}</span>
-            <strong>${isDone ? "done" : job.status}</strong>
-            <em>${job.detail || `${job.progress || 0}%`}</em>
-            ${(job.errors || []).slice(0, 1).map((error) => `<small>${error}</small>`).join("")}
-          </article>`;
-        }).join("")}
-        <small>${doneJobs.length}/${totalSlots} complete · Updated ${state.dataFlow.lastUpdated ? new Date(state.dataFlow.lastUpdated).toLocaleTimeString() : "just now"}</small>
-      </div>
-    </div>
-  `;
+  ensureDataFlowShell(node);
+  const toggle = node.querySelector("[data-data-flow-toggle]");
+  if (toggle) toggle.setAttribute("aria-expanded", state.dataFlow.expanded ? "true" : "false");
+  setTextIfChanged(node.querySelector("[data-flow-label]"), primary.label);
+  setTextIfChanged(node.querySelector("[data-flow-status]"), blockingErrors.length ? "Needs attention" : readinessDone && !activeJobs.length ? "Ready" : primary.status);
+  setTextIfChanged(node.querySelector("[data-flow-progress]"), `${progress}%`);
+  const meter = node.querySelector("[data-flow-meter]");
+  if (meter) meter.style.width = `${Math.max(4, progress)}%`;
+  const detail = node.querySelector("[data-flow-detail]");
+  if (detail && state.dataFlow.expanded) {
+    setHTMLIfChanged(detail, `
+      ${jobs.map((job) => {
+        const isDone = ["done", "ready", "live"].includes(String(job.status).toLowerCase());
+        return `
+        <article class="data-flow-job ${String(job.status).toLowerCase()}">
+          <span>${isDone ? "✓ " : ""}${job.label}</span>
+          <strong>${isDone ? "done" : job.status}</strong>
+          <em>${job.detail || `${job.progress || 0}%`}</em>
+          ${(job.errors || []).slice(0, 1).map((error) => `<small>${error}</small>`).join("")}
+        </article>`;
+      }).join("")}
+      <small>${readiness.filter((job) => ["done", "ready"].includes(String(job.status).toLowerCase())).length}/${readiness.length || 1} visible stages complete · ${backgroundJobs.map((job) => `${job.label}: ${job.status}`).join(" · ") || "background idle"} · Updated ${state.dataFlow.lastUpdated ? new Date(state.dataFlow.lastUpdated).toLocaleTimeString() : "just now"}</small>
+    `);
+  }
   bindDataFlowBar();
-  if (!skipAutoHide) scheduleDataFlowAutoHide(activeJobs.length ? 7200 : 4200);
+  if (!skipAutoHide) scheduleDataFlowAutoHide(activeJobs.length || !readinessDone ? 7200 : 4200);
 }
 
 function bindDataFlowBar() {
@@ -2017,7 +2439,7 @@ async function pollHistoryProgress() {
 
 function hasActiveHistoryJobs() {
   const history = state.dataFlow?.history || {};
-  const jobs = [...(history.active || []), ...(history.jobs || [])];
+  const jobs = [...(history.active || []), ...(history.jobs || []), ...(history.scriptActive || []), ...(history.scripts || [])];
   return jobs.some((job) => ["queued", "running"].includes(String(job.status || "").toLowerCase()));
 }
 
@@ -2456,33 +2878,55 @@ function drawProjection(svg, historyInput, projectedInput, features = {}, option
   const hoverLine = svg.querySelector("#chart-hover-line");
   const hoverPoint = svg.querySelector("#chart-hover-point");
   const hoverCard = hoverOverlayId ? document.getElementById(hoverOverlayId) : null;
-  svg.onmousemove = (event) => {
+  if (hoverCard && !hoverCard.querySelector("[data-hover-price]")) {
+    hoverCard.innerHTML = `<strong data-hover-price></strong><span data-hover-date></span>`;
+  }
+  const updateHover = (event) => {
     if (!hoverPoints.length || !hoverLine || !hoverPoint || !hoverCard) return;
     const rect = svg.getBoundingClientRect();
     const relativeX = ((event.clientX - rect.left) / rect.width) * width;
-    const nearest = hoverPoints.reduce((best, point) => (
-      Math.abs(point.x - relativeX) < Math.abs(best.x - relativeX) ? point : best
-    ));
-    hoverLine.setAttribute("x1", String(nearest.x));
-    hoverLine.setAttribute("x2", String(nearest.x));
-    hoverLine.setAttribute("opacity", "1");
-    hoverPoint.setAttribute("cx", String(nearest.x));
-    hoverPoint.setAttribute("cy", String(nearest.y));
-    hoverPoint.setAttribute("opacity", "1");
+    let nearestIndex = 0;
+    for (let index = 1; index < hoverPoints.length; index += 1) {
+      if (Math.abs(hoverPoints[index].x - relativeX) < Math.abs(hoverPoints[nearestIndex].x - relativeX)) {
+        nearestIndex = index;
+      }
+    }
+    const nearest = hoverPoints[nearestIndex];
+    setAttributeIfChanged(hoverLine, "x1", nearest.x);
+    setAttributeIfChanged(hoverLine, "x2", nearest.x);
+    setAttributeIfChanged(hoverLine, "opacity", "1");
+    setAttributeIfChanged(hoverPoint, "cx", nearest.x);
+    setAttributeIfChanged(hoverPoint, "cy", nearest.y);
+    setAttributeIfChanged(hoverPoint, "opacity", "1");
     hoverCard.hidden = false;
-    hoverCard.innerHTML = `
-      <strong>${formatCurrency(nearest.value, options.currency || "USD")}</strong>
-      <span>${formatTooltipDate(nearest.timestamp, options.range || "1M")}</span>
-    `;
+    if (hoverCard.dataset.hoverIndex !== String(nearestIndex)) {
+      hoverCard.dataset.hoverIndex = String(nearestIndex);
+      setTextIfChanged(hoverCard.querySelector("[data-hover-price]"), formatCurrency(nearest.value, options.currency || "USD"));
+      setTextIfChanged(hoverCard.querySelector("[data-hover-date]"), formatTooltipDate(nearest.timestamp, options.range || "1M"));
+    }
     const leftPercent = Math.max(8, Math.min(78, (nearest.x / width) * 100));
     hoverCard.style.left = `${leftPercent}%`;
     hoverCard.style.top = `${Math.max(10, ((nearest.y / height) * 100) - 12)}%`;
   };
+  svg.onmousemove = (event) => {
+    state.chartHoverEvent = event;
+    if (state.chartHoverFrame) return;
+    state.chartHoverFrame = window.requestAnimationFrame(() => {
+      state.chartHoverFrame = null;
+      updateHover(state.chartHoverEvent);
+    });
+  };
   svg.onmouseleave = () => {
-    if (hoverLine) hoverLine.setAttribute("opacity", "0");
-    if (hoverPoint) hoverPoint.setAttribute("opacity", "0");
+    if (state.chartHoverFrame) {
+      window.cancelAnimationFrame(state.chartHoverFrame);
+      state.chartHoverFrame = null;
+    }
+    state.chartHoverEvent = null;
+    if (hoverLine) setAttributeIfChanged(hoverLine, "opacity", "0");
+    if (hoverPoint) setAttributeIfChanged(hoverPoint, "opacity", "0");
     if (hoverCard) {
       hoverCard.hidden = true;
+      delete hoverCard.dataset.hoverIndex;
     }
   };
 }
@@ -2579,7 +3023,7 @@ function renderMethodology() {
     </div>
     <div class="methodology-rule-grid">
       ${(cockpit.rules || []).map((item) => `
-        <div class="methodology-rule-card">
+        <div class="methodology-rule-card decision-cockpit-card">
           <span>${item.label}</span>
           <strong>${item.value}</strong>
           <p>${item.note}</p>
@@ -3347,9 +3791,9 @@ function renderWatchlist() {
   const node = document.getElementById("watchlist");
   const count = document.getElementById("watchlist-count");
   const entries = state.dashboard?.watchlist || [];
-  count.textContent = String(entries.length);
+  setTextIfChanged(count, String(entries.length));
 
-  node.innerHTML = entries
+  const markup = entries
     .map(
       (item) => {
         const priceClass = liveValueClass(`watch:${item.symbol}:price`, item.price);
@@ -3377,6 +3821,8 @@ function renderWatchlist() {
       },
     )
     .join("");
+  const changed = setHTMLIfChanged(node, markup);
+  if (!changed) return;
 
   let draggedSymbol = "";
   node.querySelectorAll(".watch-item").forEach((button) => {
@@ -3470,9 +3916,9 @@ function renderBanner() {
   if (sourceNote) {
     const sentiment = radar.sentiment || {};
     const label = sentiment.label || "Balanced";
-    sourceNote.textContent = label;
+    setTextIfChanged(sourceNote, label);
     const toneClass = sentiment.tone || (Number(sentiment.score || 0) > 0.2 ? "positive" : Number(sentiment.score || 0) < -0.2 ? "negative" : "");
-    sourceNote.className = toneClass;
+    setClassIfChanged(sourceNote, toneClass);
   }
 
 }
@@ -3483,9 +3929,9 @@ function renderEventFeed() {
   const items = state.eventResult?.items?.length
     ? [...state.eventResult.items].sort((a, b) => String(b.publishedAt || "").localeCompare(String(a.publishedAt || ""))).slice(0, 3)
     : [...(state.dashboard?.radar?.items || [])].slice(0, 3);
-  list.innerHTML = items.length
+  setHTMLIfChanged(list, items.length
     ? items.map((item) => `<a class="event-chip-link" href="${item.url || "#"}" target="_blank" rel="noreferrer">${item.title || "Update"}</a>`).join("")
-    : "";
+    : "");
 }
 
 function renderPulse() {
@@ -3499,14 +3945,40 @@ function renderPulse() {
           { label: "Move", value: formatPercent(state.dashboard.active.changePercent || 0), positive: Number(state.dashboard.active.changePercent || 0) >= 0 },
         ]
       : [];
-  if (!items.length) { grid.innerHTML = ""; return; }
-  grid.innerHTML = items
+  if (!items.length) { setHTMLIfChanged(grid, ""); return; }
+  setHTMLIfChanged(grid, items
     .map((item) => `<span class="pulse-chip ${typeof item.positive === "boolean" ? (item.positive ? "positive" : "negative") : ""}">${item.label}: <strong>${item.value}</strong></span>`)
-    .join("");
+    .join(""));
 }
 
 function renderBoard() {
   /* Market board removed — watchlist sidebar is the single source */
+}
+
+function patchMarketSessionStrip(node, session) {
+  if (!node || !session) return;
+  if (!node.querySelector("[data-session-status]")) {
+    node.innerHTML = `
+      <span class="market-session-pill" data-session-status></span>
+      <strong data-session-countdown></strong>
+      <small data-session-hours></small>
+    `;
+  }
+  const nextTransitionAt = session.nextTransitionAt ? new Date(session.nextTransitionAt) : null;
+  const remainingSeconds = nextTransitionAt ? Math.max(0, Math.floor((nextTransitionAt.getTime() - Date.now()) / 1000)) : 0;
+  const minuteRoundedSeconds = Math.ceil(remainingSeconds / 60) * 60;
+  const countdown = nextTransitionAt ? formatDuration(minuteRoundedSeconds).replace(/:00$/, "") : "--:--";
+  const nextLabel = session.transitionLabel === "close" ? "Closes in" : "Opens in";
+  const statusNode = node.querySelector("[data-session-status]");
+  const countdownNode = node.querySelector("[data-session-countdown]");
+  const hoursNode = node.querySelector("[data-session-hours]");
+  const statusClass = `market-session-pill ${session.isOpen ? "open" : "closed"}`;
+  if (statusNode.className !== statusClass) {
+    statusNode.className = statusClass;
+  }
+  setTextIfChanged(statusNode, session.status || "Closed");
+  setTextIfChanged(countdownNode, `${nextLabel} ${countdown}`);
+  setTextIfChanged(hoursNode, `${session.hoursLabel || "Hours unavailable"} · ${session.timezone || "UTC"}`);
 }
 
 function renderOverview() {
@@ -3514,7 +3986,7 @@ function renderOverview() {
   if (!active) return;
   const forecast = active.forecast || emptyForecastPayload();
 
-  document.getElementById("hero-ticker").textContent = `${active.symbol} · ${active.name}`;
+  setTextIfChanged(document.getElementById("hero-ticker"), `${active.symbol} · ${active.name}`);
   patchHeroSurface(active, forecast);
 
   const majorEvent = Boolean(
@@ -3530,37 +4002,15 @@ function renderOverview() {
     const session = active.marketSession?.nextTransitionAt
       ? active.marketSession
       : buildClientMarketSession(active.exchange || active.region, active.marketState);
-    const nextTransitionAt = session.nextTransitionAt ? new Date(session.nextTransitionAt) : null;
-    const remainingSeconds = nextTransitionAt ? Math.max(0, Math.floor((nextTransitionAt.getTime() - Date.now()) / 1000)) : 0;
-    const countdown = nextTransitionAt ? formatDuration(remainingSeconds) : "--:--:--";
-    const nextLabel = session.transitionLabel === "close" ? "Closes in" : "Opens in";
-    marketSessionNode.innerHTML = `
-      <span class="market-session-pill ${session.isOpen ? "open" : "closed"}">${session.status || "Closed"}</span>
-      <strong>${nextLabel} ${countdown}</strong>
-      <small>${session.hoursLabel || "Hours unavailable"} · ${session.timezone || "UTC"}</small>
-    `;
+    patchMarketSessionStrip(marketSessionNode, session);
   };
   renderSession();
   if (active.marketSession?.nextTransitionAt) {
     state.marketSessionTimer = window.setInterval(renderSession, 1000);
   }
 
-  // Defer the heavy SVG chart render so hero text & stats paint first
-  const _chartSvg = document.getElementById("hero-projection-chart");
-  const _chartHistory = active.historySeries?.length ? active.historySeries : (active.history || []);
-  const _chartProjected = forecast.projected || [];
-  const _chartFeatures = state.chartFeatures;
-  const _chartOpts = { currency: active.currency, range: state.chartRange, overlayId: "hero-chart-hover" };
-  nextFrame(() => drawTimeline(_chartSvg, _chartHistory, _chartProjected, _chartFeatures, _chartOpts));
-  document.querySelectorAll(".range-tab").forEach((button) => {
-    button.classList.toggle("active", button.dataset.range === state.chartRange);
-  });
-  document.querySelectorAll(".chart-mode-tab").forEach((button) => {
-    button.classList.toggle("active", button.dataset.chartType === (state.chartFeatures.chartType || "line"));
-  });
-  document.getElementById("feature-sma20").checked = Boolean(state.chartFeatures.sma20);
-  document.getElementById("feature-sma50").checked = Boolean(state.chartFeatures.sma50);
-  document.getElementById("feature-bands").checked = Boolean(state.chartFeatures.bands);
+  // Defer the heavy SVG chart render so hero text & stats paint first.
+  nextFrame(() => renderHeroChartOnly(active));
   renderStockDossier(active);
   renderOverviewLowerPanels(active, forecast);
 }
@@ -4232,7 +4682,7 @@ function renderResearch() {
 }
 
 function renderTopbar() {
-  document.getElementById("provider-badge").textContent = state.dashboard?.provider || state.config?.provider || "yahoo";
+  setTextIfChanged(document.getElementById("provider-badge"), state.dashboard?.provider || state.config?.provider || "yahoo");
   renderGlobalMarketOverview();
   setStatus(state.dashboard?.updatedAt ? "Live now" : "Loading data");
   document.body.classList.toggle("app-ready", state.bootReady);
@@ -4253,14 +4703,16 @@ function sectorStripMarkup(sectors = state.sectorStripSectors) {
     return `<span class="sector-strip-label">Sectors loading</span>`;
   }
   return sectors.map((s) => {
+    const unavailable = isUnavailableSector(s);
     const pct = Number(s.changePct ?? s.changePercent ?? s.change ?? 0);
     const dir = pct > 0.05 ? "up" : pct < -0.05 ? "down" : "flat";
     const sign = pct > 0 ? "+" : "";
     const label = s.name || s.label || s.symbol || "Sector";
     const displayLabel = label.replace(/\s*\(US\)\s*/i, "").replace("Financial Svcs", "Financial Services");
-    return `<div class="sector-strip-chip" title="${label} ${sign}${pct.toFixed(2)}%">
+    const pctLabel = unavailable ? "Data pending" : `${sign}${pct.toFixed(2)}%`;
+    return `<div class="sector-strip-chip ${unavailable ? "is-pending" : ""}" title="${label} ${pctLabel}">
       <span class="sector-strip-chip-name">${displayLabel}</span>
-      <span class="sector-strip-chip-pct ${dir}">${sign}${pct.toFixed(2)}%</span>
+      <span class="sector-strip-chip-pct ${unavailable ? "pending" : dir}">${pctLabel}</span>
     </div>`;
   }).join("");
 }
@@ -4271,49 +4723,70 @@ function renderGlobalMarketOverview() {
   const markets = state.dashboard?.globalMarkets || [];
   if (!markets.length) {
     node.classList.remove("collapsed");
-    node.innerHTML = `
+    const emptySignature = `empty:${sectorStripMarkup()}`;
+    const emptyMarkup = `
       <div class="overview-header-row">
         <button class="global-market-overview-head" type="button" disabled>
           <strong>Global Benchmarks</strong>
-          <span class="global-market-head-right">
+          <span class="global-market-head-right global-market-head-actions">
             ${liveStatusClusterMarkup()}
           </span>
         </button>
         <div id="sector-overview-strip" class="sector-overview-strip" aria-label="Sector performance"></div>
       </div>
     `;
-    node.querySelector("#sector-overview-strip").innerHTML = sectorStripMarkup();
+    if (node.dataset.benchmarkSignature !== emptySignature) {
+      node.innerHTML = emptyMarkup;
+      node.dataset.benchmarkSignature = emptySignature;
+    }
+    setHTMLIfChanged(node.querySelector("#sector-overview-strip"), sectorStripMarkup());
     return;
   }
   node.classList.toggle("collapsed", state.benchmarksCollapsed);
-  node.innerHTML = `
+  const sectorMarkup = sectorStripMarkup();
+  const signature = JSON.stringify({
+    sectors: sectorMarkup,
+    markets: markets.map((market) => ({
+      label: market.label,
+      timezone: market.timezone,
+      isOpen: Boolean(market.session?.isOpen),
+      hoursLabel: market.session?.hoursLabel || "",
+      indices: (market.indices || []).map((item) => ({
+        label: item.label,
+        price: item.price,
+        changePercent: item.changePercent,
+        freshness: item.quoteFreshness?.label || item.quoteFreshness?.state || "",
+      })),
+    })),
+  });
+  const markup = `
     <div class="overview-header-row">
       <button class="global-market-overview-head" type="button" aria-expanded="${state.benchmarksCollapsed ? "false" : "true"}" aria-controls="global-market-benchmark-grid">
         <strong>Global Benchmarks</strong>
-        <span class="global-market-head-right">
+        <span class="global-market-head-right global-market-head-actions">
           ${liveStatusClusterMarkup()}
           <i class="benchmark-chevron" aria-hidden="true"></i>
         </span>
       </button>
       <div id="sector-overview-strip" class="sector-overview-strip" aria-label="Sector performance">
-        ${sectorStripMarkup()}
+        ${sectorMarkup}
       </div>
     </div>
     <div class="global-market-collapse" id="global-market-benchmark-grid">
       <div class="global-market-grid">
         ${markets.map((market) => `
-          <article class="market-clock-card">
+          <article class="market-clock-card" data-market-timezone="${market.timezone || "UTC"}">
             <div class="market-clock-top">
               <div>
                 <strong>${market.label}</strong>
-                <span>${formatZonedDate(market.timezone)}</span>
+                <span data-market-date></span>
               </div>
               <div class="market-clock-status ${market.session?.isOpen ? "open" : "closed"}">
                 ${market.session?.isOpen ? "Open" : "Closed"}
               </div>
             </div>
             <div class="market-clock-meta">
-              <strong>${formatZonedTime(market.timezone)}</strong>
+              <strong data-market-time></strong>
               <span>${market.session?.hoursLabel || market.timezone}</span>
             </div>
             <div class="market-clock-indices">
@@ -4331,13 +4804,39 @@ function renderGlobalMarketOverview() {
       </div>
     </div>
   `;
+  if (node.dataset.benchmarkSignature !== signature) {
+    node.innerHTML = markup;
+    node.dataset.benchmarkSignature = signature;
+  }
   const toggle = node.querySelector(".global-market-overview-head");
-  toggle?.addEventListener("click", () => {
-    state.benchmarksCollapsed = !state.benchmarksCollapsed;
-    localStorage.setItem(STORAGE_KEYS.benchmarksCollapsed, state.benchmarksCollapsed ? "1" : "0");
-    node.classList.toggle("collapsed", state.benchmarksCollapsed);
-    toggle.setAttribute("aria-expanded", state.benchmarksCollapsed ? "false" : "true");
+  if (toggle && toggle.dataset.bound !== "1") {
+    toggle.dataset.bound = "1";
+    toggle.addEventListener("click", toggleBenchmarksCollapsed);
+  }
+  updateGlobalMarketClocks();
+}
+
+function updateGlobalMarketClocks() {
+  document.querySelectorAll(".market-clock-card[data-market-timezone]").forEach((card) => {
+    const timezone = card.dataset.marketTimezone || "UTC";
+    const dateLabel = formatZonedDate(timezone);
+    const timeLabel = formatZonedTime(timezone);
+    const clockKey = `${dateLabel}|${timeLabel}`;
+    if (marketClockKeys.get(card) === clockKey) return;
+    marketClockKeys.set(card, clockKey);
+    setTextIfChanged(card.querySelector("[data-market-date]"), dateLabel);
+    setTextIfChanged(card.querySelector("[data-market-time]"), timeLabel);
   });
+}
+
+function toggleBenchmarksCollapsed() {
+  const node = document.getElementById("global-market-overview");
+  const toggle = node?.querySelector(".global-market-overview-head");
+  if (!node || !toggle) return;
+  state.benchmarksCollapsed = !state.benchmarksCollapsed;
+  localStorage.setItem(STORAGE_KEYS.benchmarksCollapsed, state.benchmarksCollapsed ? "1" : "0");
+  node.classList.toggle("collapsed", state.benchmarksCollapsed);
+  toggle.setAttribute("aria-expanded", state.benchmarksCollapsed ? "false" : "true");
 }
 
 function renderCompactMenu() {
@@ -4392,8 +4891,8 @@ function activateTab(target) {
 function startMarketClockTimer() {
   window.clearInterval(state.marketClockTimer);
   state.marketClockTimer = window.setInterval(() => {
-    renderGlobalMarketOverview();
-  }, 1000);
+    updateGlobalMarketClocks();
+  }, 15_000);
 }
 
 function renderCorePanels() {
@@ -4407,6 +4906,7 @@ function renderCorePanels() {
   renderBoard();
   renderPulse();
   renderOverview();     // critical — renders synchronously so hero paints first
+  renderMarketHeatMap();
   renderTopbar();
   renderCompactMenu();
   // Defer hidden-tab renders to idle time so Overview paints before them
@@ -4446,6 +4946,7 @@ function applyLiveQuoteUpdate(payload) {
     state.dashboard.active = {
       ...state.dashboard.active,
       ...payload.active,
+      receivedAt: payload.active.receivedAt || payload.updatedAt,
       marketSession:
         payload.active.marketSession ||
         buildClientMarketSession(payload.active.exchange || payload.active.region, payload.active.marketState, payload.active.region),
@@ -4458,6 +4959,7 @@ function applyLiveQuoteUpdate(payload) {
       state.dashboard.active = {
         ...state.dashboard.active,
         ...live,
+        receivedAt: live.receivedAt || payload.updatedAt,
         marketSession: buildClientMarketSession(live.exchange || live.region, live.marketState, live.region),
       };
       state.dashboard.active = mergeQuoteIntoActiveHistory(state.dashboard.active, previousActive, payload.updatedAt);
@@ -4483,7 +4985,8 @@ function startQuoteStream() {
   }
   const symbols = encodeURIComponent(state.watchlist.join(","));
   const active = encodeURIComponent(state.activeTicker || "");
-  const stream = new EventSource(`/api/stream?symbols=${symbols}&active=${active}`);
+  const streamPath = `/api/stream?symbols=${symbols}&active=${active}`;
+  const stream = new EventSource(`${API_BASE}${streamPath}`);
   state.quoteStream = stream;
   state.dataFlow.stream = "connecting";
   renderDataFlowBar();
@@ -4555,18 +5058,24 @@ async function loadConfig() {
   document.getElementById("alpha-key").value = state.config.alphaVantageApiKey || "";
   document.getElementById("llm-base-url").value = state.config.localLlmBaseUrl || "http://127.0.0.1:11434";
   document.getElementById("llm-model").value = state.config.localLlmModel || "Bonsai-8B-1bit";
+  state.dataFlow.boot.config = true;
+  renderDataFlowBar();
   renderTopbar();
 }
 
 async function loadPresets() {
   const payload = await api("/api/presets");
   state.presets = payload.presets || [];
+  state.dataFlow.boot.presets = true;
+  renderDataFlowBar();
   renderPresets();
 }
 
 async function loadSavedWatchlists() {
   const payload = await api("/api/watchlists");
   state.savedWatchlists = payload.watchlists || [];
+  state.dataFlow.boot.watchlists = true;
+  renderDataFlowBar();
   renderSavedWatchlists();
 }
 
@@ -4717,11 +5226,18 @@ async function refreshDashboard({ primeFast = true, primeRadar = true } = {}) {
   });
   if (requestId !== state.dashboardRequestId) return;
 
-  hydrateDashboardFromPayload(payload);
+  if (!hydrateDashboardFromPayload(payload)) {
+    state.dataFlow.lastError = "Dashboard payload was incomplete";
+    renderDataFlowBar();
+    throw new Error("Dashboard payload was incomplete");
+  }
+  state.dataFlow.lastError = "";
   saveDashboardCache(payload);
   persistWatchlist();
   nextFrame(() => {
     renderCorePanels();
+    markDashboardInteractive("Live now");
+    renderDataFlowBar();
   });
   deferWork(() => {
     if (requestId !== state.dashboardRequestId) return;
@@ -4730,7 +5246,6 @@ async function refreshDashboard({ primeFast = true, primeRadar = true } = {}) {
     renderResearch();
   });
   startQuoteStream();
-  markDashboardInteractive("Live now");
   flashStatus("Live now");
   loadEventFeed("", { silent: true })
     .then(() => {
@@ -4877,6 +5392,18 @@ function loadSectorSnapshot(market, period, benchmark) {
   return loadSectorHistory()?.[market]?.[`${period}:${benchmark || "default"}`]?.[0];
 }
 
+function loadMarketHeatMapPrefs() {
+  try {
+    return JSON.parse(localStorage.getItem(STORAGE_KEYS.marketHeatMap) || "{}") || {};
+  } catch {
+    return {};
+  }
+}
+
+function saveMarketHeatMapPrefs(prefs) {
+  localStorage.setItem(STORAGE_KEYS.marketHeatMap, JSON.stringify(prefs));
+}
+
 function sectorHeatColor(pct) {
   if (pct > 2) return "var(--positive, #22c55e)";
   if (pct > 0.5) return "rgba(34,197,94,0.7)";
@@ -4887,6 +5414,145 @@ function sectorHeatColor(pct) {
   return "rgba(255,255,255,0.1)";
 }
 
+function marketHeatMapColor(pct) {
+  if (pct > 3) return "rgba(24, 190, 104, 0.9)";
+  if (pct > 1) return "rgba(39, 166, 97, 0.78)";
+  if (pct > 0.15) return "rgba(60, 142, 87, 0.56)";
+  if (pct < -3) return "rgba(235, 62, 72, 0.92)";
+  if (pct < -1) return "rgba(200, 48, 58, 0.78)";
+  if (pct < -0.15) return "rgba(150, 48, 56, 0.58)";
+  return "rgba(116, 116, 126, 0.34)";
+}
+
+function marketHeatMapInitials(name = "", symbol = "") {
+  const words = String(name || symbol).replace(/[^a-z0-9\s]/gi, " ").trim().split(/\s+/).filter(Boolean);
+  const initials = words.slice(0, 2).map((word) => word[0]).join("");
+  return (initials || String(symbol).slice(0, 2) || "?").toUpperCase();
+}
+
+function fallbackMarketHeatMapPayload(market = "india", period = "1D") {
+  const watchlistTiles = (state.dashboard?.watchlist || []).slice(0, 18).map((item, index) => ({
+    symbol: item.symbol,
+    name: item.name || item.symbol,
+    sector: item.exchange || market,
+    changePct: Number(item.changePercent || 0),
+    span: index < 3 ? 2 : 1,
+    quality: item.dataSourceType === "live" || /live|google|yahoo/i.test(item.dataSource || "") ? "live" : "proxy",
+    source: item.dataSource || "Dashboard watchlist fallback",
+  }));
+  const sectorTiles = (state.sectorStripSectors || []).slice(0, 16).map((item) => ({
+    symbol: item.symbol || item.label || item.name || "SECTOR",
+    name: item.name || item.label || item.symbol || "Sector",
+    sector: item.sector || item.label || market,
+    changePct: Number(item.changePct ?? item.changePercent ?? item.change ?? 0),
+    span: 2,
+    quality: "proxy",
+    source: item.source || "Sector strip fallback",
+  }));
+  const tiles = [...watchlistTiles, ...sectorTiles].filter((tile) => tile.symbol);
+  if (!tiles.length) return null;
+  return {
+    market,
+    period,
+    periodLabel: period === "1D" ? "1 day" : period,
+    updatedAt: new Date().toISOString(),
+    tiles,
+    liveCount: tiles.filter((tile) => tile.quality === "live").length,
+    proxyCount: tiles.filter((tile) => tile.quality !== "live").length,
+    sourceNote: "Frontend fallback from loaded watchlist and sector strip while the market-map endpoint recovers.",
+  };
+}
+
+function renderMarketHeatMap(payload = state.marketHeatMap) {
+  const grid = document.getElementById("market-heat-map-grid");
+  const footer = document.getElementById("market-heat-map-footer");
+  if (!grid) return;
+  const tiles = payload?.tiles || [];
+  if (!tiles.length) {
+    setHTMLIfChanged(grid, `<div class="market-heat-map-empty">Fetching market map…</div>`);
+    if (footer) footer.textContent = "Using local universe manifests and live edge quotes where available.";
+    return;
+  }
+  const markup = tiles.map((tile) => {
+    const pct = Number(tile.changePct || 0);
+    const direction = pct > 0.15 ? "up" : pct < -0.15 ? "down" : "flat";
+    const span = Math.max(1, Math.min(3, Number(tile.span || 1)));
+    const color = marketHeatMapColor(pct);
+    const sourceLabel = tile.quality === "live" ? "Live" : "Proxy";
+    const title = `${tile.symbol} · ${tile.name} · ${formatPercent(pct)} · ${tile.source || sourceLabel}`;
+    const symbolLabel = escapeHtml(String(tile.symbol || "").replace(/\.(NS|BO)$/i, ""));
+    return `
+      <article class="market-heat-tile ${direction} span-${span} ${tile.quality === "live" ? "is-live" : "is-proxy"}"
+        style="--heat:${color}; --span:${span};"
+        title="${escapeHtml(title)}">
+        <span class="market-heat-logo">${escapeHtml(marketHeatMapInitials(tile.name, tile.symbol))}</span>
+        <strong>${symbolLabel}</strong>
+        <em>${formatPercent(pct)}</em>
+        <small>${sourceLabel}</small>
+      </article>
+    `;
+  }).join("");
+  setHTMLIfChanged(grid, markup);
+  if (footer) {
+    const age = payload.updatedAt ? Math.max(0, Math.round((Date.now() - new Date(payload.updatedAt).getTime()) / 60000)) : 0;
+    footer.textContent = `${payload.periodLabel || payload.period || "Selected period"} · ${payload.liveCount || 0} live quote tiles · ${payload.proxyCount || 0} sector-proxy tiles · ${payload.sourceNote || "Tile size is a display proxy."} · updated ${age < 1 ? "just now" : `${age}m ago`}`;
+  }
+}
+
+async function fetchMarketHeatMap(market, period) {
+  const requestId = ++state.marketHeatMapRequestId;
+  renderMarketHeatMap();
+  try {
+    const params = new URLSearchParams({ market, period, limit: market === "us" ? "84" : "42" });
+    const payload = await api(`/api/market-map?${params.toString()}`, { timeoutMs: 30000 });
+    if (requestId !== state.marketHeatMapRequestId) return;
+    state.marketHeatMap = payload;
+    renderMarketHeatMap(payload);
+  } catch (error) {
+    logNonAbort(error);
+    const fallback = fallbackMarketHeatMapPayload(market, period);
+    if (fallback) {
+      state.marketHeatMap = fallback;
+      renderMarketHeatMap(fallback);
+      return;
+    }
+    const grid = document.getElementById("market-heat-map-grid");
+    const footer = document.getElementById("market-heat-map-footer");
+    if (grid) setHTMLIfChanged(grid, `<div class="market-heat-map-empty">Market heat map unavailable. Existing dashboard panels are still active.</div>`);
+    if (footer) footer.textContent = "Heat map uses an additive endpoint, so failures do not block the rest of the dashboard.";
+  }
+}
+
+function initMarketHeatMap() {
+  const panel = document.getElementById("market-heat-map-panel");
+  const regionSelect = document.getElementById("market-heat-map-region");
+  const periodTabs = document.querySelectorAll(".market-heat-map-tab");
+  if (!panel || !regionSelect) return;
+  const prefs = loadMarketHeatMapPrefs();
+  let market = prefs.market || state.selectedRegion || "india";
+  if (!["india", "us"].includes(market)) market = "india";
+  let period = prefs.period || "1D";
+  regionSelect.value = market;
+  periodTabs.forEach((tab) => tab.classList.toggle("active", tab.dataset.period === period));
+  const persistAndFetch = () => {
+    saveMarketHeatMapPrefs({ market, period });
+    fetchMarketHeatMap(market, period);
+  };
+  regionSelect.addEventListener("change", () => {
+    market = regionSelect.value;
+    persistAndFetch();
+  });
+  periodTabs.forEach((tab) => {
+    tab.addEventListener("click", () => {
+      periodTabs.forEach((item) => item.classList.remove("active"));
+      tab.classList.add("active");
+      period = tab.dataset.period || "1D";
+      persistAndFetch();
+    });
+  });
+  persistAndFetch();
+}
+
 function renderSectorMatrix(sectors, updatedAt, meta = {}) {
   const grid = document.getElementById("sector-matrix-grid");
   const footer = document.getElementById("sector-matrix-updated");
@@ -4895,31 +5561,39 @@ function renderSectorMatrix(sectors, updatedAt, meta = {}) {
     grid.innerHTML = `<div class="sector-matrix-empty">Loading sector data…</div>`;
     return;
   }
-  const sorted = [...sectors].sort((a, b) => b.changePct - a.changePct);
-  grid.innerHTML = sorted.map((s) => {
+  const sorted = [...sectors].sort((a, b) => {
+    const aUnavailable = isUnavailableSector(a);
+    const bUnavailable = isUnavailableSector(b);
+    if (aUnavailable !== bUnavailable) return aUnavailable ? 1 : -1;
+    return Number(b.changePct || 0) - Number(a.changePct || 0);
+  });
+  setHTMLIfChanged(grid, sorted.map((s) => {
+    const unavailable = isUnavailableSector(s);
     const pct = Number(s.changePct || 0);
     const relativePct = Number(s.relativePct || 0);
-    const color = sectorHeatColor(pct);
+    const color = unavailable ? "rgba(255,255,255,0.08)" : sectorHeatColor(pct);
     const sign = pct >= 0 ? "+" : "";
     const relativeSign = relativePct >= 0 ? "+" : "";
-    const intensity = Math.min(Math.abs(pct) / 3, 1);
+    const pctLabel = unavailable ? "Data pending" : `${sign}${pct.toFixed(2)}%`;
+    const relativeLabel = unavailable ? "Awaiting live print" : `${relativeSign}${relativePct.toFixed(2)}%`;
+    const intensity = unavailable ? 0.18 : Math.min(Math.abs(pct) / 3, 1);
     return `
-      <article class="sector-tile" style="--heat:${color}; --intensity:${intensity.toFixed(2)}" title="${s.label}: ${sign}${pct.toFixed(2)}%">
+      <article class="sector-tile ${unavailable ? "is-pending" : ""}" style="--heat:${color}; --intensity:${intensity.toFixed(2)}" title="${s.label}: ${pctLabel}">
         <div class="sector-tile-top">
           <span class="sector-tile-label">${s.label}</span>
-          <strong class="sector-tile-pct ${pct >= 0 ? "positive" : "negative"}">${sign}${pct.toFixed(2)}%</strong>
+          <strong class="sector-tile-pct ${unavailable ? "pending" : pct >= 0 ? "positive" : "negative"}">${pctLabel}</strong>
         </div>
         <div class="sector-tile-relative">
           <span>vs ${meta.benchmark?.label || "benchmark"}</span>
-          <strong class="${relativePct >= 0 ? "positive" : "negative"}">${relativeSign}${relativePct.toFixed(2)}%</strong>
+          <strong class="${unavailable ? "pending" : relativePct >= 0 ? "positive" : "negative"}">${relativeLabel}</strong>
         </div>
         <div class="sector-tile-meta">
           <span>${s.source || meta.source || "market data"}</span>
-          ${s.price ? `<em class="sector-tile-price">${s.price.toLocaleString()}</em>` : ""}
+          ${!unavailable && s.price ? `<em class="sector-tile-price">${s.price.toLocaleString()}</em>` : ""}
         </div>
       </article>
     `;
-  }).join("");
+  }).join(""));
   if (footer && updatedAt) {
     const age = Math.round((Date.now() - new Date(updatedAt).getTime()) / 60000);
     const benchmark = meta.benchmark ? `${meta.benchmark.label} ${formatPercent(meta.benchmark.changePct || 0)}` : "selected benchmark";
@@ -4934,13 +5608,15 @@ async function fetchSectorMatrix(market, period, benchmark) {
     const params = new URLSearchParams({ market, period, benchmark });
     const data = await api(`/api/sectors?${params.toString()}`);
     if (data?.sectors?.length) {
-      saveSectorHistory(market, period, benchmark, data.sectors, data);
+      if (hasUsableSectorData(data.sectors)) {
+        saveSectorHistory(market, period, benchmark, data.sectors, data);
+      }
       renderSectorMatrix(data.sectors, data.updatedAt, data);
     }
   } catch {
     // Fall back to last cached local history snapshot
     const snap = loadSectorSnapshot(market, period, benchmark);
-    if (snap?.sectors) {
+    if (snap?.sectors && hasUsableSectorData(snap.sectors)) {
       renderSectorMatrix(snap.sectors, new Date(snap.ts).toISOString(), { ...(snap.meta || {}), cacheState: "local fallback" });
     } else if (grid) {
       grid.innerHTML = `<div class="sector-matrix-empty">Sector data unavailable. Server may still be starting.</div>`;
@@ -4974,7 +5650,7 @@ function initSectorMatrix() {
 
   // Show last local snapshot immediately while fetching
   const cachedSnap = loadSectorSnapshot(currentMarket, currentPeriod, currentBenchmark);
-  if (cachedSnap?.sectors) renderSectorMatrix(cachedSnap.sectors, new Date(cachedSnap.ts).toISOString(), cachedSnap.meta || {});
+  if (cachedSnap?.sectors && hasUsableSectorData(cachedSnap.sectors)) renderSectorMatrix(cachedSnap.sectors, new Date(cachedSnap.ts).toISOString(), cachedSnap.meta || {});
 
   fetchSectorMatrix(currentMarket, currentPeriod, currentBenchmark);
 
@@ -4983,14 +5659,14 @@ function initSectorMatrix() {
     syncBenchmarkOptions();
     persist();
     const snap = loadSectorSnapshot(currentMarket, currentPeriod, currentBenchmark);
-    if (snap?.sectors) renderSectorMatrix(snap.sectors, new Date(snap.ts).toISOString(), snap.meta || {});
+    if (snap?.sectors && hasUsableSectorData(snap.sectors)) renderSectorMatrix(snap.sectors, new Date(snap.ts).toISOString(), snap.meta || {});
     fetchSectorMatrix(currentMarket, currentPeriod, currentBenchmark);
   });
   benchmarkSelect?.addEventListener("change", () => {
     currentBenchmark = benchmarkSelect.value;
     persist();
     const snap = loadSectorSnapshot(currentMarket, currentPeriod, currentBenchmark);
-    if (snap?.sectors) renderSectorMatrix(snap.sectors, new Date(snap.ts).toISOString(), snap.meta || {});
+    if (snap?.sectors && hasUsableSectorData(snap.sectors)) renderSectorMatrix(snap.sectors, new Date(snap.ts).toISOString(), snap.meta || {});
     fetchSectorMatrix(currentMarket, currentPeriod, currentBenchmark);
   });
 
@@ -5001,7 +5677,7 @@ function initSectorMatrix() {
       currentPeriod = tab.dataset.period;
       persist();
       const snap = loadSectorSnapshot(currentMarket, currentPeriod, currentBenchmark);
-      if (snap?.sectors) renderSectorMatrix(snap.sectors, new Date(snap.ts).toISOString(), snap.meta || {});
+      if (snap?.sectors && hasUsableSectorData(snap.sectors)) renderSectorMatrix(snap.sectors, new Date(snap.ts).toISOString(), snap.meta || {});
       fetchSectorMatrix(currentMarket, currentPeriod, currentBenchmark);
     });
   });
@@ -5012,13 +5688,13 @@ function renderSectorStrip(sectors) {
   const strip = document.getElementById("sector-overview-strip");
   if (!Array.isArray(sectors) || !sectors.length) return;
   state.sectorStripSectors = sectors;
-  if (strip) strip.innerHTML = sectorStripMarkup(sectors);
+  if (strip) setHTMLIfChanged(strip, sectorStripMarkup(sectors));
 }
 
 function initSectorStrip() {
   // Show cached immediately
   const cached = loadSectorSnapshot("india", "1D", "^NSEI");
-  if (cached?.sectors) renderSectorStrip(cached.sectors);
+  if (cached?.sectors && hasUsableSectorData(cached.sectors)) renderSectorStrip(cached.sectors);
 
   // Fetch fresh — reuse the same endpoint as the matrix
   api("/api/sectors?market=india&period=1D").then((data) => {
@@ -5063,7 +5739,7 @@ function bindEvents() {
     button.addEventListener("click", () => {
       state.chartFeatures.chartType = button.dataset.chartType || "line";
       persistWatchlist();
-      renderOverview();
+      renderHeroChartOnly();
     });
   });
 
@@ -5077,7 +5753,7 @@ function bindEvents() {
     node.addEventListener("change", () => {
       state.chartFeatures[key] = node.checked;
       persistWatchlist();
-      renderOverview();
+      renderHeroChartOnly();
     });
   });
 
@@ -5262,6 +5938,7 @@ async function init() {
   bindEvents();
   initSectorMatrix();
   initSectorStrip();
+  initMarketHeatMap();
   const cachedDashboard = loadDashboardCache();
   if (cachedDashboard && hydrateDashboardFromPayload(cachedDashboard, { fromCache: true })) {
     markDashboardInteractive("Cached dashboard");
@@ -5279,6 +5956,8 @@ async function init() {
   const backgroundLoads = Promise.allSettled([loadConfig(), loadPresets(), loadSavedWatchlists()]);
   dashboardPromise.catch((error) => {
     logNonAbort(error);
+    state.dataFlow.lastError = state.dataFlow.lastError || "Dashboard refresh failed";
+    renderDataFlowBar();
     setStatus("Backend slow");
     if (!state.bootReady) {
       setBootMessage("Dashboard API is reachable, but the first full refresh is taking longer than usual.");

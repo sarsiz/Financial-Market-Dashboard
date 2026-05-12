@@ -16,6 +16,7 @@ class HtmlContractTests(unittest.TestCase):
   def test_index_contains_core_dashboard_targets(self):
     required_ids = [
       "radar-hotspots",
+      "starfield",
       "data-flow-bar",
       "radar-source-note",
       "overview-board",
@@ -89,6 +90,7 @@ class HtmlContractTests(unittest.TestCase):
       "DOSSIER_CARD_META",
       "data-flow-bar",
       "function renderDataFlowBar(",
+      "function initStarfieldParallax(",
       "function pollHistoryProgress(",
       "function scheduleDataFlowAutoHide(",
       "is-peek",

@@ -47,7 +47,7 @@ def write_manifest_notes(manifest: dict) -> None:
     f"""
 # Vault Manifest
 
-This is the local markdown memory for the financial dashboard.
+This is the local knowledge base for the financial dashboard.
 
 ## Coverage
 
@@ -65,7 +65,7 @@ This is the local markdown memory for the financial dashboard.
 - Prefer one note per durable concept, company, sector, paper, or workflow.
 - Use inbox notes for raw captures before promoting them into durable notes.
 - Use session notes for current investigation threads, not for permanent facts.
-- Link durable notes with wiki links so Obsidian graph view stays useful.
+- Link durable notes with simple `[[note]]` links where useful.
 """,
   )
   write(
@@ -98,11 +98,11 @@ If it is reusable across future work, promote it to a durable folder.
 
 ## Why this exists
 
-This keeps the repo close to a Karpathy-style simple-memory system:
+This keeps the repo easy to inspect and maintain:
 - plain markdown
 - easy diffs
 - easy grep
-- Obsidian graph compatibility
+- generated indexes
 - no hidden database required for core understanding
 """,
   )

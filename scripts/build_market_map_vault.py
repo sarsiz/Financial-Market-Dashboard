@@ -107,14 +107,14 @@ def build_index_note(universe_stats: list[dict]) -> str:
   return f"""
 # Market Graph Index
 
-This vault is the local markdown memory for the dashboard.
+This folder is the local knowledge base for the dashboard.
 
 It is intentionally simple:
 
 - universes are synced into JSON
 - history is cached locally
 - relations are generated from cached history
-- notes are emitted as markdown with Obsidian-style wiki links
+- notes are emitted as markdown with simple `[[note]]` links
 
 ## Coverage
 

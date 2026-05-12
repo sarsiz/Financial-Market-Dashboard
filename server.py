@@ -9,6 +9,7 @@ import re
 import socket
 import sqlite3
 import statistics
+import subprocess
 import sys
 import time
 import threading
@@ -16,7 +17,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from http import HTTPStatus
@@ -234,6 +235,19 @@ SECTOR_INDICES: dict[str, list[dict]] = {
 # In-memory cache: {market_key: {period: {updated_at, sectors}}}
 _sector_cache: dict = {}
 _SECTOR_CACHE_TTL = 900  # 15 minutes
+_quote_cache: dict[str, dict] = {}
+_memory_payload_cache: dict[str, dict] = {}
+_QUOTE_CACHE_LOCK = threading.Lock()
+_QUOTE_FETCH_LOCK = threading.Lock()
+_QUOTE_PROVIDER_HEALTH_LOCK = threading.Lock()
+_QUOTE_PROVIDER_HEALTH: dict[str, dict] = {}
+_MEMORY_PAYLOAD_CACHE_LOCK = threading.Lock()
+QUOTE_CACHE_TTL = 5
+QUOTE_STALE_TTL = 600
+QUOTE_PROVIDER_FAILURE_COOLDOWN = 45
+QUOTE_PROVIDER_TIMEOUT_SECONDS = 5
+QUOTE_PROVIDER_PARALLEL_TIMEOUT_SECONDS = 8
+LIVE_QUOTE_EDGE_SECONDS = 90
 SECTOR_PERIOD_LABELS = {
   "1D": "1 day",
   "5D": "5 days",
@@ -259,6 +273,29 @@ SECTOR_BENCHMARKS: dict[str, list[dict]] = {
     {"label": "S&P 500", "symbol": "^GSPC"},
     {"label": "Nikkei 225", "symbol": "^N225"},
   ],
+}
+MARKET_MAP_UNIVERSES = {
+  "india": "sensex30",
+  "us": "sp500",
+}
+
+GOOGLE_FINANCE_INDEX_ALIASES: dict[str, list[str]] = {
+  "^NSEI": ["NIFTY_50:INDEXNSE"],
+  "^BSESN": ["SENSEX:INDEXBOM"],
+  "^NSEBANK": ["NIFTY_BANK:INDEXNSE"],
+  "^CNXIT": ["NIFTY_IT:INDEXNSE"],
+  "^CNXPHARMA": ["NIFTY_PHARMA:INDEXNSE"],
+  "^CNXAUTO": ["NIFTY_AUTO:INDEXNSE"],
+  "^CNXFMCG": ["NIFTY_FMCG:INDEXNSE"],
+  "^CNXMETAL": ["NIFTY_METAL:INDEXNSE"],
+  "^CNXENERGY": ["NIFTY_ENERGY:INDEXNSE"],
+  "^CNXINFRA": ["NIFTY_INFRA:INDEXNSE"],
+  "^CNXREALTY": ["NIFTY_REALTY:INDEXNSE"],
+  "^CNXMEDIA": ["NIFTY_MEDIA:INDEXNSE"],
+  "^NIFPSUBNK": ["NIFTY_PSU_BANK:INDEXNSE"],
+  # Google Finance does not expose the NIFTY Midcap 100 page consistently;
+  # use the closest NSE midcap index so the dashboard does not show a fake zero.
+  "^NIFMDCP100": ["NIFTY_MIDCAP_50:INDEXNSE"],
 }
 
 MARKET_PRESETS = [
@@ -637,6 +674,124 @@ HISTORY_WARMUP_LOCK = threading.Lock()
 HISTORY_WARMUP_JOBS: dict[str, dict] = {}
 HISTORY_INFLIGHT_LOCK = threading.Lock()
 HISTORY_INFLIGHT: dict[str, threading.Event] = {}
+BACKEND_SCRIPT_LOCK = threading.Lock()
+BACKEND_SCRIPT_JOBS: dict[str, dict] = {}
+BACKEND_SCRIPT_LAST_RUN: dict[str, str] = {}
+BACKEND_SCRIPT_TIMEOUT_SECONDS = 120
+BACKEND_REFRESH_SCRIPTS = [
+  {
+    "id": "macro-factor-store",
+    "label": "Macro factor store",
+    "script": "sync_macro_factor_store.py",
+    "cadenceSeconds": 1800,
+    "freshnessPaths": [MACRO_DATA_DIR / "manifest.json"],
+  },
+  {
+    "id": "universe-manifests",
+    "label": "Universe manifests",
+    "script": "sync_universes.py",
+    "cadenceSeconds": 86400,
+    "freshnessPaths": [UNIVERSE_DIR / "manifest.json"],
+  },
+]
+TRUSTED_DATA_SOURCE_REGISTRY = [
+  {
+    "id": "sec-edgar",
+    "label": "SEC EDGAR APIs",
+    "url": "https://www.sec.gov/search-filings/edgar-application-programming-interfaces",
+    "useFor": "US company filings, XBRL company facts, and filing timestamps.",
+    "integration": "candidate",
+    "note": "Use for factual fundamentals, not analyst opinions.",
+  },
+  {
+    "id": "fred",
+    "label": "FRED API",
+    "url": "https://fred.stlouisfed.org/docs/api/fred/overview.html",
+    "useFor": "US rates, inflation, policy, labor, and macro series.",
+    "integration": "scripted",
+    "note": "Macro scripts materialize this into data/macro for local reuse.",
+  },
+  {
+    "id": "alpha-vantage",
+    "label": "Alpha Vantage",
+    "url": "https://www.alphavantage.co/documentation/",
+    "useFor": "Quote, adjusted history, earnings calendar, estimates, and listing status where API keys permit.",
+    "integration": "configured",
+    "note": "Respect key limits and freshness labels.",
+  },
+  {
+    "id": "google-finance",
+    "label": "Google Finance",
+    "url": "https://www.google.com/finance/",
+    "useFor": "Live quote edge when regional exchange suffixes make generic quote APIs unreliable.",
+    "integration": "configured",
+    "note": "Use as a labelled public quote source with fallback handling.",
+  },
+  {
+    "id": "yahoo-finance",
+    "label": "Yahoo Finance",
+    "url": "https://finance.yahoo.com/",
+    "useFor": "Quote summary, chart live edge, fundamentals, and public consensus fields.",
+    "integration": "configured",
+    "note": "Normalize provider-specific fields server-side and label stale data.",
+  },
+  {
+    "id": "stooq",
+    "label": "Stooq",
+    "url": "https://stooq.com/db/h/",
+    "useFor": "Daily CSV fallback for history-derived quote context.",
+    "integration": "configured",
+    "note": "Use as historical fallback, not as an intraday live claim.",
+  },
+  {
+    "id": "finnhub",
+    "label": "Finnhub",
+    "url": "https://finnhubio.github.io/",
+    "useFor": "Analyst price targets, recommendation trends, estimates, ownership, and company profile data.",
+    "integration": "candidate",
+    "note": "Show as consensus/reference context, never as direct advice.",
+  },
+  {
+    "id": "financial-modeling-prep",
+    "label": "Financial Modeling Prep",
+    "url": "https://site.financialmodelingprep.com/developer/docs/stable/financial-estimates",
+    "useFor": "Analyst financial estimates such as revenue and EPS projections.",
+    "integration": "candidate",
+    "note": "Use with API-key gating and source confidence labels.",
+  },
+  {
+    "id": "nasdaq-trader",
+    "label": "Nasdaq Trader Symbol Directory",
+    "url": "https://nasdaqtrader.com/Trader.aspx?id=symbollookup",
+    "useFor": "Current-day US symbol directory and listed-security metadata.",
+    "integration": "scripted",
+    "note": "Universe sync uses the public directory text feed when available.",
+  },
+  {
+    "id": "rbi",
+    "label": "Reserve Bank of India",
+    "url": "https://www.rbi.org.in/",
+    "useFor": "India policy, rates, circulars, and official macro context.",
+    "integration": "reference",
+    "note": "Treat as the policy anchor for India macro interpretation.",
+  },
+  {
+    "id": "federal-reserve",
+    "label": "Federal Reserve",
+    "url": "https://www.federalreserve.gov/",
+    "useFor": "US policy statements, rate decisions, speeches, and calendars.",
+    "integration": "reference",
+    "note": "Use for policy facts before equity implications.",
+  },
+  {
+    "id": "nse-official",
+    "label": "NSE India data products",
+    "url": "https://www.nseindia.com/static/market-data/eod-historical-data-subscription",
+    "useFor": "Official India EOD/historical data products and market-data provenance.",
+    "integration": "reference",
+    "note": "Prefer official/subscribed channels over fragile scraping for India live data.",
+  },
+]
 OUTBOUND_ALLOWED_HOSTS = {
   "query1.finance.yahoo.com",
   "query2.finance.yahoo.com",
@@ -688,11 +843,11 @@ OUTBOUND_MIN_INTERVAL = {
   "stooq.com": 4.0,
 }
 OUTBOUND_CACHE_TTL = {
-  "query1.finance.yahoo.com": 20,
-  "query2.finance.yahoo.com": 20,
-  "finance.yahoo.com": 20,
+  "query1.finance.yahoo.com": 5,
+  "query2.finance.yahoo.com": 5,
+  "finance.yahoo.com": 10,
   "feeds.finance.yahoo.com": 90,
-  "www.google.com": 30,
+  "www.google.com": 5,
   "news.google.com": 120,
   "duckduckgo.com": 300,
   "feeds.bbci.co.uk": 900,
@@ -901,6 +1056,18 @@ def history_cache_ttl(chart_range: str) -> int:
 
 def payload_cache_ttl(cache_kind: str) -> int:
   return PAYLOAD_CACHE_MAX_AGE.get(cache_kind, 1800)
+
+
+def memory_cached_value(cache_key: str, ttl_seconds: int, builder):
+  now = time.time()
+  with _MEMORY_PAYLOAD_CACHE_LOCK:
+    cached = _memory_payload_cache.get(cache_key)
+    if cached and now - float(cached.get("ts", 0)) <= ttl_seconds:
+      return cached.get("value")
+  value = builder()
+  with _MEMORY_PAYLOAD_CACHE_LOCK:
+    _memory_payload_cache[cache_key] = {"value": value, "ts": now}
+  return value
 
 
 def load_cached_history(symbol: str, chart_range: str) -> tuple[list[float], dict, str, str] | None:
@@ -1587,7 +1754,10 @@ def parse_compact_number(text: str) -> float | None:
 def google_exchange_candidates(symbol: str, exchange_hint: str) -> list[str]:
   upper = symbol.upper()
   candidates = []
-  if upper.endswith(".NS"):
+  candidates.extend(GOOGLE_FINANCE_INDEX_ALIASES.get(upper, []))
+  if ":" in upper:
+    candidates.append(upper)
+  elif upper.endswith(".NS"):
     candidates.append(f"{upper[:-3]}:NSE")
   elif upper.endswith(".BO"):
     candidates.append(f"{upper[:-3]}:BOM")
@@ -1600,10 +1770,12 @@ def google_exchange_candidates(symbol: str, exchange_hint: str) -> list[str]:
   elif upper.endswith(".DE"):
     candidates.append(f"{upper[:-3]}:ETR")
   elif upper.startswith("^"):
-    return []
+    return list(dict.fromkeys(candidates))
   else:
     preferred = exchange_hint.upper()
-    if preferred in {"NASDAQ", "NASDAQGS", "NASDAQGM", "NASDAQCM"}:
+    if preferred in {"INDEXNSE", "INDEXBOM", "NSE", "BOM", "ASX", "LON", "TYO", "ETR"}:
+      candidates.append(f"{upper}:{preferred}")
+    elif preferred in {"NASDAQ", "NASDAQGS", "NASDAQGM", "NASDAQCM"}:
       candidates.extend([f"{upper}:NASDAQ", f"{upper}:NYSE"])
     elif preferred in {"NYSE", "NYSEARCA", "NYSEAMERICAN"}:
       candidates.extend([f"{upper}:NYSE", f"{upper}:NASDAQ"])
@@ -1730,6 +1902,16 @@ def fetch_google_finance_quote(symbol: str, exchange_hint: str = "") -> dict:
 
     price_text = next((line for line in window if re.search(r"[₹$€£¥]\s*[\d,]+(?:\.\d+)?", line)), "")
     if not price_text:
+      numeric_price_pattern = re.compile(r"^\d{1,3}(?:,\d{2,3})*(?:\.\d+)?$|^\d+(?:\.\d+)?$")
+      price_text = next(
+        (
+          line for line in window[1:14]
+          if numeric_price_pattern.match(line)
+          and not line.endswith("%")
+        ),
+        "",
+      )
+    if not price_text:
       continue
     price = parse_number(price_text)
     if price is None:
@@ -1750,8 +1932,13 @@ def fetch_google_finance_quote(symbol: str, exchange_hint: str = "") -> dict:
         change_amount = parse_number(window[index + 1])
         break
     previous_close = parse_number(extract_first_stat_after(detail_lines, ["Previous close", "Prev close", "Prev Close"]) or "")
-    if previous_close is None and change_amount is not None:
-      previous_close = price - change_amount
+    implied_previous_close = price - change_amount if change_amount is not None else None
+    if implied_previous_close is not None and implied_previous_close > 0:
+      if previous_close is None or (
+        change_percent is not None
+        and abs(pct_change(price, previous_close) - change_percent) > 0.05
+      ):
+        previous_close = implied_previous_close
     avg_volume = parse_compact_number(extract_first_stat_after(detail_lines, ["Avg Volume", "Avg. vol.", "Avg vol"]) or "")
     market_volume = parse_compact_number(extract_first_stat_after(detail_lines, ["Volume"], window=2) or "")
     trailing_pe = parse_number(extract_first_stat_after(detail_lines, ["P/E ratio", "P/E Ratio"]) or "")
@@ -1764,6 +1951,7 @@ def fetch_google_finance_quote(symbol: str, exchange_hint: str = "") -> dict:
 
     return {
       "symbol": symbol,
+      "googleSymbol": google_symbol,
       "shortName": name,
       "longName": name,
       "regularMarketPrice": price,
@@ -2004,25 +2192,176 @@ def fetch_alpha_vantage_history(symbol: str, api_key: str, chart_range: str = "1
   return [], {}
 
 
-def fetch_live_quotes(symbols: list[str]) -> dict[str, dict]:
-  primary = fetch_yahoo_quotes(symbols)
-  missing = [symbol for symbol in symbols if symbol.upper() not in primary]
-  if not missing:
-    return primary
+def cached_live_quotes(symbols: list[str], max_age: int = QUOTE_CACHE_TTL) -> tuple[dict[str, dict], dict[str, dict]]:
+  now = time.time()
+  fresh = {}
+  stale = {}
+  with _QUOTE_CACHE_LOCK:
+    for symbol in symbols:
+      entry = _quote_cache.get(symbol.upper())
+      if not entry:
+        continue
+      age = now - float(entry.get("ts", 0))
+      quote = entry.get("quote") or {}
+      if not quote:
+        continue
+      if age <= max_age:
+        fresh[symbol.upper()] = quote
+      elif age <= QUOTE_STALE_TTL:
+        stale[symbol.upper()] = quote
+  return fresh, stale
 
-  with ThreadPoolExecutor(max_workers=min(4, len(missing))) as executor:
-    futures = {
-      executor.submit(fetch_google_finance_quote, symbol, fallback_meta(symbol).get("exchange", "")): symbol
-      for symbol in missing
-    }
-    for future, symbol in futures.items():
-      try:
-        quote = future.result()
-      except Exception:
-        quote = {}
+
+def save_live_quote_cache(quotes: dict[str, dict]) -> None:
+  if not quotes:
+    return
+  now = time.time()
+  with _QUOTE_CACHE_LOCK:
+    for symbol, quote in quotes.items():
       if quote:
-        primary[symbol.upper()] = quote
-  return primary
+        _quote_cache[symbol.upper()] = {"quote": quote, "ts": now}
+
+
+def fetch_live_quotes_from_providers(symbols: list[str]) -> dict[str, dict]:
+  unresolved = [symbol.upper() for symbol in symbols if symbol]
+  if not unresolved:
+    return {}
+  resolved: dict[str, dict] = {}
+  provisional: dict[str, dict] = {}
+  chain = build_live_quote_provider_chain(unresolved)
+  source_count = len(chain)
+  provider_ranks = {provider["id"]: rank for rank, provider in enumerate(chain, start=1)}
+
+  def merge_provider_quotes(provider: dict, provider_quotes: dict[str, dict]) -> None:
+    usable = {}
+    for symbol, quote in (provider_quotes or {}).items():
+      normalized_symbol = symbol.upper()
+      if not quote_is_usable(quote):
+        continue
+      annotated = annotate_quote_source(
+        quote,
+        provider,
+        rank=provider_ranks.get(provider["id"], source_count),
+        source_count=source_count,
+      )
+      if normalized_symbol in resolved:
+        if quote_candidate_score(normalized_symbol, annotated) > quote_candidate_score(normalized_symbol, resolved[normalized_symbol]):
+          resolved[normalized_symbol] = annotated
+          mark_quote_provider_success(provider["id"])
+        continue
+      if quote_is_live_edge(normalized_symbol, annotated):
+        usable[normalized_symbol] = annotated
+      elif quote_is_better_provisional(normalized_symbol, annotated, provisional.get(normalized_symbol)):
+        provisional[normalized_symbol] = annotated
+    if usable:
+      resolved.update(usable)
+      mark_quote_provider_success(provider["id"])
+
+  def fetch_provider_bounded(provider: dict, pending_symbols: list[str]) -> dict[str, dict]:
+    if not pending_symbols or not quote_provider_available(provider["id"]):
+      return {}
+    executor = ThreadPoolExecutor(max_workers=1)
+    future = executor.submit(provider["fetch"], pending_symbols)
+    try:
+      return future.result(timeout=float(provider.get("timeoutSeconds") or QUOTE_PROVIDER_TIMEOUT_SECONDS)) or {}
+    except Exception:
+      future.cancel()
+      mark_quote_provider_failure(provider["id"])
+      return {}
+    finally:
+      executor.shutdown(wait=False, cancel_futures=True)
+
+  sequential = [provider for provider in chain if not provider.get("parallel")]
+  for provider in sequential:
+    pending_symbols = [symbol for symbol in unresolved if symbol not in resolved]
+    if not pending_symbols:
+      break
+    merge_provider_quotes(provider, fetch_provider_bounded(provider, pending_symbols))
+    if all(symbol in resolved for symbol in unresolved):
+      return {**provisional, **resolved}
+
+  parallel = [provider for provider in chain if provider.get("parallel") and quote_provider_available(provider["id"])]
+  if not parallel:
+    return {**provisional, **resolved}
+  remaining_symbols = [symbol for symbol in unresolved if symbol not in resolved]
+  executor = ThreadPoolExecutor(max_workers=min(8, len(parallel)))
+  futures = {executor.submit(provider["fetch"], remaining_symbols): provider for provider in parallel}
+  pending_futures = set(futures)
+  deadline = time.time() + QUOTE_PROVIDER_PARALLEL_TIMEOUT_SECONDS
+
+  def process_done_futures(done_futures) -> None:
+    for future in done_futures:
+      provider = futures[future]
+      try:
+        provider_quotes = future.result() or {}
+      except Exception:
+        mark_quote_provider_failure(provider["id"])
+        continue
+      merge_provider_quotes(provider, provider_quotes)
+
+  try:
+    while pending_futures and time.time() < deadline:
+      done, pending_futures = wait(pending_futures, timeout=max(0.1, deadline - time.time()), return_when=FIRST_COMPLETED)
+      if not done:
+        break
+      process_done_futures(done)
+      if all(symbol in resolved or symbol in provisional for symbol in unresolved):
+        extra_done, pending_futures = wait(pending_futures, timeout=0.35)
+        process_done_futures(extra_done)
+        break
+    for future in pending_futures:
+      provider = futures[future]
+      future.cancel()
+      mark_quote_provider_failure(provider["id"])
+  finally:
+    executor.shutdown(wait=False, cancel_futures=True)
+  return {**provisional, **resolved}
+
+
+def refresh_live_quote_cache_async(symbols: list[str]) -> None:
+  cleaned = [symbol.upper() for symbol in symbols if symbol]
+  if not cleaned or not _QUOTE_FETCH_LOCK.acquire(blocking=False):
+    return
+
+  def worker() -> None:
+    try:
+      fresh, _ = cached_live_quotes(cleaned)
+      missing = [symbol for symbol in cleaned if symbol not in fresh]
+      if missing:
+        save_live_quote_cache(fetch_live_quotes_from_providers(missing))
+    finally:
+      _QUOTE_FETCH_LOCK.release()
+
+  threading.Thread(target=worker, name="quote-cache-refresh", daemon=True).start()
+
+
+def fetch_live_quotes(symbols: list[str], fast: bool = False) -> dict[str, dict]:
+  cleaned = [symbol.upper() for symbol in symbols if symbol]
+  if not cleaned:
+    return {}
+  fresh, stale = cached_live_quotes(cleaned)
+  missing = [symbol for symbol in cleaned if symbol not in fresh]
+  if not missing:
+    return fresh
+  if fast:
+    refresh_live_quote_cache_async(missing)
+    return {**stale, **fresh}
+
+  acquired = _QUOTE_FETCH_LOCK.acquire(blocking=not stale)
+  if not acquired:
+    return {**stale, **fresh}
+  try:
+    # Another request may have refreshed the cache while this request waited.
+    fresh, stale = cached_live_quotes(cleaned)
+    missing = [symbol for symbol in cleaned if symbol not in fresh]
+    if not missing:
+      return fresh
+
+    primary = fetch_live_quotes_from_providers(missing)
+    save_live_quote_cache(primary)
+    return {**stale, **primary, **fresh}
+  finally:
+    _QUOTE_FETCH_LOCK.release()
 
 
 def epoch_from_iso(value: str | None) -> int | None:
@@ -2093,6 +2432,486 @@ def fetch_yahoo_chart_quote(symbol: str) -> dict:
       "quoteSource": "Yahoo Chart",
     }
   return {}
+
+
+def quote_is_usable(quote: dict | None) -> bool:
+  if not quote:
+    return False
+  try:
+    price = float(quote.get("regularMarketPrice"))
+  except (TypeError, ValueError):
+    return False
+  return math.isfinite(price) and price > 0
+
+
+def quote_market_time_iso(quote: dict | None) -> str | None:
+  if not quote:
+    return None
+  market_time = quote.get("regularMarketTime")
+  if market_time:
+    try:
+      return datetime.fromtimestamp(float(market_time), tz=timezone.utc).isoformat()
+    except (TypeError, ValueError, OSError):
+      return None
+  return None
+
+
+def timestamp_from_epoch(value) -> str:
+  try:
+    return datetime.fromtimestamp(float(value), tz=timezone.utc).isoformat()
+  except (TypeError, ValueError, OSError):
+    return ""
+
+
+def quote_age_seconds(quote: dict | None) -> float | None:
+  as_of = quote_market_time_iso(quote)
+  if not as_of:
+    return None
+  try:
+    timestamp = datetime.fromisoformat(str(as_of).replace("Z", "+00:00"))
+  except ValueError:
+    return None
+  if timestamp.tzinfo is None:
+    timestamp = timestamp.replace(tzinfo=timezone.utc)
+  return max(0.0, (datetime.now(timezone.utc) - timestamp.astimezone(timezone.utc)).total_seconds())
+
+
+def quote_source_is_history(quote: dict | None) -> bool:
+  if not quote:
+    return False
+  source_type = str(quote.get("quoteSourceType") or "").lower()
+  source = str(quote.get("quoteSource") or "").lower()
+  return source_type == "history" or any(label in source for label in {"history", "historical", "cache", "derived", "daily csv"})
+
+
+def quote_price_differs_from_cache(symbol: str, quote: dict) -> bool:
+  try:
+    next_price = float(quote.get("regularMarketPrice"))
+  except (TypeError, ValueError):
+    return False
+  with _QUOTE_CACHE_LOCK:
+    entry = _quote_cache.get(symbol.upper()) or {}
+    cached_quote = entry.get("quote") or {}
+  if not cached_quote:
+    return False
+  try:
+    cached_price = float(cached_quote.get("regularMarketPrice"))
+  except (TypeError, ValueError):
+    return True
+  if not math.isfinite(cached_price):
+    return True
+  return abs(next_price - cached_price) > max(abs(cached_price) * 0.00001, 0.0001)
+
+
+def quote_is_live_edge(symbol: str, quote: dict) -> bool:
+  if quote_source_is_history(quote):
+    return False
+  if quote_price_differs_from_cache(symbol, quote):
+    return True
+  age = quote_age_seconds(quote)
+  return age is not None and age <= LIVE_QUOTE_EDGE_SECONDS
+
+
+def quote_candidate_score(symbol: str, quote: dict) -> tuple:
+  age = quote_age_seconds(quote)
+  live_type = 0 if quote_source_is_history(quote) else 1
+  changed = 1 if quote_price_differs_from_cache(symbol, quote) else 0
+  timestamp_score = -age if age is not None else -10**9
+  rank_score = -int(quote.get("quoteSourceRank") or 999)
+  return (live_type, changed, timestamp_score, rank_score)
+
+
+def quote_is_better_provisional(symbol: str, quote: dict, current: dict | None) -> bool:
+  if not current:
+    return True
+  return quote_candidate_score(symbol, quote) > quote_candidate_score(symbol, current)
+
+
+def annotate_quote_source(quote: dict, provider: dict, rank: int, source_count: int) -> dict:
+  annotated = dict(quote)
+  label = provider.get("label") or provider.get("id") or "Quote provider"
+  annotated["quoteSource"] = label
+  annotated["quoteProviderId"] = provider.get("id")
+  annotated["quoteSourceRank"] = rank
+  annotated["quoteSourceCount"] = source_count
+  annotated["quoteSourceType"] = provider.get("type", "live")
+  annotated["quoteSourceCheckedAt"] = datetime.now(timezone.utc).isoformat()
+  return annotated
+
+
+def quote_provider_available(provider_id: str) -> bool:
+  with _QUOTE_PROVIDER_HEALTH_LOCK:
+    state = _QUOTE_PROVIDER_HEALTH.get(provider_id) or {}
+    return time.time() >= float(state.get("nextRetryAt", 0.0))
+
+
+def mark_quote_provider_success(provider_id: str) -> None:
+  with _QUOTE_PROVIDER_HEALTH_LOCK:
+    prior = _QUOTE_PROVIDER_HEALTH.get(provider_id) or {}
+    _QUOTE_PROVIDER_HEALTH[provider_id] = {
+      "failures": 0,
+      "nextRetryAt": 0.0,
+      "lastSuccessAt": time.time(),
+      "lastFailureAt": prior.get("lastFailureAt"),
+    }
+
+
+def mark_quote_provider_failure(provider_id: str) -> None:
+  with _QUOTE_PROVIDER_HEALTH_LOCK:
+    prior = _QUOTE_PROVIDER_HEALTH.get(provider_id) or {}
+    failures = int(prior.get("failures") or 0) + 1
+    cooldown = min(QUOTE_PROVIDER_FAILURE_COOLDOWN * failures, 5 * 60)
+    _QUOTE_PROVIDER_HEALTH[provider_id] = {
+      "failures": failures,
+      "nextRetryAt": time.time() + cooldown,
+      "lastSuccessAt": prior.get("lastSuccessAt"),
+      "lastFailureAt": time.time(),
+    }
+
+
+def quote_provider_status() -> list[dict]:
+  providers = build_live_quote_provider_chain([])
+  with _QUOTE_PROVIDER_HEALTH_LOCK:
+    health = dict(_QUOTE_PROVIDER_HEALTH)
+  now = time.time()
+  status = []
+  for provider in providers:
+    state = health.get(provider["id"]) or {}
+    next_retry_at = float(state.get("nextRetryAt") or 0.0)
+    status.append(
+      {
+        "id": provider["id"],
+        "label": provider.get("label") or provider["id"],
+        "type": provider.get("type", "live"),
+        "mode": "parallel" if provider.get("parallel") else "sequential",
+        "status": "cooldown" if next_retry_at > now else "available",
+        "failures": int(state.get("failures") or 0),
+        "lastSuccessAt": timestamp_from_epoch(state.get("lastSuccessAt")) if state.get("lastSuccessAt") else "",
+        "lastFailureAt": timestamp_from_epoch(state.get("lastFailureAt")) if state.get("lastFailureAt") else "",
+        "nextRetryAt": timestamp_from_epoch(next_retry_at) if next_retry_at > now else "",
+      }
+    )
+  return status
+
+
+def fetch_yahoo_quotes_from_host(symbols: list[str], hostname: str, label: str) -> dict[str, dict]:
+  cleaned = [symbol for symbol in symbols if symbol]
+  if not cleaned:
+    return {}
+  quoted = urllib.parse.quote(",".join(cleaned))
+  payload = json_get(f"https://{hostname}/v7/finance/quote?symbols={quoted}", timeout=6)
+  results = {}
+  quote_response = (payload or {}).get("quoteResponse", {})
+  for item in quote_response.get("result", []):
+    symbol = item.get("symbol")
+    if symbol:
+      quote = dict(item)
+      quote["quoteSource"] = label
+      results[symbol.upper()] = quote
+  return results
+
+
+def fetch_yahoo_chart_from_host(symbol: str, hostname: str, range_value: str = "1d", interval: str = "1m") -> dict | None:
+  quoted = urllib.parse.quote(symbol)
+  payload = json_get(
+    f"https://{hostname}/v8/finance/chart/{quoted}?range={range_value}&interval={interval}&includePrePost=false&events=div%2Csplits",
+    timeout=8,
+  )
+  chart = (payload or {}).get("chart", {})
+  results = chart.get("result", [])
+  return results[0] if results else None
+
+
+def quote_from_yahoo_chart_payload(symbol: str, chart: dict | None, label: str) -> dict:
+  meta = (chart or {}).get("meta") or {}
+  price = meta.get("regularMarketPrice")
+  previous_close = meta.get("previousClose") or meta.get("chartPreviousClose")
+  if price is None:
+    return {}
+  fallback = fallback_meta(symbol)
+  return {
+    "symbol": symbol,
+    "shortName": meta.get("shortName") or meta.get("longName") or fallback["name"],
+    "longName": meta.get("longName") or meta.get("shortName") or fallback["name"],
+    "regularMarketPrice": price,
+    "regularMarketPreviousClose": previous_close,
+    "regularMarketChangePercent": pct_change(float(price), float(previous_close)) if previous_close else 0.0,
+    "regularMarketVolume": meta.get("regularMarketVolume") or 0,
+    "averageDailyVolume3Month": 0,
+    "currency": meta.get("currency") or fallback["currency"],
+    "exchange": meta.get("exchangeName") or fallback["exchange"],
+    "fullExchangeName": meta.get("fullExchangeName") or meta.get("exchangeName") or fallback["exchange"],
+    "marketState": meta.get("marketState") or "REGULAR",
+    "regularMarketTime": meta.get("regularMarketTime"),
+    "fiftyTwoWeekLow": meta.get("fiftyTwoWeekLow"),
+    "fiftyTwoWeekHigh": meta.get("fiftyTwoWeekHigh"),
+    "dayLow": meta.get("regularMarketDayLow"),
+    "dayHigh": meta.get("regularMarketDayHigh"),
+    "quoteSource": label,
+  }
+
+
+def fetch_yahoo_chart_quotes_from_host(symbols: list[str], hostname: str, label: str) -> dict[str, dict]:
+  results = {}
+  for symbol in symbols:
+    for range_value, interval in (("1d", "1m"), ("5d", "1d")):
+      quote = quote_from_yahoo_chart_payload(
+        symbol,
+        fetch_yahoo_chart_from_host(symbol, hostname, range_value=range_value, interval=interval),
+        label,
+      )
+      if quote:
+        results[symbol.upper()] = quote
+        break
+  return results
+
+
+def fetch_google_finance_quotes_provider(symbols: list[str]) -> dict[str, dict]:
+  results = {}
+  with ThreadPoolExecutor(max_workers=min(8, max(1, len(symbols)))) as executor:
+    futures = {
+      executor.submit(fetch_google_finance_quote, symbol, fallback_meta(symbol).get("exchange", "")): symbol
+      for symbol in symbols
+    }
+    for future, symbol in futures.items():
+      try:
+        quote = future.result()
+      except Exception:
+        quote = {}
+      if quote:
+        results[symbol.upper()] = quote
+  return results
+
+
+def fetch_yahoo_search_quote_provider(symbols: list[str]) -> dict[str, dict]:
+  results = {}
+  for symbol in symbols:
+    quoted = urllib.parse.quote(symbol)
+    payload = json_get(f"https://query1.finance.yahoo.com/v1/finance/search?q={quoted}&quotesCount=8&newsCount=0", timeout=6)
+    for item in (payload or {}).get("quotes", []):
+      if (item.get("symbol") or "").upper() != symbol.upper():
+        continue
+      quote = {
+        "symbol": symbol,
+        "shortName": item.get("shortname") or item.get("longname") or fallback_meta(symbol)["name"],
+        "longName": item.get("longname") or item.get("shortname") or fallback_meta(symbol)["name"],
+        "regularMarketPrice": item.get("regularMarketPrice"),
+        "regularMarketPreviousClose": item.get("regularMarketPreviousClose"),
+        "regularMarketChangePercent": item.get("regularMarketChangePercent") or item.get("regularMarketPercentChange"),
+        "regularMarketVolume": item.get("regularMarketVolume") or 0,
+        "averageDailyVolume3Month": 0,
+        "currency": item.get("currency") or fallback_meta(symbol)["currency"],
+        "exchange": item.get("exchange") or item.get("exchDisp") or fallback_meta(symbol)["exchange"],
+        "fullExchangeName": item.get("exchDisp") or item.get("exchange") or fallback_meta(symbol)["exchange"],
+        "marketState": item.get("marketState") or "REGULAR",
+        "regularMarketTime": item.get("regularMarketTime"),
+        "quoteSource": "Yahoo Finance Search",
+      }
+      if quote_is_usable(quote):
+        results[symbol.upper()] = quote
+        break
+  return results
+
+
+def fetch_yahoo_summary_quote_provider(symbols: list[str]) -> dict[str, dict]:
+  results = {}
+  for symbol in symbols:
+    quoted = urllib.parse.quote(symbol)
+    payload = json_get(
+      f"https://query1.finance.yahoo.com/v10/finance/quoteSummary/{quoted}?modules=price,summaryDetail",
+      timeout=8,
+    )
+    result = (((payload or {}).get("quoteSummary") or {}).get("result") or [{}])[0]
+    price = result.get("price") or {}
+    detail = result.get("summaryDetail") or {}
+    raw_price = (price.get("regularMarketPrice") or {}).get("raw")
+    previous_close = (price.get("regularMarketPreviousClose") or detail.get("previousClose") or {}).get("raw")
+    quote = {
+      "symbol": symbol,
+      "shortName": price.get("shortName") or price.get("longName") or fallback_meta(symbol)["name"],
+      "longName": price.get("longName") or price.get("shortName") or fallback_meta(symbol)["name"],
+      "regularMarketPrice": raw_price,
+      "regularMarketPreviousClose": previous_close,
+      "regularMarketChangePercent": (price.get("regularMarketChangePercent") or {}).get("raw"),
+      "regularMarketVolume": (price.get("regularMarketVolume") or {}).get("raw") or 0,
+      "averageDailyVolume3Month": (detail.get("averageVolume") or {}).get("raw") or 0,
+      "currency": price.get("currency") or fallback_meta(symbol)["currency"],
+      "exchange": price.get("exchangeName") or fallback_meta(symbol)["exchange"],
+      "fullExchangeName": price.get("exchangeName") or fallback_meta(symbol)["exchange"],
+      "marketState": price.get("marketState") or "REGULAR",
+      "regularMarketTime": (price.get("regularMarketTime") or {}).get("raw"),
+      "quoteSource": "Yahoo Finance Summary",
+    }
+    if quote_is_usable(quote):
+      results[symbol.upper()] = quote
+  return results
+
+
+def fetch_yahoo_web_quote_provider(symbols: list[str]) -> dict[str, dict]:
+  results = {}
+  for symbol in symbols:
+    html_text = text_get(f"https://finance.yahoo.com/quote/{urllib.parse.quote(symbol)}")
+    if not html_text:
+      continue
+    def raw_number(field: str) -> float | None:
+      match = re.search(rf'"{re.escape(field)}"\s*:\s*\{{\s*"raw"\s*:\s*(-?\d+(?:\.\d+)?)', html_text)
+      return float(match.group(1)) if match else None
+    price = raw_number("regularMarketPrice") or raw_number("postMarketPrice")
+    previous_close = raw_number("regularMarketPreviousClose")
+    quote = {
+      "symbol": symbol,
+      "shortName": fallback_meta(symbol)["name"],
+      "longName": fallback_meta(symbol)["name"],
+      "regularMarketPrice": price,
+      "regularMarketPreviousClose": previous_close,
+      "regularMarketChangePercent": raw_number("regularMarketChangePercent") or (pct_change(price, previous_close) if price and previous_close else 0.0),
+      "regularMarketVolume": int(raw_number("regularMarketVolume") or 0),
+      "averageDailyVolume3Month": int(raw_number("averageDailyVolume3Month") or 0),
+      "currency": fallback_meta(symbol)["currency"],
+      "exchange": fallback_meta(symbol)["exchange"],
+      "fullExchangeName": fallback_meta(symbol)["exchange"],
+      "marketState": "REGULAR",
+      "regularMarketTime": int(raw_number("regularMarketTime") or 0) or None,
+      "quoteSource": "Yahoo Finance Web",
+    }
+    if quote_is_usable(quote):
+      results[symbol.upper()] = quote
+  return results
+
+
+def fetch_stooq_quote_provider(symbols: list[str]) -> dict[str, dict]:
+  results = {}
+  for symbol in symbols:
+    closes, meta = fetch_stooq_history(symbol, fallback_meta(symbol).get("exchange", ""), "5D")
+    if len(closes) < 2:
+      continue
+    fallback = fallback_meta(symbol)
+    timestamps = meta.get("timestamps") or []
+    quote = {
+      "symbol": symbol,
+      "shortName": fallback["name"],
+      "longName": fallback["name"],
+      "regularMarketPrice": float(closes[-1]),
+      "regularMarketPreviousClose": float(closes[-2]),
+      "regularMarketChangePercent": pct_change(float(closes[-1]), float(closes[-2])),
+      "regularMarketVolume": int((meta.get("volumes") or [0])[-1] if meta.get("volumes") else 0),
+      "averageDailyVolume3Month": 0,
+      "currency": fallback["currency"],
+      "exchange": fallback["exchange"],
+      "fullExchangeName": fallback["exchange"],
+      "marketState": "CLOSED",
+      "regularMarketTime": epoch_from_iso(timestamps[-1] if timestamps else None),
+      "quoteSource": "Stooq Daily CSV",
+    }
+    results[symbol.upper()] = quote
+  return results
+
+
+def fetch_alpha_vantage_global_quote_provider(symbols: list[str]) -> dict[str, dict]:
+  api_key = load_config().get("alphaVantageApiKey", "").strip()
+  if not api_key:
+    return {}
+  results = {}
+  for symbol in symbols:
+    query = urllib.parse.urlencode({"function": "GLOBAL_QUOTE", "symbol": symbol, "apikey": api_key})
+    payload = json_get(f"https://www.alphavantage.co/query?{query}", timeout=12)
+    fields = (payload or {}).get("Global Quote") or {}
+    price = parse_number(fields.get("05. price") or "")
+    previous_close = parse_number(fields.get("08. previous close") or "")
+    change_percent = parse_number(fields.get("10. change percent") or "")
+    volume = parse_number(fields.get("06. volume") or "")
+    fallback = fallback_meta(symbol)
+    quote = {
+      "symbol": symbol,
+      "shortName": fallback["name"],
+      "longName": fallback["name"],
+      "regularMarketPrice": price,
+      "regularMarketPreviousClose": previous_close,
+      "regularMarketChangePercent": change_percent if change_percent is not None else (pct_change(price, previous_close) if price and previous_close else 0.0),
+      "regularMarketVolume": int(volume or 0),
+      "averageDailyVolume3Month": 0,
+      "currency": fallback["currency"],
+      "exchange": fallback["exchange"],
+      "fullExchangeName": fallback["exchange"],
+      "marketState": "REGULAR",
+      "regularMarketTime": epoch_from_iso(f"{fields.get('07. latest trading day')}T00:00:00+00:00") if fields.get("07. latest trading day") else None,
+      "quoteSource": "Alpha Vantage Global Quote",
+    }
+    if quote_is_usable(quote):
+      results[symbol.upper()] = quote
+  return results
+
+
+def fetch_alpha_vantage_daily_quote_provider(symbols: list[str]) -> dict[str, dict]:
+  api_key = load_config().get("alphaVantageApiKey", "").strip()
+  if not api_key:
+    return {}
+  results = {}
+  for symbol in symbols:
+    closes, meta = fetch_alpha_vantage_history(symbol, api_key, "5D")
+    if len(closes) < 2:
+      continue
+    fallback = fallback_meta(symbol)
+    timestamps = meta.get("timestamps") or []
+    volumes = meta.get("volumes") or []
+    quote = {
+      "symbol": symbol,
+      "shortName": fallback["name"],
+      "longName": fallback["name"],
+      "regularMarketPrice": float(closes[-1]),
+      "regularMarketPreviousClose": float(closes[-2]),
+      "regularMarketChangePercent": pct_change(float(closes[-1]), float(closes[-2])),
+      "regularMarketVolume": int(volumes[-1] if len(volumes) == len(closes) else 0),
+      "averageDailyVolume3Month": 0,
+      "currency": fallback["currency"],
+      "exchange": fallback["exchange"],
+      "fullExchangeName": fallback["exchange"],
+      "marketState": "CLOSED",
+      "regularMarketTime": epoch_from_iso(timestamps[-1] if timestamps else None),
+      "quoteSource": "Alpha Vantage Daily Adjusted",
+    }
+    results[symbol.upper()] = quote
+  return results
+
+
+def fetch_history_cache_quote_provider(symbols: list[str]) -> dict[str, dict]:
+  results = {}
+  for symbol in symbols:
+    quote = fetch_history_derived_quote(symbol, allow_live_refresh=False)
+    if quote:
+      results[symbol.upper()] = quote
+  return results
+
+
+def quote_chain_prefers_google(symbols: list[str] | None = None) -> bool:
+  if not symbols:
+    return False
+  india_like = 0
+  for symbol in symbols:
+    upper = (symbol or "").upper()
+    if upper.endswith((".NS", ".BO")) or upper.startswith(("^NSE", "^BSE", "^CNX", "^NIF")):
+      india_like += 1
+  return india_like > 0 and india_like == len([symbol for symbol in symbols if symbol])
+
+
+def build_live_quote_provider_chain(symbols: list[str] | None = None) -> list[dict]:
+  providers = [
+    {"id": "yahoo_quote_primary", "label": "Yahoo Finance Quote", "type": "live", "parallel": True, "timeoutSeconds": 4, "fetch": fetch_yahoo_quotes},
+    {"id": "google_finance_page", "label": "Google Finance", "type": "live", "parallel": True, "timeoutSeconds": 5, "fetch": fetch_google_finance_quotes_provider},
+    {"id": "yahoo_quote_secondary", "label": "Yahoo Finance Quote (secondary)", "type": "live", "parallel": True, "timeoutSeconds": 4, "fetch": lambda symbols: fetch_yahoo_quotes_from_host(symbols, "query2.finance.yahoo.com", "Yahoo Finance Quote (secondary)")},
+    {"id": "yahoo_chart_primary", "label": "Yahoo Chart Live Edge", "type": "live", "parallel": True, "timeoutSeconds": 5, "fetch": lambda symbols: fetch_yahoo_chart_quotes_from_host(symbols, "query1.finance.yahoo.com", "Yahoo Chart Live Edge")},
+    {"id": "yahoo_chart_secondary", "label": "Yahoo Chart Live Edge (secondary)", "type": "live", "parallel": True, "timeoutSeconds": 5, "fetch": lambda symbols: fetch_yahoo_chart_quotes_from_host(symbols, "query2.finance.yahoo.com", "Yahoo Chart Live Edge (secondary)")},
+    {"id": "yahoo_search", "label": "Yahoo Finance Search", "type": "live", "parallel": True, "timeoutSeconds": 5, "fetch": fetch_yahoo_search_quote_provider},
+    {"id": "yahoo_summary", "label": "Yahoo Finance Summary", "type": "live", "parallel": True, "timeoutSeconds": 6, "fetch": fetch_yahoo_summary_quote_provider},
+    {"id": "yahoo_web", "label": "Yahoo Finance Web", "type": "live", "parallel": True, "timeoutSeconds": 6, "fetch": fetch_yahoo_web_quote_provider},
+    {"id": "stooq_daily", "label": "Stooq Daily CSV", "type": "history", "parallel": True, "timeoutSeconds": 6, "fetch": fetch_stooq_quote_provider},
+    {"id": "alpha_vantage_global", "label": "Alpha Vantage Global Quote", "type": "live", "parallel": True, "timeoutSeconds": 7, "fetch": fetch_alpha_vantage_global_quote_provider},
+    {"id": "alpha_vantage_daily", "label": "Alpha Vantage Daily Adjusted", "type": "history", "parallel": True, "timeoutSeconds": 7, "fetch": fetch_alpha_vantage_daily_quote_provider},
+    {"id": "local_history_cache", "label": "Local history cache", "type": "history", "parallel": True, "timeoutSeconds": 2, "fetch": fetch_history_cache_quote_provider},
+  ]
+  if quote_chain_prefers_google(symbols):
+    providers.sort(key=lambda provider: 0 if provider["id"] == "google_finance_page" else 1)
+  return providers
 
 
 def post_json(url: str, payload: dict, timeout: int = 40) -> dict | None:
@@ -2378,13 +3197,21 @@ def fetch_yahoo_chart(symbol: str, range_value: str = "6mo", interval: str = "1d
   return results[0] if results else None
 
 
-def fetch_yahoo_quote_summary(symbol: str) -> dict:
+def fetch_yahoo_quote_summary_uncached(symbol: str) -> dict:
   quoted = urllib.parse.quote(symbol)
   payload = json_get(
     f"https://query1.finance.yahoo.com/v10/finance/quoteSummary/{quoted}?modules=summaryDetail,defaultKeyStatistics,financialData,assetProfile,recommendationTrend,earningsTrend,majorHoldersBreakdown"
   )
   result = ((payload or {}).get("quoteSummary") or {}).get("result") or []
   return result[0] if result else {}
+
+
+def fetch_yahoo_quote_summary(symbol: str) -> dict:
+  return memory_cached_value(
+    f"quote-summary:{symbol.upper()}",
+    6 * 60 * 60,
+    lambda: fetch_yahoo_quote_summary_uncached(symbol),
+  ) or {}
 
 
 def _sector_matches_query(query_lower: str, meta: dict) -> bool:
@@ -3246,6 +4073,14 @@ def infer_radar_hotspots(items: list[dict]) -> list[dict]:
 
 
 def build_market_radar(symbol: str | None = None) -> dict:
+  return memory_cached_value(
+    f"market-radar:{(symbol or 'global').upper()}",
+    5 * 60,
+    lambda: build_market_radar_uncached(symbol),
+  ) or {}
+
+
+def build_market_radar_uncached(symbol: str | None = None) -> dict:
   queries = [EVENT_CATEGORY_QUERIES["world"], EVENT_CATEGORY_QUERIES["war"], EVENT_CATEGORY_QUERIES["business"]]
   with ThreadPoolExecutor(max_workers=5) as executor:
     future_map = {
@@ -3359,7 +4194,7 @@ def enrich_market_radar(radar: dict, macro_pulse: list[dict] | None = None, acti
   return enriched
 
 
-def fetch_yahoo_rss(symbol: str) -> list[str]:
+def fetch_yahoo_rss_uncached(symbol: str) -> list[str]:
   quoted = urllib.parse.quote(symbol)
   xml_text = text_get(f"https://feeds.finance.yahoo.com/rss/2.0/headline?s={quoted}&region=US&lang=en-US")
   if not xml_text:
@@ -3375,6 +4210,14 @@ def fetch_yahoo_rss(symbol: str) -> list[str]:
     if len(items) >= 6:
       break
   return items
+
+
+def fetch_yahoo_rss(symbol: str) -> list[str]:
+  return memory_cached_value(
+    f"yahoo-rss:{symbol.upper()}",
+    15 * 60,
+    lambda: fetch_yahoo_rss_uncached(symbol),
+  ) or []
 
 
 def fetch_alpha_vantage_news(symbol: str, api_key: str) -> list[str]:
@@ -3397,8 +4240,17 @@ def fetch_alpha_vantage_news(symbol: str, api_key: str) -> list[str]:
   return items[:6]
 
 
-def headline_texts_from_search(query: str) -> list[str]:
+def headline_texts_from_search_uncached(query: str) -> list[str]:
   return [item.get("title", "") for item in duckduckgo_search(query)[:6] if item.get("title")]
+
+
+def headline_texts_from_search(query: str) -> list[str]:
+  normalized = re.sub(r"\s+", " ", query.strip().lower())
+  return memory_cached_value(
+    f"headline-search:{normalized}",
+    15 * 60,
+    lambda: headline_texts_from_search_uncached(query),
+  ) or []
 
 
 def dedupe_list(items: list[str]) -> list[str]:
@@ -3697,6 +4549,8 @@ def google_finance_timezone(google_symbol: str, exchange_hint: str = "") -> str:
   return {
     "NSE": "Asia/Kolkata",
     "BOM": "Asia/Kolkata",
+    "INDEXNSE": "Asia/Kolkata",
+    "INDEXBOM": "Asia/Kolkata",
     "NASDAQ": "America/New_York",
     "NYSE": "America/New_York",
     "ASX": "Australia/Sydney",
@@ -3877,14 +4731,18 @@ def run_history_warmup(job_key: str, symbols: list[str], ranges: list[str]) -> N
           build_history(symbol, chart_range, allow_live_refresh=True)
       except Exception as error:
         with HISTORY_WARMUP_LOCK:
-          HISTORY_WARMUP_JOBS[job_key].setdefault("errors", []).append(f"{symbol}:{chart_range}:{error}")
+          if job_key in HISTORY_WARMUP_JOBS:
+            HISTORY_WARMUP_JOBS[job_key].setdefault("errors", []).append(f"{symbol}:{chart_range}:{error}")
       finally:
         with HISTORY_WARMUP_LOCK:
+          if job_key not in HISTORY_WARMUP_JOBS:
+            return
           HISTORY_WARMUP_JOBS[job_key]["completed"] = min(total, int(HISTORY_WARMUP_JOBS[job_key].get("completed", 0)) + 1)
           HISTORY_WARMUP_JOBS[job_key]["total"] = total
   with HISTORY_WARMUP_LOCK:
-    HISTORY_WARMUP_JOBS[job_key]["status"] = "done"
-    HISTORY_WARMUP_JOBS[job_key]["finishedAt"] = datetime.now(timezone.utc).isoformat()
+    if job_key in HISTORY_WARMUP_JOBS:
+      HISTORY_WARMUP_JOBS[job_key]["status"] = "done"
+      HISTORY_WARMUP_JOBS[job_key]["finishedAt"] = datetime.now(timezone.utc).isoformat()
 
 
 def start_history_warmup(symbols: list[str], ranges: list[str] | None = None, reason: str = "dashboard") -> dict:
@@ -3915,6 +4773,148 @@ def start_history_warmup(symbols: list[str], ranges: list[str] | None = None, re
 def history_warmup_status() -> dict:
   with HISTORY_WARMUP_LOCK:
     jobs = list(HISTORY_WARMUP_JOBS.values())[-12:]
+  script_status = backend_script_status()
+  quote_providers = quote_provider_status()
+  return {
+    "jobs": jobs,
+    "active": [job for job in jobs if job.get("status") in {"queued", "running"}],
+    "scripts": script_status["jobs"],
+    "scriptActive": script_status["active"],
+    "quoteProviders": quote_providers,
+    "quoteProviderActive": [provider for provider in quote_providers if provider.get("status") == "available"],
+  }
+
+
+def newest_mtime(paths: list[Path]) -> float:
+  stamps = []
+  for path in paths:
+    try:
+      if path.exists():
+        stamps.append(path.stat().st_mtime)
+    except OSError:
+      continue
+  return max(stamps) if stamps else 0.0
+
+
+def backend_script_due(spec: dict, now: float | None = None) -> tuple[bool, str]:
+  now = now or time.time()
+  cadence = int(spec.get("cadenceSeconds") or 0)
+  newest = newest_mtime(spec.get("freshnessPaths") or [])
+  if newest and cadence and now - newest < cadence:
+    age_minutes = max(0, int((now - newest) / 60))
+    return False, f"local manifest fresh ({age_minutes}m old)"
+  last_run = BACKEND_SCRIPT_LAST_RUN.get(spec["id"])
+  if last_run:
+    try:
+      last_ts = datetime.fromisoformat(last_run).timestamp()
+    except ValueError:
+      last_ts = 0
+    if cadence and now - last_ts < cadence:
+      age_minutes = max(0, int((now - last_ts) / 60))
+      return False, f"last refresh {age_minutes}m ago"
+  return True, "stale or missing local manifest"
+
+
+def run_backend_refresh_job(job_key: str) -> None:
+  with BACKEND_SCRIPT_LOCK:
+    job = BACKEND_SCRIPT_JOBS.get(job_key, {})
+    job.update({"status": "running", "startedAt": datetime.now(timezone.utc).isoformat(), "completed": 0})
+    BACKEND_SCRIPT_JOBS[job_key] = job
+  for index, step in enumerate(job.get("steps") or []):
+    if step.get("status") == "skipped":
+      with BACKEND_SCRIPT_LOCK:
+        BACKEND_SCRIPT_JOBS[job_key]["completed"] = index + 1
+      continue
+    script_name = step.get("script")
+    script_path = BASE_DIR / "scripts" / script_name
+    with BACKEND_SCRIPT_LOCK:
+      BACKEND_SCRIPT_JOBS[job_key]["steps"][index].update({"status": "running", "startedAt": datetime.now(timezone.utc).isoformat()})
+    try:
+      result = subprocess.run(
+        [sys.executable, str(script_path)],
+        cwd=BASE_DIR,
+        capture_output=True,
+        text=True,
+        timeout=BACKEND_SCRIPT_TIMEOUT_SECONDS,
+      )
+      output = (result.stdout or result.stderr or "").strip()
+      if result.returncode:
+        raise RuntimeError((result.stderr or output or f"{script_name} exited {result.returncode}").strip())
+      try:
+        parsed_output = json.loads(output) if output else {}
+      except json.JSONDecodeError:
+        parsed_output = {"output": output[-1200:]}
+      with BACKEND_SCRIPT_LOCK:
+        BACKEND_SCRIPT_JOBS[job_key]["steps"][index].update(
+          {
+            "status": "done",
+            "finishedAt": datetime.now(timezone.utc).isoformat(),
+            "result": parsed_output,
+          }
+        )
+        BACKEND_SCRIPT_LAST_RUN[step.get("id") or script_name] = datetime.now(timezone.utc).isoformat()
+    except subprocess.TimeoutExpired:
+      error = f"{script_name} exceeded {BACKEND_SCRIPT_TIMEOUT_SECONDS}s timeout"
+      with BACKEND_SCRIPT_LOCK:
+        BACKEND_SCRIPT_JOBS[job_key]["steps"][index].update({"status": "error", "error": error})
+        BACKEND_SCRIPT_JOBS[job_key].setdefault("errors", []).append(error)
+    except Exception as error:
+      with BACKEND_SCRIPT_LOCK:
+        BACKEND_SCRIPT_JOBS[job_key]["steps"][index].update({"status": "error", "error": str(error)})
+        BACKEND_SCRIPT_JOBS[job_key].setdefault("errors", []).append(str(error))
+    finally:
+      with BACKEND_SCRIPT_LOCK:
+        BACKEND_SCRIPT_JOBS[job_key]["completed"] = index + 1
+  with BACKEND_SCRIPT_LOCK:
+    final_job = BACKEND_SCRIPT_JOBS.get(job_key, {})
+    final_job["status"] = "error" if final_job.get("errors") else "done"
+    final_job["finishedAt"] = datetime.now(timezone.utc).isoformat()
+    BACKEND_SCRIPT_JOBS[job_key] = final_job
+
+
+def start_dashboard_backend_refresh(symbols: list[str], region_key: str | None = None) -> dict:
+  now = time.time()
+  with BACKEND_SCRIPT_LOCK:
+    active = next((job for job in reversed(list(BACKEND_SCRIPT_JOBS.values())) if job.get("status") in {"queued", "running"}), None)
+    if active:
+      return {"status": active.get("status"), "jobKey": active.get("jobKey"), "detail": "backend refresh already running"}
+  steps = []
+  for spec in BACKEND_REFRESH_SCRIPTS:
+    due, reason = backend_script_due(spec, now)
+    steps.append(
+      {
+        "id": spec["id"],
+        "label": spec["label"],
+        "script": spec["script"],
+        "status": "queued" if due else "skipped",
+        "reason": reason,
+      }
+    )
+  job_key = f"backend-refresh-{int(now * 1000)}"
+  job = {
+    "status": "queued" if any(step["status"] == "queued" for step in steps) else "done",
+    "jobKey": job_key,
+    "reason": "dashboard-loaded",
+    "region": region_key or "global",
+    "symbols": list(dict.fromkeys(symbols))[:24],
+    "total": len(steps),
+    "completed": sum(1 for step in steps if step["status"] == "skipped"),
+    "steps": steps,
+    "queuedAt": datetime.now(timezone.utc).isoformat(),
+  }
+  if job["status"] == "done":
+    job["finishedAt"] = job["queuedAt"]
+  with BACKEND_SCRIPT_LOCK:
+    BACKEND_SCRIPT_JOBS[job_key] = job
+  if job["status"] == "queued":
+    thread = threading.Thread(target=run_backend_refresh_job, args=(job_key,), daemon=True)
+    thread.start()
+  return {"status": job["status"], "jobKey": job_key, "total": job["total"], "completed": job["completed"]}
+
+
+def backend_script_status() -> dict:
+  with BACKEND_SCRIPT_LOCK:
+    jobs = list(BACKEND_SCRIPT_JOBS.values())[-12:]
   return {"jobs": jobs, "active": [job for job in jobs if job.get("status") in {"queued", "running"}]}
 
 
@@ -4826,11 +5826,16 @@ def build_forecast(symbol: str, quote: dict, summary: dict, history: list[float]
 
 def build_backtest(symbol: str, history: list[float], quote: dict, summary: dict, horizon: int, stress: str, news_count: int) -> dict:
   minimum_history = max(12, horizon + 4)
+  empty = {
+    "mae": 0.0, "medianApe": 0.0, "hitRate": 0.0, "sampleCount": 0,
+    "returnResiduals": [], "meanReturnBias": 0.0, "residualStd": 0.0,
+  }
   if len(history) < minimum_history:
-    return {"mae": 0.0, "medianApe": 0.0, "hitRate": 0.0, "sampleCount": 0}
+    return empty
 
   errors = []
   hits = []
+  return_residuals = []
   start = max(6, min(24, len(history) // 3))
   end = len(history) - horizon
   minimum_window = max(6, horizon // 2 + 1)
@@ -4838,7 +5843,13 @@ def build_backtest(symbol: str, history: list[float], quote: dict, summary: dict
     window = history[:index]
     if len(window) < minimum_window:
       continue
-    forecast = build_forecast(symbol, quote, summary, window, stress=stress, horizon=horizon, news_count=news_count)
+    # Window-time quote: build_forecast_inputs anchors latestPrice on quote.regularMarketPrice,
+    # so without this override every historical forecast would start from TODAY's price and
+    # leak future information into the walk-forward (causing wildly inflated MAE).
+    window_quote = dict(quote or {})
+    window_quote["regularMarketPrice"] = window[-1]
+    window_quote["regularMarketPreviousClose"] = window[-2] if len(window) > 1 else window[-1]
+    forecast = build_forecast(symbol, window_quote, summary, window, stress=stress, horizon=horizon, news_count=news_count)
     predicted = forecast["projected"][-1]
     actual = history[index + horizon - 1]
     current = window[-1]
@@ -4849,16 +5860,101 @@ def build_backtest(symbol: str, history: list[float], quote: dict, summary: dict
     predicted_direction = 1 if predicted >= current else -1
     actual_direction = 1 if actual >= current else -1
     hits.append(1 if predicted_direction == actual_direction else 0)
+    # Signed forecast-return error: positive value = model over-predicted return.
+    predicted_return_pct = (predicted - current) / current * 100
+    actual_return_pct = (actual - current) / current * 100
+    return_residuals.append(predicted_return_pct - actual_return_pct)
 
   if not errors:
-    return {"mae": 0.0, "medianApe": 0.0, "hitRate": 0.0, "sampleCount": 0}
+    return empty
 
   return {
     "mae": average(errors),
     "medianApe": statistics.median(errors),
     "hitRate": average(hits) * 100,
     "sampleCount": len(errors),
+    "returnResiduals": return_residuals,
+    "meanReturnBias": average(return_residuals),
+    "residualStd": std_dev(return_residuals) if len(return_residuals) >= 2 else 0.0,
   }
+
+
+MODEL_STATE_INSIGHT_PREFIX = "model_residual_state"
+
+
+def update_model_residual_state(symbol: str, horizon: int, backtest: dict) -> dict:
+  """Incremental residual learning. EMA-blends the latest walk-forward bias /
+  residual std into a persisted per-(symbol, horizon) state.
+
+  Each call retrains: prior state is loaded from derived_insights, new backtest
+  stats are blended (alpha=0.4 favors recent), and the result is persisted so
+  future runs continue from this baseline rather than re-learning cold.
+  """
+  if backtest.get("sampleCount", 0) < 4:
+    return {
+      "learnedBias": 0.0,
+      "residualStd": 0.0,
+      "trainingRuns": 0,
+      "trainedAt": None,
+      "samples": int(backtest.get("sampleCount", 0)),
+      "status": "warming-up",
+    }
+
+  insight_key = f"{MODEL_STATE_INSIGHT_PREFIX}_h{horizon}"
+  prior = load_derived_insight(symbol, "1d", insight_key) or {}
+  alpha = 0.4
+  prior_bias = float(prior.get("learnedBias") or 0.0)
+  prior_std = float(prior.get("residualStd") or 0.0)
+  prior_runs = int(prior.get("trainingRuns") or 0)
+
+  new_bias = float(backtest.get("meanReturnBias") or 0.0)
+  new_std = float(backtest.get("residualStd") or 0.0)
+
+  if prior_runs == 0:
+    blended_bias = new_bias
+    blended_std = new_std
+  else:
+    blended_bias = (1 - alpha) * prior_bias + alpha * new_bias
+    blended_std = (1 - alpha) * prior_std + alpha * new_std
+
+  state = {
+    "learnedBias": round(blended_bias, 4),
+    "residualStd": round(blended_std, 4),
+    "trainingRuns": prior_runs + 1,
+    "trainedAt": datetime.now(timezone.utc).isoformat(),
+    "samples": int(backtest["sampleCount"]),
+    "lastBatchBias": round(new_bias, 4),
+    "lastBatchStd": round(new_std, 4),
+    "status": "trained",
+  }
+  save_derived_insight(symbol, "1d", insight_key, state, "Walk-forward residual learning")
+  return state
+
+
+def apply_residual_correction(forecast: dict, model_state: dict) -> dict:
+  """Subtract learned bias (in pp of horizon return) from expectedReturn,
+  rescale projected path linearly across the horizon, and refresh direction +
+  fairValueGap. No-op when learned bias is negligible."""
+  bias = float(model_state.get("learnedBias") or 0.0)
+  if abs(bias) < 0.05 or not forecast.get("projected"):
+    forecast["learnedBiasApplied"] = 0.0
+    return forecast
+  projected = list(forecast["projected"])
+  n = len(projected)
+  for i in range(n):
+    step_fraction = (i + 1) / n
+    projected[i] = round(projected[i] * (1 - (bias * step_fraction) / 100.0), 4)
+  forecast["projected"] = projected
+  raw_expected = float(forecast.get("expectedReturn") or 0.0)
+  corrected_expected = raw_expected - bias
+  forecast["expectedReturnRaw"] = raw_expected
+  forecast["expectedReturn"] = corrected_expected
+  forecast["learnedBiasApplied"] = round(bias, 4)
+  forecast["direction"] = model_direction(corrected_expected)
+  # Note: fairValueGap is a fundamental estimate (fair price vs. spot) — not a directional
+  # return forecast — so we do NOT subtract learned bias from it. Bias correction only
+  # applies to the momentum-driven expectedReturn and projected path.
+  return forecast
 
 
 def build_recommendation(forecast: dict) -> dict:
@@ -5408,7 +6504,7 @@ def build_market_discovery(watchlist: list[dict]) -> dict:
 
 
 def build_ticker_snapshot(symbol: str, quote: dict | None = None, stress: str = "base", horizon: int = 10, chart_range: str = "1M") -> dict:
-  quotes = fetch_live_quotes([symbol]) if quote is None else {symbol: quote}
+  quotes = fetch_live_quotes([symbol], fast=True) if quote is None else {symbol: quote}
   quote = quotes.get(symbol) or {}
   with ThreadPoolExecutor(max_workers=4) as executor:
     history_future = executor.submit(build_history, symbol, chart_range)
@@ -5438,6 +6534,30 @@ def build_ticker_snapshot(symbol: str, quote: dict | None = None, stress: str = 
   change_percent = float(quote.get("regularMarketChangePercent") or pct_change(latest_price, previous_close))
   forecast = build_forecast(symbol, quote, summary, model_history, stress=stress, horizon=horizon, news_count=news_count)
   backtest = build_backtest(symbol, model_history, quote, summary, horizon, stress, news_count)
+  # Self-retraining: blend new walk-forward residuals into a persisted state and
+  # apply the learned bias correction before downstream consumers see the forecast.
+  model_state = update_model_residual_state(symbol, horizon, backtest)
+  forecast = apply_residual_correction(forecast, model_state)
+  # Empirical walk-forward MAE replaces the vol-scaled heuristic once we have a
+  # meaningful sample. Below the threshold we keep the heuristic but flag it.
+  if backtest.get("sampleCount", 0) >= 6:
+    forecast["maeHeuristic"] = float(forecast.get("mae") or 0.0)
+    forecast["mae"] = float(backtest.get("mae") or forecast.get("mae") or 0.0)
+    forecast["maeSource"] = "walk-forward"
+  else:
+    forecast["maeSource"] = "vol-scaled heuristic"
+  forecast["backtestSamples"] = int(backtest.get("sampleCount", 0))
+  forecast["backtestHitRate"] = float(backtest.get("hitRate", 0.0))
+  forecast["backtestMedianApe"] = float(backtest.get("medianApe", 0.0))
+  forecast["learning"] = {
+    "learnedBias": float(model_state.get("learnedBias") or 0.0),
+    "residualStd": float(model_state.get("residualStd") or 0.0),
+    "trainingRuns": int(model_state.get("trainingRuns") or 0),
+    "trainedAt": model_state.get("trainedAt"),
+    "samples": int(model_state.get("samples") or 0),
+    "status": model_state.get("status") or "warming-up",
+    "biasApplied": float(forecast.get("learnedBiasApplied") or 0.0),
+  }
   recommendation = build_recommendation(forecast)
 
   market_cap = quote.get("marketCap")
@@ -5493,6 +6613,11 @@ def build_ticker_snapshot(symbol: str, quote: dict | None = None, stress: str = 
     "region": region_name,
     "currency": quote.get("currency") or chart_meta.get("currency") or fallback["currency"],
     "dataSource": data_source,
+    "dataProviderId": quote.get("quoteProviderId"),
+    "dataSourceRank": quote.get("quoteSourceRank"),
+    "dataSourceCount": quote.get("quoteSourceCount"),
+    "dataSourceType": quote.get("quoteSourceType"),
+    "dataSourceCheckedAt": quote.get("quoteSourceCheckedAt"),
     "quoteFreshness": freshness,
     "price": latest_price,
     "previousClose": previous_close,
@@ -5514,6 +6639,11 @@ def build_ticker_snapshot(symbol: str, quote: dict | None = None, stress: str = 
     "marketState": quote.get("marketState") or "REGULAR",
     "marketSession": market_session,
     "dataSource": data_source,
+    "dataProviderId": quote.get("quoteProviderId"),
+    "dataSourceRank": quote.get("quoteSourceRank"),
+    "dataSourceCount": quote.get("quoteSourceCount"),
+    "dataSourceType": quote.get("quoteSourceType"),
+    "dataSourceCheckedAt": quote.get("quoteSourceCheckedAt"),
     "historySource": chart_meta.get("historySource") or "Unavailable",
     "historyCachedAt": chart_meta.get("historyCachedAt"),
     "historyCacheState": chart_meta.get("historyCacheState"),
@@ -5573,6 +6703,10 @@ def build_ticker_snapshot(symbol: str, quote: dict | None = None, stress: str = 
 
 
 def build_macro_pulse() -> list[dict]:
+  return memory_cached_value("macro-pulse", 60, build_macro_pulse_uncached) or FALLBACK_MACRO_PULSE
+
+
+def build_macro_pulse_uncached() -> list[dict]:
   quotes = fetch_yahoo_quotes([item["symbol"] for item in MACRO_SYMBOLS])
   items = []
   for macro in MACRO_SYMBOLS:
@@ -6207,7 +7341,7 @@ def build_methodology_payload(snapshot: dict, region_payload: dict) -> dict:
     "vault": {
       "conceptsPath": "vault/market-map/concepts",
       "workflowPath": "vault/market-map/workflows",
-      "mode": "Obsidian-friendly markdown",
+      "mode": "Local markdown",
     },
   }
 
@@ -6442,7 +7576,7 @@ def build_watchlist_implications(region_key: str, watchlist: list[dict], bonds: 
       "papers": paper_set,
       "vault": {
         "path": "vault/market-map",
-        "mode": "Obsidian-friendly markdown",
+        "mode": "Local markdown",
       },
       "graphMeta": {
         "layout": "Hierarchical dependency graph",
@@ -6516,8 +7650,12 @@ def build_region_comparison(regions: dict[str, dict]) -> dict:
 
 
 def build_global_market_overview() -> list[dict]:
+  return memory_cached_value("global-market-overview", 20, build_global_market_overview_uncached) or []
+
+
+def build_global_market_overview_uncached() -> list[dict]:
   symbols = [item["symbol"] for market in GLOBAL_MARKET_CLOCKS for item in market["indices"]]
-  quotes = fetch_live_quotes(symbols)
+  quotes = fetch_live_quotes(symbols, fast=True)
   cards = []
   for market in GLOBAL_MARKET_CLOCKS:
     indices = []
@@ -6533,7 +7671,7 @@ def build_global_market_overview() -> list[dict]:
       )
       as_of = timestamp_from_epoch(quote.get("regularMarketTime")) if quote.get("regularMarketTime") else ""
       exchange = quote.get("fullExchangeName") or quote.get("exchange") or fallback.get("exchange") or market["label"]
-      data_source = "yahoo" if quote else "curated_fallback"
+      data_source = quote.get("quoteSource") or ("Live source" if quote else "curated_fallback")
       session_preview = build_market_session(
         market.get("sessionExchange") or exchange,
         market["label"],
@@ -6551,6 +7689,9 @@ def build_global_market_overview() -> list[dict]:
           "marketState": quote.get("marketState") or ("REGULAR" if quote else "CLOSED"),
           "asOf": as_of,
           "dataSource": data_source,
+          "dataProviderId": quote.get("quoteProviderId"),
+          "dataSourceRank": quote.get("quoteSourceRank"),
+          "dataSourceCount": quote.get("quoteSourceCount"),
           "quoteFreshness": quote_freshness(as_of, session_preview, data_source),
         }
       )
@@ -6580,7 +7721,7 @@ def build_dashboard(symbols: list[str], active: str | None, chart_range: str = "
     cleaned.insert(0, active.upper())
   cleaned = list(dict.fromkeys(cleaned))
 
-  quote_map = fetch_live_quotes(cleaned)
+  quote_map = fetch_live_quotes(cleaned, fast=True)
   watchlist = []
   for symbol in cleaned:
     quote = quote_map.get(symbol, {})
@@ -6599,6 +7740,10 @@ def build_dashboard(symbols: list[str], active: str | None, chart_range: str = "
       else:
         price = None
         previous_close = None
+    market_time = quote.get("regularMarketTime")
+    quote_as_of = datetime.fromtimestamp(market_time, tz=timezone.utc).isoformat() if market_time else None
+    history_as_of = (history_meta.get("timestamps") or [None])[-1] if history_meta.get("timestamps") else None
+    as_of = history_as_of if data_source == "History-derived" else quote_as_of
     watchlist.append(
       {
         "symbol": symbol,
@@ -6609,9 +7754,13 @@ def build_dashboard(symbols: list[str], active: str | None, chart_range: str = "
         "currency": quote.get("currency") or fallback["currency"],
         "exchange": quote.get("fullExchangeName") or quote.get("exchange") or fallback["exchange"],
         "dataSource": data_source,
-        "asOf": (history_meta.get("timestamps") or [None])[-1] if data_source == "History-derived" and history_meta.get("timestamps") else None,
+        "dataProviderId": quote.get("quoteProviderId"),
+        "dataSourceRank": quote.get("quoteSourceRank"),
+        "dataSourceCount": quote.get("quoteSourceCount"),
+        "dataSourceType": quote.get("quoteSourceType"),
+        "asOf": as_of,
         "quoteFreshness": quote_freshness(
-          (history_meta.get("timestamps") or [None])[-1] if data_source == "History-derived" and history_meta.get("timestamps") else None,
+          as_of,
           build_market_session(quote.get("fullExchangeName") or quote.get("exchange") or fallback["exchange"], quote.get("exchange") or fallback["exchange"], quote.get("marketState") or "REGULAR"),
           data_source,
         ),
@@ -6647,6 +7796,7 @@ def build_dashboard(symbols: list[str], active: str | None, chart_range: str = "
   active_snapshot["featureCards"] = build_operator_feature_cards(active_snapshot, regions[active_region_key], radar)
   methodology = build_methodology_payload(active_snapshot, regions[active_region_key])
   warmup = start_history_warmup(cleaned, HISTORY_PREFETCH_RANGES, reason="dashboard-loaded")
+  backend_refresh = start_dashboard_backend_refresh(cleaned, selected_region["key"])
 
   return {
     "provider": load_config().get("provider", "yahoo"),
@@ -6664,6 +7814,8 @@ def build_dashboard(symbols: list[str], active: str | None, chart_range: str = "
     "comparison": build_region_comparison(regions),
     "methodology": methodology,
     "historyWarmup": warmup,
+    "backendRefresh": backend_refresh,
+    "trustedDataSources": TRUSTED_DATA_SOURCE_REGISTRY,
   }
 
 
@@ -6688,7 +7840,8 @@ def build_live_quotes(symbols: list[str], active: str | None) -> dict:
   cleaned = [symbol.upper() for symbol in symbols if symbol]
   if not cleaned:
     cleaned = DEFAULT_WATCHLIST.copy()
-  quote_map = fetch_live_quotes(cleaned)
+  updated_at = datetime.now(timezone.utc).isoformat()
+  quote_map = fetch_live_quotes(cleaned, fast=True)
   items = []
   active_item = None
 
@@ -6729,7 +7882,13 @@ def build_live_quotes(symbols: list[str], active: str | None) -> dict:
       "exchange": quote.get("fullExchangeName") or quote.get("exchange") or fallback["exchange"],
       "marketState": quote.get("marketState") or "REGULAR",
       "dataSource": data_source,
+      "dataProviderId": quote.get("quoteProviderId"),
+      "dataSourceRank": quote.get("quoteSourceRank"),
+      "dataSourceCount": quote.get("quoteSourceCount"),
+      "dataSourceType": quote.get("quoteSourceType"),
+      "dataSourceCheckedAt": quote.get("quoteSourceCheckedAt"),
       "asOf": as_of,
+      "receivedAt": updated_at,
       "quoteFreshness": quote_freshness(as_of, session, data_source),
     }
     items.append(item)
@@ -6737,7 +7896,7 @@ def build_live_quotes(symbols: list[str], active: str | None) -> dict:
       active_item = item
 
   return {
-    "updatedAt": datetime.now(timezone.utc).isoformat(),
+    "updatedAt": updated_at,
     "watchlist": items,
     "active": active_item or items[0],
   }
@@ -6760,9 +7919,20 @@ def sector_benchmark_for_market(market: str, benchmark_symbol: str | None = None
   return choices[0]
 
 
+def quote_meta_timestamps(quote: dict) -> list[str]:
+  market_time = quote.get("regularMarketTime")
+  try:
+    as_of = datetime.fromtimestamp(float(market_time), tz=timezone.utc) if market_time else datetime.now(timezone.utc)
+  except (TypeError, ValueError, OSError):
+    as_of = datetime.now(timezone.utc)
+  previous = as_of - timedelta(days=1)
+  return [previous.isoformat(), as_of.isoformat()]
+
+
 def fetch_period_change(symbol: str, period: str) -> tuple[float, float, str]:
+  normalized_period = (period or "1D").upper()
   range_value, interval = sector_period_yahoo_config(period)
-  cached = load_cached_history(symbol, period)
+  cached = load_cached_history(symbol, normalized_period)
   if cached:
     closes, meta, source, updated_at = cached
     try:
@@ -6770,14 +7940,37 @@ def fetch_period_change(symbol: str, period: str) -> tuple[float, float, str]:
     except ValueError:
       age_seconds = _SECTOR_CACHE_TTL + 1
     if len(closes) >= 2 and age_seconds <= _SECTOR_CACHE_TTL:
-      return round(pct_change(float(closes[-1]), float(closes[0])), 2), round(float(closes[-1]), 2), source or "Local history cache"
+      cached_quote_change = meta.get("quoteChangePercent")
+      if source == "Google Finance Quote" and normalized_period == "1D":
+        if isinstance(cached_quote_change, (int, float)):
+          return round(float(cached_quote_change), 2), round(float(closes[-1]), 2), source
+      else:
+        return round(pct_change(float(closes[-1]), float(closes[0])), 2), round(float(closes[-1]), 2), source or "Local history cache"
 
   chart = fetch_yahoo_chart(symbol, range_value=range_value, interval=interval)
   closes, meta = extract_yahoo_history_payload(chart or {})
   if len(closes) >= 2:
     save_historical_records(symbol, interval, history_points_from_meta(closes, meta), "Yahoo Chart")
-    save_history_cache(symbol, period, closes, meta, "Yahoo Chart")
+    save_history_cache(symbol, normalized_period, closes, meta, "Yahoo Chart")
     return round(pct_change(float(closes[-1]), float(closes[0])), 2), round(float(closes[-1]), 2), "Yahoo Chart"
+  if normalized_period == "1D":
+    quote = fetch_google_finance_quote(symbol, fallback_meta(symbol).get("exchange", ""))
+    price = quote.get("regularMarketPrice")
+    change_pct = quote.get("regularMarketChangePercent")
+    previous_close = quote.get("regularMarketPreviousClose")
+    if isinstance(price, (int, float)) and price > 0 and isinstance(change_pct, (int, float)):
+      if not isinstance(previous_close, (int, float)) or previous_close <= 0:
+        previous_close = price / (1 + (change_pct / 100)) if change_pct != -100 else price
+      closes = [float(previous_close), float(price)]
+      meta = {
+        "timestamps": quote_meta_timestamps(quote),
+        "quoteSource": quote.get("quoteSource", "Google Finance Quote"),
+        "quoteSymbol": quote.get("googleSymbol") or quote.get("symbol") or symbol,
+        "quoteChangePercent": round(float(change_pct), 4),
+      }
+      save_historical_records(symbol, interval, history_points_from_meta(closes, meta), "Google Finance Quote")
+      save_history_cache(symbol, normalized_period, closes, meta, "Google Finance Quote")
+      return round(float(change_pct), 2), round(float(price), 2), "Google Finance Quote"
   if cached:
     closes, _, source, _ = cached
     if len(closes) >= 2:
@@ -6832,6 +8025,118 @@ def build_sector_matrix(market: str, period: str = "1D", benchmark_symbol: str |
   }
   _sector_cache[cache_key] = {"ts": now, "data": data}
   return data
+
+
+def canonical_sector_key(value: str | None) -> str:
+  label = re.sub(r"[^a-z0-9]+", " ", (value or "").lower()).strip()
+  if not label:
+    return "other"
+  if "tech" in label or "software" in label or "semiconductor" in label or label == "it":
+    return "technology"
+  if "health" in label or "pharma" in label or "biotech" in label:
+    return "healthcare"
+  if "bank" in label or "financ" in label or "insurance" in label:
+    return "financials"
+  if "telecom" in label or "communication" in label or "media" in label:
+    return "communication services"
+  if "consumer discretionary" in label or "auto" in label or "retail" in label or "durable" in label:
+    return "consumer discretionary"
+  if "consumer staples" in label or "fmcg" in label or "food" in label:
+    return "consumer staples"
+  if "industrial" in label or "capital goods" in label or "construction" in label or "defence" in label or "ports" in label:
+    return "industrials"
+  if "material" in label or "metal" in label or "cement" in label or "chemical" in label:
+    return "materials"
+  if "real" in label or "realty" in label or "reit" in label:
+    return "real estate"
+  if "util" in label or "power" in label:
+    return "utilities"
+  if "energy" in label or "oil" in label or "gas" in label or "petroleum" in label:
+    return "energy"
+  return label
+
+
+def proxy_change_for_symbol(symbol: str, sector_change: float) -> float:
+  seed = symbol_seed(symbol)
+  micro_variation = ((seed % 91) - 45) / 100.0
+  return round(clamp(float(sector_change or 0.0) + micro_variation, -9.99, 9.99), 2)
+
+
+def market_map_tile_span(index: int, quote: dict | None = None) -> int:
+  volume = float((quote or {}).get("regularMarketVolume") or 0)
+  if volume >= 50_000_000:
+    return 3
+  if volume >= 8_000_000:
+    return 2
+  if index < 6:
+    return 3
+  if index < 18:
+    return 2
+  return 1
+
+
+def build_market_heat_map(market: str = "india", period: str = "1D", limit: int = 80) -> dict:
+  normalized_market = market if market in MARKET_MAP_UNIVERSES else "india"
+  normalized_period = period if period in SECTOR_PERIOD_LABELS else "1D"
+  universe_name = MARKET_MAP_UNIVERSES[normalized_market]
+  members = load_universe_members(universe_name)
+  max_items = int(clamp(float(limit or 80), 12, 120))
+  selected = members[:max_items]
+  symbols = [str(item.get("symbol") or "").upper() for item in selected if item.get("symbol")]
+  quote_map = fetch_live_quotes(symbols, fast=True)
+  sector_payload = build_sector_matrix(normalized_market, normalized_period, None)
+  sector_changes = {
+    canonical_sector_key(item.get("sector") or item.get("label")): float(item.get("changePct") or 0.0)
+    for item in sector_payload.get("sectors", [])
+  }
+
+  tiles = []
+  live_count = 0
+  for index, member in enumerate(selected):
+    symbol = str(member.get("symbol") or "").upper()
+    quote = quote_map.get(symbol) or {}
+    sector = member.get("sector") or fallback_meta(symbol).get("sector") or "Other"
+    sector_key = canonical_sector_key(str(sector))
+    sector_change = sector_changes.get(sector_key, 0.0)
+    live_1d = normalized_period == "1D" and quote_is_usable(quote) and quote.get("regularMarketChangePercent") is not None
+    fallback = fallback_meta(symbol)
+    price = quote.get("regularMarketPrice")
+    if price is None:
+      price = fallback.get("basePrice")
+    if live_1d:
+      change_pct = round(float(quote.get("regularMarketChangePercent") or 0.0), 2)
+      source = quote.get("quoteSource") or "Live quote"
+      quality = "live"
+      live_count += 1
+    else:
+      change_pct = proxy_change_for_symbol(symbol, sector_change)
+      source = f"Sector index proxy ({sector_payload.get('source') or 'market data'})"
+      quality = "sector-proxy"
+    tiles.append({
+      "symbol": symbol,
+      "name": quote.get("shortName") or quote.get("longName") or member.get("name") or fallback.get("name") or symbol,
+      "sector": sector,
+      "sectorKey": sector_key,
+      "price": round(float(price), 2) if price is not None else None,
+      "changePct": change_pct,
+      "source": source,
+      "quality": quality,
+      "rank": index + 1,
+      "span": market_map_tile_span(index, quote),
+    })
+
+  return {
+    "market": normalized_market,
+    "universe": universe_name,
+    "period": normalized_period,
+    "periodLabel": SECTOR_PERIOD_LABELS[normalized_period],
+    "updatedAt": datetime.now(timezone.utc).isoformat(),
+    "tiles": tiles,
+    "source": f"{universe_name} local manifest; live quotes where available; sector index proxy otherwise",
+    "sourceNote": "Tile area follows local universe rank or available volume, not verified market capitalization.",
+    "liveCount": live_count,
+    "proxyCount": max(len(tiles) - live_count, 0),
+  }
 
 
 def build_overview_payload(symbols: list[str], active: str | None, region_key: str | None = None) -> dict:
@@ -6942,6 +8247,17 @@ class FinancialBoardHandler(BaseHTTPRequestHandler):
       period = (params.get("period") or ["1D"])[0].strip().upper()
       benchmark = ((params.get("benchmark") or [""])[0] or "").strip().upper() or None
       return self.send_json(build_sector_matrix(market, period, benchmark))
+    if parsed.path == "/api/market-map":
+      params = urllib.parse.parse_qs(parsed.query)
+      market = (params.get("market") or ["india"])[0].strip().lower()
+      period = (params.get("period") or ["1D"])[0].strip().upper()
+      try:
+        limit = int((params.get("limit") or ["80"])[0] or 80)
+      except ValueError:
+        limit = 80
+      return self.send_json(build_market_heat_map(market, period, limit))
+    if parsed.path == "/api/data-sources":
+      return self.send_json({"updatedAt": datetime.now(timezone.utc).isoformat(), "sources": TRUSTED_DATA_SOURCE_REGISTRY})
     if parsed.path == "/api/overview":
       params = urllib.parse.parse_qs(parsed.query)
       symbols = [item.upper() for item in ((params.get("symbols") or [""])[0].split(",")) if item]

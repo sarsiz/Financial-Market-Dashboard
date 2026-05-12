@@ -1,16 +1,16 @@
 # CLAUDE.md — Financial Board
 
-Coding guidelines for this project, integrating Karpathy's LLM coding principles.
+Coding guidelines for this project.
 
 ---
 
 ## Project Stack
 
 - `server.py` — backend API, data fetching, computation
-- `app.js` — client state, render layer (~180k lines; section by section)
+- `app.js` — client state and render layer
 - `index.html` + `styles.css` — UI shell
 - `data/` — JSON configs and factor definitions
-- `vault/market-map/` — local agent memory (Obsidian-friendly markdown)
+- `vault/market-map/` — local markdown notes and generated market context
 
 ---
 
@@ -54,7 +54,20 @@ Transform tasks into verifiable goals:
 - "Fix the bug" → "Write a test that reproduces it, then make it pass"
 - "Refactor X" → "Ensure tests pass before and after"
 
-## 5. Project-Specific Rules
+## 5. Execution Guardrails
+
+**Make deterministic work deterministic. Make uncertainty visible.**
+
+- Use code for routing, retries, transforms, status tracking, and refresh jobs; use model judgment only for interpretation and tradeoffs.
+- Treat token, time, and network budgets as hard constraints. Checkpoint or summarize before context gets noisy.
+- Surface contradictory project patterns or source claims instead of averaging them into a vague compromise.
+- Read exports, callers, shared helpers, and existing response shapes before writing new code.
+- Tests should prove intent, not just that a line executed. Name unverified gaps plainly.
+- Checkpoint after meaningful steps: what changed, what is verified, what remains risky.
+- Match local conventions even when another style is personally preferable.
+- Fail loud: never claim code works, data is live, or tests pass unless it was actually verified.
+
+## 6. Project-Specific Rules
 
 - **Bonds first.** Inflation, policy, equity context, and implications derive from bonds — not from standalone stock heuristics.
 - **Factual decision support only.** Show facts, interpretation, risks, confidence, unknowns, timestamps, source labels. No direct buy/sell advice.
@@ -64,7 +77,3 @@ Transform tasks into verifiable goals:
 - **Vault is private memory.** Never commit `vault/market-map/playbooks/`, `private/`, `secrets/`, or `sessions/`. See `.gitignore`.
 - **Methodology tab = educational only.** Signal pattern families and formulas are public domain. Proprietary triggers, weights, and thresholds belong in `data/factors/` (gitignored) and `vault/`.
 - **Region-aware first.** Extend shared region adapters — never add one-off country logic.
-
----
-
-*Derived from: Karpathy LLM coding guidelines (forrestchang/andrej-karpathy-skills)*

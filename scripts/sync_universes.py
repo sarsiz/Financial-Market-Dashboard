@@ -66,6 +66,26 @@ def write_json(path: Path, payload: dict | list) -> None:
   path.write_text(json.dumps(payload, indent=2, ensure_ascii=True))
 
 
+def read_existing_universe(name: str) -> list[dict]:
+  path = DATA_DIR / f"{name}.json"
+  if not path.exists():
+    return []
+  try:
+    payload = json.loads(path.read_text())
+  except (json.JSONDecodeError, OSError):
+    return []
+  return payload if isinstance(payload, list) else []
+
+
+def preserve_existing_if_empty(name: str, fetched: list[dict]) -> list[dict]:
+  if fetched:
+    return fetched
+  existing = read_existing_universe(name)
+  if existing:
+    print(f"warning: keeping existing {name} universe because fetch returned 0 rows", file=sys.stderr)
+  return existing
+
+
 def normalize_yahoo_symbol(raw_symbol: str) -> str:
   symbol = (raw_symbol or "").strip().upper()
   if not symbol:
@@ -156,9 +176,9 @@ def fetch_nasdaq_listed() -> list[dict]:
 
 
 def main() -> None:
-  sp500 = fetch_sp500_constituents()
-  sensex = fetch_sensex_constituents()
-  nasdaq = fetch_nasdaq_listed()
+  sp500 = preserve_existing_if_empty("sp500", fetch_sp500_constituents())
+  sensex = preserve_existing_if_empty("sensex30", fetch_sensex_constituents())
+  nasdaq = preserve_existing_if_empty("nasdaq_listed", fetch_nasdaq_listed())
 
   write_json(DATA_DIR / "sp500.json", sp500)
   write_json(DATA_DIR / "sensex30.json", sensex)

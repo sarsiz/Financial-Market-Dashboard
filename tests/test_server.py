@@ -21,6 +21,9 @@ class TempDatabaseTestCase(unittest.TestCase):
     server.HISTORY_WARMUP_JOBS.clear()
     server.HISTORY_INFLIGHT.clear()
     server._sector_cache.clear()
+    server._quote_cache.clear()
+    server._QUOTE_PROVIDER_HEALTH.clear()
+    server._memory_payload_cache.clear()
     server.init_db()
 
   def tearDown(self):
@@ -311,6 +314,133 @@ class HistoryCacheTests(TempDatabaseTestCase):
     self.assertEqual(payload["periodLabel"], "5 days")
     self.assertIn("cacheState", payload)
     self.assertEqual(payload["sectors"][0]["relativePct"], 1.0)
+
+  def test_fetch_period_change_uses_google_index_quote_fallback(self):
+    quote = {
+      "regularMarketPrice": 54547.05,
+      "regularMarketChangePercent": -0.6,
+      "regularMarketPreviousClose": 54878.5,
+      "regularMarketTime": 1777975267,
+      "quoteSource": "Google Finance",
+      "googleSymbol": "NIFTY_BANK:INDEXNSE",
+    }
+    with mock.patch.object(server, "fetch_yahoo_chart", return_value=None), mock.patch.object(
+      server, "fetch_google_finance_quote", return_value=quote
+    ) as google_quote:
+      change_pct, price, source = server.fetch_period_change("^NSEBANK", "1D")
+
+    self.assertEqual(change_pct, -0.6)
+    self.assertEqual(price, 54547.05)
+    self.assertEqual(source, "Google Finance Quote")
+    google_quote.assert_called_once()
+    cached = server.load_cached_history("^NSEBANK", "1D")
+    self.assertIsNotNone(cached)
+    self.assertEqual(cached[2], "Google Finance Quote")
+
+  def test_fetch_live_quotes_reuses_short_lived_cache(self):
+    quote = {
+      "symbol": "AAPL",
+      "regularMarketPrice": 200.0,
+      "regularMarketPreviousClose": 199.0,
+      "regularMarketTime": int(datetime.now(timezone.utc).timestamp()),
+    }
+    with mock.patch.object(server, "fetch_yahoo_quotes", return_value={"AAPL": quote}) as yahoo_quotes:
+      first = server.fetch_live_quotes(["AAPL"])
+      second = server.fetch_live_quotes(["AAPL"])
+
+    self.assertEqual(first["AAPL"]["regularMarketPrice"], 200.0)
+    self.assertEqual(second["AAPL"]["regularMarketPrice"], 200.0)
+    yahoo_quotes.assert_called_once()
+
+  def test_live_quote_provider_chain_has_at_least_ten_sources(self):
+    chain = server.build_live_quote_provider_chain()
+
+    self.assertGreaterEqual(len(chain), 10)
+    self.assertEqual(len({provider["id"] for provider in chain}), len(chain))
+
+  def test_fetch_live_quotes_cycles_to_next_provider_when_primary_fails(self):
+    yahoo_quote = {"symbol": "AAPL", "regularMarketPrice": 201.5, "regularMarketPreviousClose": 200.0}
+
+    def fake_chain(symbols=None):
+      return [
+        {"id": "broken", "label": "Broken source", "type": "live", "fetch": mock.Mock(return_value={})},
+        {"id": "working", "label": "Working source", "type": "live", "fetch": mock.Mock(return_value={"AAPL": yahoo_quote})},
+      ]
+
+    with mock.patch.object(server, "build_live_quote_provider_chain", side_effect=fake_chain):
+      quotes = server.fetch_live_quotes_from_providers(["AAPL"])
+
+    self.assertEqual(quotes["AAPL"]["regularMarketPrice"], 201.5)
+    self.assertEqual(quotes["AAPL"]["quoteSource"], "Working source")
+    self.assertEqual(quotes["AAPL"]["quoteProviderId"], "working")
+    self.assertEqual(quotes["AAPL"]["quoteSourceRank"], 2)
+
+  def test_fetch_live_quotes_prefers_fresher_provider_over_aging_print(self):
+    stale_time = int((datetime.now(timezone.utc) - timedelta(minutes=4)).timestamp())
+    fresh_time = int((datetime.now(timezone.utc) - timedelta(seconds=20)).timestamp())
+    stale_quote = {
+      "symbol": "AAPL",
+      "regularMarketPrice": 201.5,
+      "regularMarketPreviousClose": 200.0,
+      "regularMarketTime": stale_time,
+    }
+    fresh_quote = {
+      "symbol": "AAPL",
+      "regularMarketPrice": 201.6,
+      "regularMarketPreviousClose": 200.0,
+      "regularMarketTime": fresh_time,
+    }
+
+    def fake_chain(symbols=None):
+      return [
+        {"id": "stale", "label": "Stale source", "type": "live", "fetch": mock.Mock(return_value={"AAPL": stale_quote})},
+        {"id": "fresh", "label": "Fresh source", "type": "live", "fetch": mock.Mock(return_value={"AAPL": fresh_quote})},
+      ]
+
+    with mock.patch.object(server, "build_live_quote_provider_chain", side_effect=fake_chain):
+      quotes = server.fetch_live_quotes_from_providers(["AAPL"])
+
+    self.assertEqual(quotes["AAPL"]["regularMarketPrice"], 201.6)
+    self.assertEqual(quotes["AAPL"]["quoteProviderId"], "fresh")
+
+  def test_fetch_live_quotes_accepts_changed_price_even_when_provider_print_time_lags(self):
+    stale_time = int((datetime.now(timezone.utc) - timedelta(minutes=4)).timestamp())
+    server.save_live_quote_cache(
+      {
+        "AAPL": {
+          "symbol": "AAPL",
+          "regularMarketPrice": 201.5,
+          "regularMarketPreviousClose": 200.0,
+          "regularMarketTime": stale_time,
+        }
+      }
+    )
+    changed_quote = {
+      "symbol": "AAPL",
+      "regularMarketPrice": 202.1,
+      "regularMarketPreviousClose": 200.0,
+      "regularMarketTime": stale_time,
+    }
+    later_quote = {
+      "symbol": "AAPL",
+      "regularMarketPrice": 202.0,
+      "regularMarketPreviousClose": 200.0,
+      "regularMarketTime": stale_time,
+    }
+    later_fetch = mock.Mock(return_value={"AAPL": later_quote})
+
+    def fake_chain(symbols=None):
+      return [
+        {"id": "changed", "label": "Changed source", "type": "live", "fetch": mock.Mock(return_value={"AAPL": changed_quote})},
+        {"id": "later", "label": "Later source", "type": "live", "fetch": later_fetch},
+      ]
+
+    with mock.patch.object(server, "build_live_quote_provider_chain", side_effect=fake_chain):
+      quotes = server.fetch_live_quotes_from_providers(["AAPL"])
+
+    self.assertEqual(quotes["AAPL"]["regularMarketPrice"], 202.1)
+    self.assertEqual(quotes["AAPL"]["quoteProviderId"], "changed")
+    later_fetch.assert_not_called()
 
   def test_run_history_warmup_skips_fresh_ranges_and_fetches_missing_ranges(self):
     job_key = server.history_warmup_key(["ICICIBANK.NS"], ["1D", "5D"])
