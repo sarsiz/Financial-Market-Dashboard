@@ -77,6 +77,14 @@ This platform is built as a lightweight full-stack app with a browser client and
 - local-LLM features are pinned to `Bonsai-8B-1bit`, even if another model name is saved in config, to keep inference lighter and more predictable
 - factor governance and paper-backed protocol are now local datasets, so cadence, significance, provenance, and methodology are explicit rather than hidden in code
 
+## Local Data Privacy
+
+The public repository should contain source code, scripts, tests, and empty folder placeholders only. Local financial data is private by default:
+
+- `data/`, `kb/`, and `vault/market-map/` are ignored except for `.gitkeep` placeholders.
+- Do not commit watchlists, quote/history caches, generated universes, relation graphs, job manifests, SQLite databases, provider captures, local notes, or research vault content.
+- Recreate or refresh local data with scripts at runtime instead of storing it in Git.
+
 ## Data Sources
 
 The dashboard keeps provider usage factual and labelled. Current and candidate sources are:

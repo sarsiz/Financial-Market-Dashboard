@@ -16,50 +16,23 @@ config.json
 .playwright-cli/
 .claude/
 .fuse_hidden*
-data/dashboard.db
-data/dashboard.db-shm
-data/dashboard.db-wal
-data/jobs/*refresh*.json
+node_modules/
 
-# ── Proprietary signal data & trading playbooks ──────────────────────────────
-# Any file in here could directly reveal edge or decision logic.
-# Educational content in app.js / methodology tab is intentionally generic.
+# ── Local/private financial data ─────────────────────────────────────────────
+# Keep the directory structure through .gitkeep files, but never commit local
+# market data, personal watchlists, caches, generated notes, job manifests, DBs,
+# provider captures, or research/vault content.
+data/**
+!data/**/
+!data/**/.gitkeep
 
-vault/market-map/private/
-vault/market-map/secrets/
-vault/market-map/sessions/private/
-vault/market-map/playbooks/
-vault/market-map/research/
-vault/market-map/workflows/
+kb/**
+!kb/**/
+!kb/**/.gitkeep
 
-data/private/
-data/secrets/
-data/macro/
-data/company_projects.json
-
-# Factor / signal engine — specific weights, thresholds, and decision inputs
-data/factors/*secret*.json
-data/factors/*proprietary*.json
-data/factors/prediction_formulas.json
-data/factors/market_decision_inputs.json
-data/factors/factor_registry.json
-data/factors/methodology_flow.json
-
-# Paper annotations with proprietary notes
-data/papers/dashboard_practices.json
-data/papers/quant_concepts.json
-
-# KB regions, playbooks, macro — private research notes
-kb/macro/
-kb/playbooks/
-kb/regions/
-
-# Vault concept files (may contain private signal triggers)
-vault/market-map/concepts/
-vault/market-map/companies/
-
-# Session recordings
-vault/market-map/sessions/
+vault/market-map/**
+!vault/market-map/**/
+!vault/market-map/**/.gitkeep
 
 # Any local strategy override config
 strategy_config.json
