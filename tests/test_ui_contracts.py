@@ -45,6 +45,7 @@ class HtmlContractTests(unittest.TestCase):
       "quote-source-note",
       "market-session-strip",
       "model-agreement-note",
+      "toggle-detail-mode",
     ]
     for target in required_ids:
       self.assertIn(f'id="{target}"', self.index_html)
@@ -135,11 +136,17 @@ class HtmlContractTests(unittest.TestCase):
     self.assertIn("hydrateDashboardFromPayload(cachedDashboard", self.app_js)
     self.assertIn("refreshDashboard({ primeFast: false, primeRadar: false })", self.app_js)
     self.assertIn("loadRadar({ silent: true }).catch", self.app_js)
+    self.assertIn("loadGlobalMarkets({ silent: true }).catch", self.app_js)
     self.assertIn("refreshDashboard().catch", self.app_js)
     self.assertIn("function startOverviewRefresh(", self.app_js)
+    self.assertIn("function startGlobalMarketsRefresh(", self.app_js)
     self.assertIn("function startDashboardRefresh(", self.app_js)
     self.assertIn("function scheduleHistoryProgressPoll(", self.app_js)
     self.assertIn("function quoteFreshnessForDisplay(", self.app_js)
+    self.assertIn("function exchangeTimeZoneForItem(", self.app_js)
+    self.assertIn("function setDetailMode(", self.app_js)
+    self.assertIn("financial-board-detail-mode", self.app_js)
+    self.assertIn("exchange print", self.app_js)
     self.assertIn("Historical fallback", self.app_js)
     self.assertIn("function mergeQuoteIntoActiveHistory(", self.app_js)
     self.assertIn("normalizedRange === \"3D\" || normalizedRange === \"5D\"", self.app_js)

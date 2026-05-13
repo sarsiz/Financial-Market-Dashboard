@@ -7,6 +7,7 @@ const STORAGE_KEYS = {
   eventCategory: "financial-board-event-category",
   boardHidden: "financial-board-market-board-hidden",
   benchmarksCollapsed: "financial-board-benchmarks-collapsed",
+  detailMode: "financial-board-detail-mode",
   region: "financial-board-region",
   dossierOrder: "financial-board-dossier-order",
   dataFlow: "financial-board-data-flow",
@@ -16,10 +17,12 @@ const STORAGE_KEYS = {
 };
 
 const REFRESH_INTERVALS = {
-  overview: 60_000,
+  overview: 20_000,
+  globalMarkets: 15_000,
   dashboard: 600_000,
   radar: 900_000,
   events: 1_800_000,
+  sectorsLive: 20_000,
   historyActive: 3_500,
   historyIdle: 30_000,
 };
@@ -217,6 +220,8 @@ const state = {
   eventRequestId: 0,
   eventTimer: null,
   overviewTimer: null,
+  globalMarketTimer: null,
+  sectorMatrixTimer: null,
   dashboardTimer: null,
   historyPollTimer: null,
   eventCache: {},
@@ -235,7 +240,8 @@ const state = {
   bootReady: false,
   radarTimer: null,
   boardHidden: localStorage.getItem(STORAGE_KEYS.boardHidden) === "1",
-  benchmarksCollapsed: localStorage.getItem(STORAGE_KEYS.benchmarksCollapsed) === "1",
+  benchmarksCollapsed: localStorage.getItem(STORAGE_KEYS.benchmarksCollapsed) !== "0",
+  detailMode: localStorage.getItem(STORAGE_KEYS.detailMode) === "1",
   eventCategoryPinned: false,
   recentLastAdded: "",
   recentAddTimer: null,
@@ -740,19 +746,22 @@ function dossierMetric(value, kind = "plain", currency = "") {
 
 function renderBenchmarkBars(items = []) {
   if (!items.length) return `<div class="dossier-empty">Benchmark history unavailable.</div>`;
-  const maxAbs = Math.max(4, ...items.map((item) => Math.abs(Number(item.returnPercent || 0))));
+  const usable = items.filter((item) => Array.isArray(item.series) && item.series.length && Number.isFinite(Number(item.returnPercent)));
+  if (!usable.length) return `<div class="dossier-empty">Benchmark history is warming up from local cache and provider history.</div>`;
+  const maxAbs = Math.max(4, ...usable.map((item) => Math.abs(Number(item.returnPercent || 0))));
   return `
     <div class="benchmark-bars">
       ${items.map((item) => {
-        const value = Number(item.returnPercent || 0);
+        const available = Array.isArray(item.series) && item.series.length && Number.isFinite(Number(item.returnPercent));
+        const value = available ? Number(item.returnPercent || 0) : 0;
         const width = Math.max(4, Math.abs(value) / maxAbs * 100);
         return `
-          <div class="benchmark-row">
-            <span>${item.label}</span>
-            <div class="benchmark-bar-track">
-              <div class="benchmark-bar ${value >= 0 ? "positive" : "negative"}" style="width:${width}%"></div>
+          <div class="benchmark-row ${available ? "" : "is-pending"}">
+            <span title="${item.symbol || item.label}">${item.label}</span>
+            <div class="benchmark-bar-track" aria-label="${item.label} normalized return">
+              <div class="benchmark-bar ${value >= 0 ? "positive" : "negative"}" style="width:${available ? width : 0}%"></div>
             </div>
-            <strong class="${value >= 0 ? "positive" : "negative"}">${formatPercent(value)}</strong>
+            <strong class="${available ? (value >= 0 ? "positive" : "negative") : "pending"}">${available ? formatPercent(value) : "Pending"}</strong>
           </div>
         `;
       }).join("")}
@@ -1049,6 +1058,12 @@ function renderStockDossier(active) {
   const unusual = dossier.unusualActivity || {};
   const influence = dossier.influenceGraph || {};
   const discoveryItems = state.dashboard?.discovery?.items || [];
+  const simpleDossierKeys = ["day", "ma", "benchmarks", "activity"];
+  const visibleDossierKeys = state.detailMode ? DEFAULT_DOSSIER_ORDER : simpleDossierKeys;
+  setTextIfChanged(
+    panel.querySelector(".section-heading span"),
+    state.detailMode ? "Peers, fundamentals, benchmarks, consensus, and sourced links" : "Essentials only: quote, trend, benchmark, and range",
+  );
   const roeLabel = fundamentals.roe === null || fundamentals.roe === undefined || fundamentals.roe === ""
     ? "Unavailable"
     : dossierMetric(Number(fundamentals.roe) * 100, "percent");
@@ -1057,16 +1072,23 @@ function renderStockDossier(active) {
       ${[
         ["Snapshot", "dossier-day"],
         ["Averages", "dossier-ma"],
-        ["Peers", "dossier-peers"],
         ["Benchmarks", "dossier-benchmarks"],
-        ["Metrics", "dossier-metrics"],
         ["Range", "dossier-activity"],
-        ["Sources", "dossier-links"],
+        ...(state.detailMode ? [
+          ["Peers", "dossier-peers"],
+          ["Metrics", "dossier-metrics"],
+          ["Sources", "dossier-links"],
+        ] : []),
       ].map(([label, target]) => `<button type="button" data-scroll-target="${target}">${label}</button>`).join("")}
+      <button type="button" data-detail-toggle>${state.detailMode ? "Simple dossier" : "Full dossier"}</button>
     </div>
   `);
   if (navChanged) {
     nav.querySelectorAll("button").forEach((button) => {
+      if (button.dataset.detailToggle !== undefined) {
+        button.addEventListener("click", () => setDetailMode(!state.detailMode));
+        return;
+      }
       if (!button.dataset.scrollTarget) return;
       button.addEventListener("click", () => document.getElementById(button.dataset.scrollTarget)?.scrollIntoView({ behavior: "smooth", block: "nearest" }));
     });
@@ -1192,7 +1214,11 @@ function renderStockDossier(active) {
       <div class="source-provenance">${(dossier.sourceProvenance || []).map((item) => `<span>${item.label}: ${item.usedFor}</span>`).join("")}</div>`,
     }),
   };
-  const orderedKeys = state.dossierOrder.filter((key) => cards[key]).concat(DEFAULT_DOSSIER_ORDER.filter((key) => !state.dossierOrder.includes(key)));
+  const orderedKeys = visibleDossierKeys
+    .filter((key) => state.dossierOrder.includes(key))
+    .sort((a, b) => state.dossierOrder.indexOf(a) - state.dossierOrder.indexOf(b))
+    .concat(visibleDossierKeys.filter((key) => !state.dossierOrder.includes(key)))
+    .filter((key) => cards[key]);
   const dossierChanged = setHTMLIfChanged(node, orderedKeys.map((key) => cards[key]).join(""));
   if (dossierChanged) {
     setupDossierControls(node);
@@ -1676,6 +1702,37 @@ function formatZonedDate(timeZone) {
   }
 }
 
+function exchangeTimeZoneForItem(item = {}) {
+  if (item.marketSession?.timezone) return item.marketSession.timezone;
+  const exchange = `${item.exchange || ""} ${item.region || ""} ${item.symbol || ""}`.toUpperCase();
+  if (exchange.includes("NSE") || exchange.includes("BSE") || exchange.includes(".NS") || exchange.includes(".BO")) return "Asia/Kolkata";
+  if (exchange.includes("NASDAQ") || exchange.includes("NYSE") || exchange.includes("US")) return "America/New_York";
+  if (exchange.includes("LSE") || exchange.includes("LONDON")) return "Europe/London";
+  if (exchange.includes("ASX") || exchange.includes(".AX")) return "Australia/Sydney";
+  if (exchange.includes("HKEX") || exchange.includes("HONG")) return "Asia/Hong_Kong";
+  if (exchange.includes("JPX") || exchange.includes("TOKYO") || exchange.includes(".T")) return "Asia/Tokyo";
+  return "UTC";
+}
+
+function formatQuotePrintTime(value, item = {}) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const timeZone = exchangeTimeZoneForItem(item);
+  try {
+    const time = new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+    }).format(date);
+    const zoneLabel = item.marketSession?.hoursLabel?.split(" ").pop() || timeZone.replace(/^[^/]+\//, "").replace(/_/g, " ");
+    return `${time} ${zoneLabel}`;
+  } catch {
+    return date.toISOString().slice(11, 16);
+  }
+}
+
 function freshnessBadgeMarkup(freshness = {}) {
   const stateLabel = freshness.state || (freshness.isStale ? "stale" : "fresh");
   const label = freshness.label || (freshness.isStale ? "Stale quote" : "Fresh quote");
@@ -1701,8 +1758,8 @@ function providerPrintText(active = {}, freshness = null) {
 
 function quoteDisplayTime(active = {}) {
   if (!active.asOf) return streamFreshnessText(active);
-  const printTime = new Date(active.asOf).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  return `${streamFreshnessText(active)} · print ${printTime}`;
+  const printTime = formatQuotePrintTime(active.asOf, active);
+  return `${streamFreshnessText(active)} · exchange print ${printTime}`;
 }
 
 function quoteSourceDisplayText(active = {}, freshness = null) {
@@ -1713,7 +1770,7 @@ function quoteSourceDisplayText(active = {}, freshness = null) {
     providerPrintText(active, displayFreshness),
   ];
   if (active.asOf) {
-    parts.push(`print time ${new Date(active.asOf).toLocaleString()}`);
+    parts.push(`exchange print ${formatQuotePrintTime(active.asOf, active)}`);
   }
   return parts.join(" • ");
 }
@@ -4687,6 +4744,34 @@ function renderTopbar() {
   setStatus(state.dashboard?.updatedAt ? "Live now" : "Loading data");
   document.body.classList.toggle("app-ready", state.bootReady);
   document.body.classList.toggle("app-booting", !state.bootReady);
+  applyDetailMode();
+}
+
+function detailOnlyTabIds() {
+  return new Set(["methodology", "watchlist-implications", "comparison"]);
+}
+
+function applyDetailMode() {
+  document.body.classList.toggle("detail-mode", state.detailMode);
+  const toggle = document.getElementById("toggle-detail-mode");
+  if (toggle) {
+    toggle.setAttribute("aria-pressed", state.detailMode ? "true" : "false");
+    setTextIfChanged(toggle, state.detailMode ? "Simple" : "Detailed");
+    toggle.title = state.detailMode ? "Return to essentials view" : "Show advanced tools";
+  }
+}
+
+function setDetailMode(enabled) {
+  state.detailMode = Boolean(enabled);
+  localStorage.setItem(STORAGE_KEYS.detailMode, state.detailMode ? "1" : "0");
+  applyDetailMode();
+  const activeTab = document.querySelector(".tab.active")?.dataset?.tab;
+  if (!state.detailMode && detailOnlyTabIds().has(activeTab)) {
+    activateTab("overview");
+  }
+  if (state.dashboard?.active) {
+    renderStockDossier(state.dashboard.active);
+  }
 }
 
 function liveStatusClusterMarkup() {
@@ -4742,9 +4827,11 @@ function renderGlobalMarketOverview() {
     setHTMLIfChanged(node.querySelector("#sector-overview-strip"), sectorStripMarkup());
     return;
   }
-  node.classList.toggle("collapsed", state.benchmarksCollapsed);
+  const benchmarksCollapsed = !state.detailMode || state.benchmarksCollapsed;
+  node.classList.toggle("collapsed", benchmarksCollapsed);
   const sectorMarkup = sectorStripMarkup();
   const signature = JSON.stringify({
+    detailMode: state.detailMode,
     sectors: sectorMarkup,
     markets: markets.map((market) => ({
       label: market.label,
@@ -4761,7 +4848,7 @@ function renderGlobalMarketOverview() {
   });
   const markup = `
     <div class="overview-header-row">
-      <button class="global-market-overview-head" type="button" aria-expanded="${state.benchmarksCollapsed ? "false" : "true"}" aria-controls="global-market-benchmark-grid">
+      <button class="global-market-overview-head" type="button" aria-expanded="${benchmarksCollapsed ? "false" : "true"}" aria-controls="global-market-benchmark-grid">
         <strong>Global Benchmarks</strong>
         <span class="global-market-head-right global-market-head-actions">
           ${liveStatusClusterMarkup()}
@@ -4833,6 +4920,13 @@ function toggleBenchmarksCollapsed() {
   const node = document.getElementById("global-market-overview");
   const toggle = node?.querySelector(".global-market-overview-head");
   if (!node || !toggle) return;
+  if (!state.detailMode) {
+    state.benchmarksCollapsed = false;
+    localStorage.setItem(STORAGE_KEYS.benchmarksCollapsed, "0");
+    setDetailMode(true);
+    renderGlobalMarketOverview();
+    return;
+  }
   state.benchmarksCollapsed = !state.benchmarksCollapsed;
   localStorage.setItem(STORAGE_KEYS.benchmarksCollapsed, state.benchmarksCollapsed ? "1" : "0");
   node.classList.toggle("collapsed", state.benchmarksCollapsed);
@@ -5039,6 +5133,26 @@ function startOverviewRefresh() {
       setStatus("Quote refresh delayed");
     });
   }, REFRESH_INTERVALS.overview);
+}
+
+async function loadGlobalMarkets({ silent = true } = {}) {
+  if (!state.dashboard) return;
+  if (!silent) setStatus("Refreshing global markets");
+  const payload = await api("/api/global-markets", { timeoutMs: 10000 });
+  if (!Array.isArray(payload?.markets)) return;
+  state.dashboard.globalMarkets = payload.markets;
+  state.dashboard.updatedAt = payload.updatedAt || state.dashboard.updatedAt;
+  renderTopbar();
+}
+
+function startGlobalMarketsRefresh() {
+  window.clearInterval(state.globalMarketTimer);
+  state.globalMarketTimer = window.setInterval(() => {
+    if (document.hidden) return;
+    loadGlobalMarkets({ silent: true }).catch((error) => {
+      logNonAbort(error);
+    });
+  }, REFRESH_INTERVALS.globalMarkets);
 }
 
 function startDashboardRefresh() {
@@ -5597,21 +5711,26 @@ function renderSectorMatrix(sectors, updatedAt, meta = {}) {
   if (footer && updatedAt) {
     const age = Math.round((Date.now() - new Date(updatedAt).getTime()) / 60000);
     const benchmark = meta.benchmark ? `${meta.benchmark.label} ${formatPercent(meta.benchmark.changePct || 0)}` : "selected benchmark";
-    footer.textContent = `${meta.periodLabel || "Selected period"} · ${benchmark} · ${meta.cacheState || "cache"} · updated ${age < 1 ? "just now" : `${age}m ago`}`;
+    const mode = meta.liveMode ? "live refresh" : (meta.cacheState || "cache");
+    footer.textContent = `${meta.periodLabel || "Selected period"} · ${benchmark} · ${mode} · updated ${age < 1 ? "just now" : `${age}m ago`}`;
   }
 }
 
-async function fetchSectorMatrix(market, period, benchmark) {
+async function fetchSectorMatrix(market, period, benchmark, { showLoading = true } = {}) {
   const grid = document.getElementById("sector-matrix-grid");
-  if (grid) grid.innerHTML = `<div class="sector-matrix-empty">Fetching ${market} sectors…</div>`;
+  const hasExistingTiles = Boolean(grid?.querySelector(".sector-tile"));
+  if (grid && showLoading && !hasExistingTiles) {
+    setHTMLIfChanged(grid, `<div class="sector-matrix-empty">Fetching ${market} sectors...</div>`);
+  }
   try {
     const params = new URLSearchParams({ market, period, benchmark });
-    const data = await api(`/api/sectors?${params.toString()}`);
+    const data = await api(`/api/sectors?${params.toString()}`, { timeoutMs: 12000 });
     if (data?.sectors?.length) {
       if (hasUsableSectorData(data.sectors)) {
         saveSectorHistory(market, period, benchmark, data.sectors, data);
       }
       renderSectorMatrix(data.sectors, data.updatedAt, data);
+      if (market === "india" && period === "1D") renderSectorStrip(data.sectors);
     }
   } catch {
     // Fall back to last cached local history snapshot
@@ -5644,6 +5763,7 @@ function initSectorMatrix() {
     benchmarkSelect.value = currentBenchmark;
   };
   const persist = () => saveSectorMatrixPrefs({ market: currentMarket, period: currentPeriod, benchmark: currentBenchmark });
+  const refreshCurrent = (options = {}) => fetchSectorMatrix(currentMarket, currentPeriod, currentBenchmark, options);
   marketSelect.value = currentMarket;
   syncBenchmarkOptions();
   periodTabs.forEach((tab) => tab.classList.toggle("active", tab.dataset.period === currentPeriod));
@@ -5652,7 +5772,15 @@ function initSectorMatrix() {
   const cachedSnap = loadSectorSnapshot(currentMarket, currentPeriod, currentBenchmark);
   if (cachedSnap?.sectors && hasUsableSectorData(cachedSnap.sectors)) renderSectorMatrix(cachedSnap.sectors, new Date(cachedSnap.ts).toISOString(), cachedSnap.meta || {});
 
-  fetchSectorMatrix(currentMarket, currentPeriod, currentBenchmark);
+  refreshCurrent();
+
+  window.clearInterval(state.sectorMatrixTimer);
+  state.sectorMatrixTimer = window.setInterval(() => {
+    if (currentPeriod !== "1D" || document.hidden) return;
+    refreshCurrent({ showLoading: false }).catch((error) => {
+      logNonAbort(error);
+    });
+  }, REFRESH_INTERVALS.sectorsLive);
 
   marketSelect.addEventListener("change", () => {
     currentMarket = marketSelect.value;
@@ -5660,14 +5788,14 @@ function initSectorMatrix() {
     persist();
     const snap = loadSectorSnapshot(currentMarket, currentPeriod, currentBenchmark);
     if (snap?.sectors && hasUsableSectorData(snap.sectors)) renderSectorMatrix(snap.sectors, new Date(snap.ts).toISOString(), snap.meta || {});
-    fetchSectorMatrix(currentMarket, currentPeriod, currentBenchmark);
+    refreshCurrent();
   });
   benchmarkSelect?.addEventListener("change", () => {
     currentBenchmark = benchmarkSelect.value;
     persist();
     const snap = loadSectorSnapshot(currentMarket, currentPeriod, currentBenchmark);
     if (snap?.sectors && hasUsableSectorData(snap.sectors)) renderSectorMatrix(snap.sectors, new Date(snap.ts).toISOString(), snap.meta || {});
-    fetchSectorMatrix(currentMarket, currentPeriod, currentBenchmark);
+    refreshCurrent();
   });
 
   periodTabs.forEach((tab) => {
@@ -5678,7 +5806,7 @@ function initSectorMatrix() {
       persist();
       const snap = loadSectorSnapshot(currentMarket, currentPeriod, currentBenchmark);
       if (snap?.sectors && hasUsableSectorData(snap.sectors)) renderSectorMatrix(snap.sectors, new Date(snap.ts).toISOString(), snap.meta || {});
-      fetchSectorMatrix(currentMarket, currentPeriod, currentBenchmark);
+      refreshCurrent();
     });
   });
 }
@@ -5776,9 +5904,13 @@ function bindEvents() {
   });
 
   document.querySelectorAll(".tab").forEach((tab) => {
+    if (!tab.dataset.tab) return;
     tab.addEventListener("click", () => {
       activateTab(tab.dataset.tab);
     });
+  });
+  document.getElementById("toggle-detail-mode")?.addEventListener("click", () => {
+    setDetailMode(!state.detailMode);
   });
   document.getElementById("compact-menu-toggle")?.addEventListener("click", () => {
     const menu = document.getElementById("compact-section-menu");
@@ -5946,6 +6078,10 @@ async function init() {
   render();
   startMarketClockTimer();
   startOverviewRefresh();
+  startGlobalMarketsRefresh();
+  loadGlobalMarkets({ silent: true }).catch((error) => {
+    logNonAbort(error);
+  });
   loadOverviewFast({ silent: true }).catch((error) => {
     logNonAbort(error);
   });
@@ -5972,6 +6108,7 @@ async function init() {
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) return;
     loadOverviewFast({ silent: true }).catch(logNonAbort);
+    loadGlobalMarkets({ silent: true }).catch(logNonAbort);
   });
 }
 

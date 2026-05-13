@@ -2085,15 +2085,32 @@ button[type="submit"],
 .benchmark-bars {
   display: grid;
   gap: 8px;
+  min-width: 0;
 }
 
 .benchmark-row {
   display: grid;
-  grid-template-columns: 80px minmax(0, 1fr) 64px;
+  grid-template-columns: minmax(74px, 0.8fr) minmax(96px, 2fr) minmax(58px, auto);
   gap: 8px;
   align-items: center;
   color: var(--muted);
   font-size: 0.74rem;
+  min-width: 0;
+}
+
+.benchmark-row > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.benchmark-row strong.pending {
+  color: rgba(255, 255, 255, 0.48);
+}
+
+.benchmark-row.is-pending .benchmark-bar-track {
+  border-style: dashed;
 }
 
 .benchmark-bar-track {
@@ -7135,6 +7152,31 @@ body.app-ready .pulse-card {
   padding: 5px 10px;
   font-size: 0.7rem;
   border-radius: 6px;
+}
+
+.detail-mode-toggle {
+  margin-left: auto;
+  border-color: rgba(93, 214, 255, 0.24);
+  color: #c8f3ff;
+}
+
+body:not(.detail-mode) .tab[data-tab="methodology"],
+body:not(.detail-mode) .tab[data-tab="watchlist-implications"],
+body:not(.detail-mode) .tab[data-tab="comparison"],
+body:not(.detail-mode) #market-heat-map-panel {
+  display: none;
+}
+
+body:not(.detail-mode) .global-market-overview {
+  padding-block: 8px;
+}
+
+body:not(.detail-mode) .stock-dossier-panel {
+  margin-top: 8px;
+}
+
+body:not(.detail-mode) .dossier-nav-scroll {
+  gap: 6px;
 }
 
 /* Market presets: inline chips instead of stacked cards */

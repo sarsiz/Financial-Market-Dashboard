@@ -200,6 +200,71 @@ class HistoryCacheTests(TempDatabaseTestCase):
     self.assertTrue(freshness["isStale"])
     self.assertIn("not a confirmed live quote", freshness["note"])
 
+  def test_quote_freshness_keeps_recent_live_source_live_during_open_market(self):
+    as_of = (datetime.now(timezone.utc) - timedelta(seconds=30)).isoformat()
+    freshness = server.quote_freshness(as_of, {"isOpen": True}, "Google Finance")
+
+    self.assertEqual(freshness["label"], "Live edge")
+    self.assertEqual(freshness["state"], "fresh")
+    self.assertFalse(freshness["isStale"])
+
+  def test_live_quotes_use_provider_check_time_when_quote_timestamp_missing(self):
+    checked_at = datetime.now(timezone.utc).isoformat()
+    quote = {
+      "symbol": "AAPL",
+      "shortName": "Apple",
+      "regularMarketPrice": 200.0,
+      "regularMarketPreviousClose": 198.0,
+      "regularMarketChangePercent": 1.01,
+      "quoteSource": "Unit Live",
+      "quoteSourceCheckedAt": checked_at,
+      "exchange": "NASDAQ",
+      "fullExchangeName": "NASDAQ",
+      "marketState": "REGULAR",
+    }
+    with mock.patch.object(server, "fetch_live_quotes", return_value={"AAPL": quote}):
+      payload = server.build_live_quotes(["AAPL"], "AAPL")
+
+    self.assertEqual(payload["active"]["asOf"], checked_at)
+    self.assertEqual(payload["active"]["quoteFreshness"]["state"], "fresh")
+
+  def test_history_derived_quotes_infer_session_from_exchange_hours(self):
+    self.assertEqual(server.quote_session_state({"marketState": "CLOSED"}, "History-derived"), "REGULAR")
+    self.assertEqual(server.quote_session_state({"marketState": "CLOSED"}, "Google Finance"), "CLOSED")
+
+  def test_global_market_clocks_ignore_stale_closed_provider_state_during_open_hours(self):
+    class FrozenDatetime(datetime):
+      @classmethod
+      def now(cls, tz=None):
+        base = datetime(2026, 5, 13, 5, 0, tzinfo=timezone.utc)
+        return base if tz is None else base.astimezone(tz)
+
+    quotes = {
+      "^NSEI": {
+        "regularMarketPrice": 22500.0,
+        "regularMarketPreviousClose": 22400.0,
+        "regularMarketChangePercent": 0.45,
+        "marketState": "CLOSED",
+        "quoteSource": "Unit provider",
+        "exchange": "NSE",
+      },
+      "^AXJO": {
+        "regularMarketPrice": 7800.0,
+        "regularMarketPreviousClose": 7750.0,
+        "regularMarketChangePercent": 0.65,
+        "marketState": "CLOSED",
+        "quoteSource": "Unit provider",
+        "exchange": "ASX",
+      },
+    }
+    with mock.patch.object(server, "datetime", FrozenDatetime), mock.patch.object(server, "fetch_live_quotes", return_value=quotes):
+      markets = server.build_global_market_overview_uncached()
+
+    by_key = {item["key"]: item for item in markets}
+    self.assertTrue(by_key["india"]["session"]["isOpen"])
+    self.assertTrue(by_key["australia"]["session"]["isOpen"])
+    self.assertEqual(by_key["india"]["indices"][0]["marketState"], "REGULAR")
+
   def test_google_finance_history_timestamps_use_exchange_timezone(self):
     timestamp = server.timestamp_from_google_block([2026, 5, 4, 14, 55], "Asia/Kolkata")
 
@@ -336,6 +401,19 @@ class HistoryCacheTests(TempDatabaseTestCase):
     cached = server.load_cached_history("^NSEBANK", "1D")
     self.assertIsNotNone(cached)
     self.assertEqual(cached[2], "Google Finance Quote")
+
+  def test_fetch_period_change_refreshes_open_market_stale_1d_cache(self):
+    stale_at = (datetime.now(timezone.utc) - timedelta(seconds=45)).isoformat()
+    cached = ([100.0, 101.0], {"quoteChangePercent": 1.0}, "Google Finance Quote", stale_at)
+    with mock.patch.object(server, "load_cached_history", return_value=cached), mock.patch.object(
+      server, "build_market_session", return_value={"isOpen": True}
+    ), mock.patch.object(server, "fetch_google_period_quote_change", return_value=(2.0, 102.0, "Google Finance Quote")) as google_quote:
+      change_pct, price, source = server.fetch_period_change("^NSEI", "1D")
+
+    self.assertEqual(change_pct, 2.0)
+    self.assertEqual(price, 102.0)
+    self.assertEqual(source, "Google Finance Quote")
+    google_quote.assert_called_once()
 
   def test_fetch_live_quotes_reuses_short_lived_cache(self):
     quote = {

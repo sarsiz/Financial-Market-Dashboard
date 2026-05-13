@@ -234,7 +234,8 @@ SECTOR_INDICES: dict[str, list[dict]] = {
 
 # In-memory cache: {market_key: {period: {updated_at, sectors}}}
 _sector_cache: dict = {}
-_SECTOR_CACHE_TTL = 900  # 15 minutes
+_SECTOR_CACHE_TTL = 900  # 15 minutes for closed-market and longer-period sector views
+_SECTOR_LIVE_CACHE_TTL = 20
 _quote_cache: dict[str, dict] = {}
 _memory_payload_cache: dict[str, dict] = {}
 _QUOTE_CACHE_LOCK = threading.Lock()
@@ -242,7 +243,7 @@ _QUOTE_FETCH_LOCK = threading.Lock()
 _QUOTE_PROVIDER_HEALTH_LOCK = threading.Lock()
 _QUOTE_PROVIDER_HEALTH: dict[str, dict] = {}
 _MEMORY_PAYLOAD_CACHE_LOCK = threading.Lock()
-QUOTE_CACHE_TTL = 5
+QUOTE_CACHE_TTL = 2
 QUOTE_STALE_TTL = 600
 QUOTE_PROVIDER_FAILURE_COOLDOWN = 45
 QUOTE_PROVIDER_TIMEOUT_SECONDS = 5
@@ -1561,6 +1562,40 @@ def quote_freshness(as_of: str | None, session: dict | None = None, source: str 
     "staleAfterMinutes": stale_after,
     "note": "Market is open; stale quotes are flagged after 20 minutes." if is_open else "Market is closed; last session quote is acceptable but labeled by age.",
   }
+
+
+def source_label_is_history(source: str | None) -> bool:
+  source_lower = (source or "").lower()
+  return any(label in source_lower for label in {"history", "historical", "cache", "derived", "daily csv"})
+
+
+def quote_checked_at_iso(quote: dict | None) -> str | None:
+  value = (quote or {}).get("quoteSourceCheckedAt")
+  if not value:
+    return None
+  try:
+    parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+  except ValueError:
+    return None
+  if parsed.tzinfo is None:
+    parsed = parsed.replace(tzinfo=timezone.utc)
+  return parsed.astimezone(timezone.utc).isoformat()
+
+
+def quote_effective_as_of(quote: dict | None, data_source: str, history_as_of: str | None = None) -> str | None:
+  market_time = (quote or {}).get("regularMarketTime")
+  if market_time:
+    return timestamp_from_epoch(market_time) or history_as_of
+  if not source_label_is_history(data_source):
+    return quote_checked_at_iso(quote) or history_as_of
+  return history_as_of
+
+
+def quote_session_state(quote: dict | None, data_source: str) -> str:
+  state = str((quote or {}).get("marketState") or "REGULAR").upper()
+  if source_label_is_history(data_source) and state == "CLOSED":
+    return "REGULAR"
+  return state
 
 
 def json_get(url: str, timeout: int = 16) -> dict | list | None:
@@ -6411,6 +6446,8 @@ def build_stock_dossier(symbol: str, snapshot: dict, quote: dict, summary: dict,
   for benchmark in benchmark_symbols_for_region(region_key):
     cached_benchmark = load_cached_history(benchmark["symbol"], "1Y")
     benchmark_history = cached_benchmark[0] if cached_benchmark else []
+    if len(benchmark_history) < 2:
+      benchmark_history, _ = build_history(benchmark["symbol"], "1Y", allow_live_refresh=False)
     benchmark_items.append({"symbol": benchmark["symbol"], "label": benchmark["label"], "history": benchmark_history})
   return {
     "daySnapshot": {
@@ -6574,10 +6611,12 @@ def build_ticker_snapshot(symbol: str, quote: dict | None = None, stress: str = 
   data_source = quote.get("quoteSource") or ("Live source" if quote else (chart_meta.get("historySource") or "History-derived"))
   market_time = quote.get("regularMarketTime") or chart_meta.get("regularMarketTime")
   chart_timestamps = chart_meta.get("timestamps") or []
-  as_of = datetime.fromtimestamp(market_time, tz=timezone.utc).isoformat() if market_time else (chart_timestamps[-1] if chart_timestamps else None)
+  chart_as_of = chart_timestamps[-1] if chart_timestamps else None
+  as_of = timestamp_from_epoch(market_time) if market_time else quote_effective_as_of(quote, data_source, chart_as_of)
   exchange_name = quote.get("fullExchangeName") or quote.get("exchange") or chart_meta.get("exchangeName") or fallback["exchange"]
   region_name = quote.get("exchange") or fallback["exchange"]
-  market_session = build_market_session(exchange_name, region_name, quote.get("marketState") or "REGULAR", as_of)
+  session_state = quote_session_state(quote, data_source)
+  market_session = build_market_session(exchange_name, region_name, session_state, as_of)
   freshness = quote_freshness(as_of, market_session, data_source)
   classic_inputs = build_forecast_inputs(symbol, quote, summary, model_history, news_count) if model_history else {
     "latestPrice": latest_price,
@@ -6636,7 +6675,7 @@ def build_ticker_snapshot(symbol: str, quote: dict | None = None, stress: str = 
     "exchange": exchange_name,
     "region": region_name,
     "currency": quote.get("currency") or chart_meta.get("currency") or fallback["currency"],
-    "marketState": quote.get("marketState") or "REGULAR",
+    "marketState": session_state,
     "marketSession": market_session,
     "dataSource": data_source,
     "dataProviderId": quote.get("quoteProviderId"),
@@ -7659,6 +7698,9 @@ def build_global_market_overview_uncached() -> list[dict]:
   cards = []
   for market in GLOBAL_MARKET_CLOCKS:
     indices = []
+    # Country benchmark clocks are exchange-schedule driven. Quote providers can
+    # report CLOSED for delayed index prints during an active local session.
+    session_state = "REGULAR"
     for benchmark in market["indices"]:
       symbol = benchmark["symbol"]
       quote = quotes.get(symbol, {})
@@ -7669,13 +7711,13 @@ def build_global_market_overview_uncached() -> list[dict]:
         quote.get("regularMarketChangePercent")
         or (pct_change(float(price), float(previous_close)) if price is not None and previous_close not in (None, 0) else 0.0)
       )
-      as_of = timestamp_from_epoch(quote.get("regularMarketTime")) if quote.get("regularMarketTime") else ""
       exchange = quote.get("fullExchangeName") or quote.get("exchange") or fallback.get("exchange") or market["label"]
       data_source = quote.get("quoteSource") or ("Live source" if quote else "curated_fallback")
+      as_of = quote_effective_as_of(quote, data_source) or ""
       session_preview = build_market_session(
         market.get("sessionExchange") or exchange,
         market["label"],
-        quote.get("marketState") or ("REGULAR" if quote else "CLOSED"),
+        session_state,
         as_of,
       )
       indices.append(
@@ -7686,7 +7728,7 @@ def build_global_market_overview_uncached() -> list[dict]:
           "changePercent": change_percent,
           "currency": quote.get("currency") or fallback.get("currency") or "USD",
           "exchange": exchange,
-          "marketState": quote.get("marketState") or ("REGULAR" if quote else "CLOSED"),
+          "marketState": session_state,
           "asOf": as_of,
           "dataSource": data_source,
           "dataProviderId": quote.get("quoteProviderId"),
@@ -7698,7 +7740,7 @@ def build_global_market_overview_uncached() -> list[dict]:
     session = build_market_session(
       market.get("sessionExchange") or (indices[0].get("exchange") if indices else market["label"]),
       market["label"],
-      indices[0].get("marketState") if indices else "CLOSED",
+      session_state,
       indices[0].get("asOf") if indices else "",
     )
     cards.append(
@@ -7740,10 +7782,15 @@ def build_dashboard(symbols: list[str], active: str | None, chart_range: str = "
       else:
         price = None
         previous_close = None
-    market_time = quote.get("regularMarketTime")
-    quote_as_of = datetime.fromtimestamp(market_time, tz=timezone.utc).isoformat() if market_time else None
     history_as_of = (history_meta.get("timestamps") or [None])[-1] if history_meta.get("timestamps") else None
-    as_of = history_as_of if data_source == "History-derived" else quote_as_of
+    as_of = history_as_of if source_label_is_history(data_source) else quote_effective_as_of(quote, data_source, history_as_of)
+    session_state = quote_session_state(quote, data_source)
+    market_session = build_market_session(
+      quote.get("fullExchangeName") or quote.get("exchange") or fallback["exchange"],
+      quote.get("exchange") or fallback["exchange"],
+      session_state,
+      as_of,
+    )
     watchlist.append(
       {
         "symbol": symbol,
@@ -7753,15 +7800,18 @@ def build_dashboard(symbols: list[str], active: str | None, chart_range: str = "
         "volume": int(quote.get("regularMarketVolume") or quote.get("averageDailyVolume3Month") or 0),
         "currency": quote.get("currency") or fallback["currency"],
         "exchange": quote.get("fullExchangeName") or quote.get("exchange") or fallback["exchange"],
+        "marketState": session_state,
+        "marketSession": market_session,
         "dataSource": data_source,
         "dataProviderId": quote.get("quoteProviderId"),
         "dataSourceRank": quote.get("quoteSourceRank"),
         "dataSourceCount": quote.get("quoteSourceCount"),
         "dataSourceType": quote.get("quoteSourceType"),
+        "dataSourceCheckedAt": quote.get("quoteSourceCheckedAt"),
         "asOf": as_of,
         "quoteFreshness": quote_freshness(
           as_of,
-          build_market_session(quote.get("fullExchangeName") or quote.get("exchange") or fallback["exchange"], quote.get("exchange") or fallback["exchange"], quote.get("marketState") or "REGULAR"),
+          market_session,
           data_source,
         ),
       }
@@ -7862,13 +7912,12 @@ def build_live_quotes(symbols: list[str], active: str | None) -> dict:
       else:
         price = None
         previous_close = None
-    market_time = quote.get("regularMarketTime")
     history_as_of = (history_meta.get("timestamps") or [None])[-1] if history_meta.get("timestamps") else None
-    as_of = datetime.fromtimestamp(market_time, tz=timezone.utc).isoformat() if market_time else history_as_of
+    as_of = history_as_of if source_label_is_history(data_source) else quote_effective_as_of(quote, data_source, history_as_of)
     session = build_market_session(
       quote.get("fullExchangeName") or quote.get("exchange") or fallback["exchange"],
       quote.get("exchange") or fallback["exchange"],
-      quote.get("marketState") or "REGULAR",
+      quote_session_state(quote, data_source),
       as_of,
     )
     item = {
@@ -7880,7 +7929,8 @@ def build_live_quotes(symbols: list[str], active: str | None) -> dict:
       "volume": int(quote.get("regularMarketVolume") or quote.get("averageDailyVolume3Month") or 0),
       "currency": quote.get("currency") or fallback["currency"],
       "exchange": quote.get("fullExchangeName") or quote.get("exchange") or fallback["exchange"],
-      "marketState": quote.get("marketState") or "REGULAR",
+      "marketState": quote_session_state(quote, data_source),
+      "marketSession": session,
       "dataSource": data_source,
       "dataProviderId": quote.get("quoteProviderId"),
       "dataSourceRank": quote.get("quoteSourceRank"),
@@ -7929,9 +7979,52 @@ def quote_meta_timestamps(quote: dict) -> list[str]:
   return [previous.isoformat(), as_of.isoformat()]
 
 
+def sector_exchange_for_symbol(symbol: str) -> str:
+  upper = (symbol or "").upper()
+  aliases = " ".join(GOOGLE_FINANCE_INDEX_ALIASES.get(upper, [])).upper()
+  if "INDEXNSE" in aliases or upper.endswith(".NS"):
+    return "NSE"
+  if "INDEXBOM" in aliases or upper.endswith(".BO"):
+    return "BSE"
+  exchange = fallback_meta(upper).get("exchange", "")
+  return "NYSE" if exchange in {"US", "Index"} and upper in {"^GSPC", "^DJI", "^RUT", "SPY", "DIA", "IWM"} else exchange
+
+
+def sector_period_cache_ttl(symbol: str, period: str) -> int:
+  normalized_period = (period or "1D").upper()
+  if normalized_period != "1D":
+    return _SECTOR_CACHE_TTL
+  exchange = sector_exchange_for_symbol(symbol)
+  session = build_market_session(exchange, exchange, "REGULAR")
+  return _SECTOR_LIVE_CACHE_TTL if session.get("isOpen") else _SECTOR_CACHE_TTL
+
+
+def fetch_google_period_quote_change(symbol: str, interval: str) -> tuple[float, float, str] | None:
+  quote = fetch_google_finance_quote(symbol, sector_exchange_for_symbol(symbol))
+  price = quote.get("regularMarketPrice")
+  change_pct = quote.get("regularMarketChangePercent")
+  previous_close = quote.get("regularMarketPreviousClose")
+  if not isinstance(price, (int, float)) or price <= 0 or not isinstance(change_pct, (int, float)):
+    return None
+  if not isinstance(previous_close, (int, float)) or previous_close <= 0:
+    previous_close = price / (1 + (change_pct / 100)) if change_pct != -100 else price
+  closes = [float(previous_close), float(price)]
+  meta = {
+    "timestamps": quote_meta_timestamps(quote),
+    "quoteSource": quote.get("quoteSource", "Google Finance Quote"),
+    "quoteSymbol": quote.get("googleSymbol") or quote.get("symbol") or symbol,
+    "quoteChangePercent": round(float(change_pct), 4),
+  }
+  save_historical_records(symbol, interval, history_points_from_meta(closes, meta), "Google Finance Quote")
+  save_history_cache(symbol, "1D", closes, meta, "Google Finance Quote")
+  return round(float(change_pct), 2), round(float(price), 2), "Google Finance Quote"
+
+
 def fetch_period_change(symbol: str, period: str) -> tuple[float, float, str]:
   normalized_period = (period or "1D").upper()
   range_value, interval = sector_period_yahoo_config(period)
+  cache_ttl = sector_period_cache_ttl(symbol, normalized_period)
+  needs_live_edge = normalized_period == "1D" and cache_ttl == _SECTOR_LIVE_CACHE_TTL
   cached = load_cached_history(symbol, normalized_period)
   if cached:
     closes, meta, source, updated_at = cached
@@ -7939,13 +8032,18 @@ def fetch_period_change(symbol: str, period: str) -> tuple[float, float, str]:
       age_seconds = max(0.0, (datetime.now(timezone.utc) - datetime.fromisoformat(updated_at)).total_seconds())
     except ValueError:
       age_seconds = _SECTOR_CACHE_TTL + 1
-    if len(closes) >= 2 and age_seconds <= _SECTOR_CACHE_TTL:
+    if len(closes) >= 2 and age_seconds <= cache_ttl:
       cached_quote_change = meta.get("quoteChangePercent")
       if source == "Google Finance Quote" and normalized_period == "1D":
         if isinstance(cached_quote_change, (int, float)):
           return round(float(cached_quote_change), 2), round(float(closes[-1]), 2), source
       else:
         return round(pct_change(float(closes[-1]), float(closes[0])), 2), round(float(closes[-1]), 2), source or "Local history cache"
+
+  if needs_live_edge:
+    google_result = fetch_google_period_quote_change(symbol, interval)
+    if google_result:
+      return google_result
 
   chart = fetch_yahoo_chart(symbol, range_value=range_value, interval=interval)
   closes, meta = extract_yahoo_history_payload(chart or {})
@@ -7954,23 +8052,9 @@ def fetch_period_change(symbol: str, period: str) -> tuple[float, float, str]:
     save_history_cache(symbol, normalized_period, closes, meta, "Yahoo Chart")
     return round(pct_change(float(closes[-1]), float(closes[0])), 2), round(float(closes[-1]), 2), "Yahoo Chart"
   if normalized_period == "1D":
-    quote = fetch_google_finance_quote(symbol, fallback_meta(symbol).get("exchange", ""))
-    price = quote.get("regularMarketPrice")
-    change_pct = quote.get("regularMarketChangePercent")
-    previous_close = quote.get("regularMarketPreviousClose")
-    if isinstance(price, (int, float)) and price > 0 and isinstance(change_pct, (int, float)):
-      if not isinstance(previous_close, (int, float)) or previous_close <= 0:
-        previous_close = price / (1 + (change_pct / 100)) if change_pct != -100 else price
-      closes = [float(previous_close), float(price)]
-      meta = {
-        "timestamps": quote_meta_timestamps(quote),
-        "quoteSource": quote.get("quoteSource", "Google Finance Quote"),
-        "quoteSymbol": quote.get("googleSymbol") or quote.get("symbol") or symbol,
-        "quoteChangePercent": round(float(change_pct), 4),
-      }
-      save_historical_records(symbol, interval, history_points_from_meta(closes, meta), "Google Finance Quote")
-      save_history_cache(symbol, normalized_period, closes, meta, "Google Finance Quote")
-      return round(float(change_pct), 2), round(float(price), 2), "Google Finance Quote"
+    google_result = fetch_google_period_quote_change(symbol, interval)
+    if google_result:
+      return google_result
   if cached:
     closes, _, source, _ = cached
     if len(closes) >= 2:
@@ -7979,15 +8063,17 @@ def fetch_period_change(symbol: str, period: str) -> tuple[float, float, str]:
 
 
 def build_sector_matrix(market: str, period: str = "1D", benchmark_symbol: str | None = None) -> dict:
-  """Fetch sector index performance for the given market and period. Cached for 15 min."""
+  """Fetch sector index performance for the given market and period."""
   normalized_market = market if market in SECTOR_INDICES else "india"
   normalized_period = period if period in SECTOR_PERIOD_LABELS else "1D"
   benchmark = sector_benchmark_for_market(normalized_market, benchmark_symbol)
   cache_key = f"{normalized_market}:{normalized_period}:{benchmark['symbol']}"
+  cache_ttl = sector_period_cache_ttl(benchmark["symbol"], normalized_period)
+  live_mode = normalized_period == "1D" and cache_ttl == _SECTOR_LIVE_CACHE_TTL
   now = time.time()
   cached = _sector_cache.get(cache_key)
-  if cached and (now - cached.get("ts", 0)) < _SECTOR_CACHE_TTL:
-    return {**cached["data"], "cacheState": "memory"}
+  if cached and (now - cached.get("ts", 0)) < cache_ttl:
+    return {**cached["data"], "cacheState": "live memory" if live_mode else "memory"}
 
   sectors = SECTOR_INDICES.get(normalized_market, SECTOR_INDICES["india"])
   with ThreadPoolExecutor(max_workers=min(8, len(sectors) + 1)) as executor:
@@ -8019,7 +8105,10 @@ def build_sector_matrix(market: str, period: str = "1D", benchmark_symbol: str |
       "source": benchmark_source,
     },
     "sectors": results,
-    "cacheState": "refreshed",
+    "cacheState": "live refreshed" if live_mode else "refreshed",
+    "liveMode": live_mode,
+    "cacheTtlSeconds": cache_ttl,
+    "marketSession": build_market_session(sector_exchange_for_symbol(benchmark["symbol"]), normalized_market, "REGULAR"),
     "source": benchmark_source,
     "updatedAt": datetime.now(timezone.utc).isoformat(),
   }
@@ -8258,6 +8347,8 @@ class FinancialBoardHandler(BaseHTTPRequestHandler):
       return self.send_json(build_market_heat_map(market, period, limit))
     if parsed.path == "/api/data-sources":
       return self.send_json({"updatedAt": datetime.now(timezone.utc).isoformat(), "sources": TRUSTED_DATA_SOURCE_REGISTRY})
+    if parsed.path == "/api/global-markets":
+      return self.send_json({"updatedAt": datetime.now(timezone.utc).isoformat(), "markets": build_global_market_overview()})
     if parsed.path == "/api/overview":
       params = urllib.parse.parse_qs(parsed.query)
       symbols = [item.upper() for item in ((params.get("symbols") or [""])[0].split(",")) if item]
@@ -8400,7 +8491,7 @@ class FinancialBoardHandler(BaseHTTPRequestHandler):
         message = f"event: quote\ndata: {json.dumps(payload)}\n\n".encode("utf-8")
         self.wfile.write(message)
         self.wfile.flush()
-        time.sleep(0.8)
+        time.sleep(2.0)
     except (BrokenPipeError, ConnectionResetError):
       return
 
