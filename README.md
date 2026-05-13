@@ -81,7 +81,8 @@ This platform is built as a lightweight full-stack app with a browser client and
 
 The public repository should contain source code, scripts, tests, and empty folder placeholders only. Local financial data is private by default:
 
-- `data/`, `kb/`, and `vault/market-map/` are ignored except for `.gitkeep` placeholders.
+- `data/` and `kb/` are ignored except for `.gitkeep` placeholders.
+- `vault/market-map/` is fully ignored and should not appear on GitHub at all.
 - Do not commit watchlists, quote/history caches, generated universes, relation graphs, job manifests, SQLite databases, provider captures, local notes, or research vault content.
 - Recreate or refresh local data with scripts at runtime instead of storing it in Git.
 

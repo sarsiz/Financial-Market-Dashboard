@@ -19,9 +19,9 @@ config.json
 node_modules/
 
 # ── Local/private financial data ─────────────────────────────────────────────
-# Keep the directory structure through .gitkeep files, but never commit local
-# market data, personal watchlists, caches, generated notes, job manifests, DBs,
-# provider captures, or research/vault content.
+# Keep only selected non-vault placeholder directories in Git. Never commit
+# local market data, personal watchlists, caches, generated notes, job manifests,
+# DBs, provider captures, or research/vault content.
 data/**
 !data/**/
 !data/**/.gitkeep
@@ -30,9 +30,7 @@ kb/**
 !kb/**/
 !kb/**/.gitkeep
 
-vault/market-map/**
-!vault/market-map/**/
-!vault/market-map/**/.gitkeep
+vault/
 
 # Any local strategy override config
 strategy_config.json

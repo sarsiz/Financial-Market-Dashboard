@@ -69,12 +69,12 @@ Transform tasks into verifiable goals:
 
 ## 6. Project-Specific Rules
 
-- **Local data stays local.** Do not commit files under `data/`, `kb/`, or `vault/market-map/` except `.gitkeep` placeholders. These folders may contain watchlists, caches, generated notes, databases, provider payloads, job manifests, and private research.
+- **Local data stays local.** Do not commit files under `data/` or `kb/` except `.gitkeep` placeholders. Do not track `vault/market-map/` at all. These folders may contain watchlists, caches, generated notes, databases, provider payloads, job manifests, and private research.
 - **Bonds first.** Inflation, policy, equity context, and implications derive from bonds — not from standalone stock heuristics.
 - **Factual decision support only.** Show facts, interpretation, risks, confidence, unknowns, timestamps, source labels. No direct buy/sell advice.
 - **Fallbacks over blanks.** Return documented mock data with source notes rather than empty panels or invented "live" claims.
 - **Additive API shapes.** Expand response objects with new keys — never rename or remove existing keys.
 - **Historical cache is truth.** Fetch the live edge, persist the older series, reuse rather than re-scrape.
-- **Vault is private memory.** Never commit generated vault content; keep only `.gitkeep` placeholders in `vault/market-map/`. See `.gitignore`.
+- **Vault is private memory.** Never commit generated vault content or placeholders; `vault/market-map/` is a local-only runtime/research directory. See `.gitignore`.
 - **Methodology tab = educational only.** Signal pattern families and formulas are public domain. Proprietary triggers, weights, and thresholds belong in `data/factors/` (gitignored) and `vault/`.
 - **Region-aware first.** Extend shared region adapters — never add one-off country logic.
