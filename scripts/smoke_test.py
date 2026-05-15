@@ -2,12 +2,13 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 import urllib.error
 import urllib.request
 
 
-BASE_URL = "http://127.0.0.1:8000"
+BASE_URL = os.environ.get("FINANCIAL_BOARD_BASE_URL", "http://127.0.0.1:8000").rstrip("/")
 
 
 def request_json(path: str, method: str = "GET", payload: dict | None = None) -> tuple[int, dict]:

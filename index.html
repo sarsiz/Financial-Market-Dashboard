@@ -45,13 +45,14 @@
               id="ticker-input"
               type="text"
               maxlength="24"
-              placeholder="Search ticker or company, e.g. Bharti Airtel, ICICI Bank, AAPL"
+              placeholder="Search ticker"
               aria-label="Ticker symbol"
               autocomplete="off"
               autocapitalize="off"
               autocorrect="off"
               spellcheck="false"
             />
+            <button id="ticker-search-button" type="submit">Search</button>
           </form>
           <div id="search-results" class="search-results"></div>
           <div id="watchlist" class="watchlist"></div>
@@ -193,11 +194,33 @@
                   <option value="india" selected>India</option>
                   <option value="us">US</option>
                 </select>
+                <select id="market-heat-map-group" class="sector-ctrl-select" aria-label="Group heat map by">
+                  <option value="sector" selected>By sector</option>
+                  <option value="size">By size</option>
+                  <option value="flat">No groups</option>
+                </select>
+                <select id="market-heat-map-sector" class="sector-ctrl-select" aria-label="Filter heat map sector">
+                  <option value="all" selected>All sectors</option>
+                </select>
+                <select id="market-heat-map-size" class="sector-ctrl-select" aria-label="Filter heat map size">
+                  <option value="all" selected>All sizes</option>
+                  <option value="mega">Top 100</option>
+                  <option value="large">101-250</option>
+                  <option value="mid">251-750</option>
+                  <option value="small">751+</option>
+                </select>
+                <select id="market-heat-map-limit" class="sector-ctrl-select" aria-label="Heat map tile count">
+                  <option value="120">120</option>
+                  <option value="240" selected>240</option>
+                  <option value="480">480</option>
+                  <option value="600">600</option>
+                </select>
                 <div class="market-heat-map-tabs" aria-label="Heat map period">
                   <button class="market-heat-map-tab active" type="button" data-period="1D">1D</button>
                   <button class="market-heat-map-tab" type="button" data-period="5D">5D</button>
                   <button class="market-heat-map-tab" type="button" data-period="1M">1M</button>
                 </div>
+                <button id="market-heat-map-expand" class="market-heat-map-tab" type="button" aria-pressed="false">Expand</button>
               </div>
             </div>
             <div id="market-heat-map-grid" class="market-heat-map-grid" aria-live="polite"></div>

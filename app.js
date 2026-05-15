@@ -172,7 +172,7 @@ const DEFAULT_DOSSIER_ORDER = [
 
 const DOSSIER_CARD_META = {
   day: { title: "Day snapshot", span: 3, tier: "primary", value: "live" },
-  ma: { title: "Moving averages", span: 3, tier: "primary", value: "predictive" },
+  ma: { title: "Trend stack", span: 4, tier: "primary", value: "predictive" },
   peers: { title: "Peer comparison", span: 6, tier: "primary", value: "context" },
   benchmarks: { title: "Benchmark comparison", span: 8, tier: "primary", value: "context" },
   activity: { title: "Range watch", span: 4, tier: "primary", value: "predictive" },
@@ -233,6 +233,7 @@ const state = {
   marketSessionTimer: null,
   dashboardRequestId: 0,
   overviewRequestId: 0,
+  searchRequestId: 0,
   academyRequestId: 0,
   radarRequestId: 0,
   academyDetail: null,
@@ -1058,7 +1059,11 @@ function renderStockDossier(active) {
   const unusual = dossier.unusualActivity || {};
   const influence = dossier.influenceGraph || {};
   const discoveryItems = state.dashboard?.discovery?.items || [];
-  const simpleDossierKeys = ["day", "ma", "benchmarks", "activity"];
+  const movingAverages = dossier.movingAverages || [];
+  const visibleMovingAverages = state.detailMode
+    ? movingAverages
+    : movingAverages.filter((item) => item.value !== null && item.value !== undefined).slice(0, 4);
+  const simpleDossierKeys = ["day", "ma", "activity", "benchmarks"];
   const visibleDossierKeys = state.detailMode ? DEFAULT_DOSSIER_ORDER : simpleDossierKeys;
   setTextIfChanged(
     panel.querySelector(".section-heading span"),
@@ -1116,16 +1121,21 @@ function renderStockDossier(active) {
     ma: renderDossierCard("ma", {
       kicker: "Trend stack",
       title: "Moving averages",
-      subtitle: "5 / 20 / 25 / 50 / 200",
-      summary: `<div class="dossier-context-line">${(dossier.movingAverages || []).slice(0, 3).map((item) => `<span>${item.label} ${item.state || ""}</span>`).join("")}</div>`,
+      subtitle: "SMA 5-200",
+      summary: `<div class="dossier-context-line">${visibleMovingAverages.slice(0, 2).map((item) => `<span>${item.label}: ${item.state || "Unavailable"}</span>`).join("") || "<span>Moving averages unavailable</span>"}</div>`,
       body: `<div class="ma-dossier-list">
-        ${(dossier.movingAverages || []).map((item) => `
-          <div>
-            <span>${item.label}</span>
-            <strong>${dossierMetric(item.value, "currency", active.currency)}</strong>
-            <em class="${item.state === "Above" ? "positive" : item.state === "Below" ? "negative" : ""}">${item.state}${item.distancePercent !== null && item.distancePercent !== undefined ? ` · ${formatPercent(item.distancePercent)}` : ""}</em>
-          </div>
-        `).join("")}
+        ${visibleMovingAverages.map((item) => {
+          const stateLabel = item.state || "Unavailable";
+          const distance = item.distancePercent !== null && item.distancePercent !== undefined ? formatPercent(item.distancePercent) : "";
+          const stateClass = item.state === "Above" ? "positive" : item.state === "Below" ? "negative" : "";
+          return `
+            <div>
+              <span>${item.label}</span>
+              <strong>${dossierMetric(item.value, "currency", active.currency)}</strong>
+              <em class="${stateClass}"><span>${stateLabel}</span>${distance ? `<small>${distance}</small>` : ""}</em>
+            </div>
+          `;
+        }).join("") || `<div><span>SMA</span><strong>Unavailable</strong><em><span>No cached trend</span></em></div>`}
       </div>`,
     }),
     peers: renderDossierCard("peers", {
@@ -3723,34 +3733,45 @@ function relayoutImpactGraph() {
 function renderSearchResults(results = []) {
   const node = document.getElementById("search-results");
   if (!results.length) {
-    node.innerHTML = "";
+    setHTMLIfChanged(node, "");
     return;
   }
 
-  node.innerHTML = results
+  const changed = setHTMLIfChanged(node, results
     .map(
       (item) => {
-        const sectorLabel = item.sector ? `<em class="search-result-sector">${item.sector}</em>` : "";
+        const sectorLabel = item.sector ? `<em class="search-result-sector">${escapeHtml(item.sector)}</em>` : "";
         return `
-        <button class="search-result" type="button" data-symbol="${item.symbol}">
+        <button class="search-result" type="button" data-symbol="${escapeHtml(item.symbol)}" title="${escapeHtml(item.name || item.symbol)}">
           <div>
-            <strong>${item.symbol}</strong>
-            <p>${item.name || item.exchange || "Market listing"}</p>
+            <strong>${escapeHtml(item.symbol)}</strong>
+            <p>${escapeHtml(item.name || item.exchange || "Market listing")}</p>
           </div>
           <div class="search-result-right">
-            <span>${item.matchType || "Match"}</span>
+            <span>${escapeHtml(item.matchType || "Match")}</span>
             ${sectorLabel}
-            <em>${item.matchReason || item.exchange || item.region || "Global"}</em>
+            <em>${escapeHtml(item.matchReason || item.exchange || item.region || "Global")}</em>
           </div>
         </button>
       `;
       },
     )
-    .join("");
+    .join(""));
+  if (!changed) return;
 
   node.querySelectorAll(".search-result").forEach((button) => {
     button.addEventListener("click", () => addTicker(button.dataset.symbol));
   });
+}
+
+function setSearchBusy(isBusy) {
+  const form = document.getElementById("ticker-form");
+  const button = document.getElementById("ticker-search-button");
+  form?.classList.toggle("is-searching", Boolean(isBusy));
+  if (button) {
+    button.disabled = Boolean(isBusy);
+    setTextIfChanged(button, isBusy ? "..." : "Search");
+  }
 }
 
 function renderPresets() {
@@ -3856,21 +3877,21 @@ function renderWatchlist() {
         const priceClass = liveValueClass(`watch:${item.symbol}:price`, item.price);
         const changeClass = liveValueClass(`watch:${item.symbol}:change`, item.changePercent);
         return `
-        <button class="watch-item ${priceClass} ${item.symbol === state.activeTicker ? "active" : ""}" type="button" data-symbol="${item.symbol}" draggable="true">
+        <button class="watch-item ${priceClass} ${item.symbol === state.activeTicker ? "active" : ""}" type="button" data-symbol="${escapeHtml(item.symbol)}" draggable="true">
           <div class="watch-row">
-            <span class="watch-symbol">${item.symbol}</span>
+            <span class="watch-symbol" title="${escapeHtml(item.symbol)}">${escapeHtml(item.symbol)}</span>
             <div class="watch-actions">
-              <span class="drag-handle" data-drag-handle="${item.symbol}">::</span>
+              <span class="drag-handle" data-drag-handle="${escapeHtml(item.symbol)}">::</span>
               <span class="watch-change live-number ${item.changePercent >= 0 ? "positive" : "negative"} ${changeClass}">${formatPercent(item.changePercent)}</span>
-              <span class="delete-chip" data-delete="${item.symbol}">Delete</span>
+              <span class="delete-chip" data-delete="${escapeHtml(item.symbol)}">Delete</span>
             </div>
           </div>
           <div class="watch-row">
-            <span class="watch-name">${item.name}</span>
+            <span class="watch-name" title="${escapeHtml(item.name || item.symbol)}">${escapeHtml(item.name || item.symbol)}</span>
             <span class="watch-price live-number ${priceClass}">${formatCurrency(item.price, item.currency)}</span>
           </div>
           <div class="watch-row watch-meta-row">
-            <span>${item.exchange} · ${item.currency}</span>
+            <span>${escapeHtml(item.exchange)} · ${escapeHtml(item.currency)}</span>
             <span>Vol ${formatCompactNumber(item.volume)}</span>
           </div>
         </button>
@@ -5397,10 +5418,22 @@ async function runSearch() {
     return;
   }
 
+  const requestId = ++state.searchRequestId;
   setStatus("Searching");
-  const payload = await api(`/api/search?q=${encodeURIComponent(query)}`);
-  renderSearchResults(payload.results || []);
-  flashStatus("Search ready", 1200);
+  setSearchBusy(true);
+  try {
+    const payload = await api(`/api/search?q=${encodeURIComponent(query)}`, { timeoutMs: 9000 });
+    if (requestId !== state.searchRequestId) return;
+    renderSearchResults(payload.results || []);
+    flashStatus("Search ready", 1200);
+  } catch (error) {
+    if (requestId !== state.searchRequestId) return;
+    logNonAbort(error);
+    renderSearchResults();
+    setStatus("Search delayed");
+  } finally {
+    if (requestId === state.searchRequestId) setSearchBusy(false);
+  }
 }
 
 function addTicker(symbol) {
@@ -5577,51 +5610,140 @@ function fallbackMarketHeatMapPayload(market = "india", period = "1D") {
   };
 }
 
+function marketHeatMapSizeLabel(size = "") {
+  return ({
+    mega: "Top 100",
+    large: "101-250",
+    mid: "251-750",
+    small: "751+",
+  })[String(size || "").toLowerCase()] || "Unranked";
+}
+
+function marketHeatMapGroupLabel(key, groupBy) {
+  if (groupBy === "size") return marketHeatMapSizeLabel(key);
+  return String(key || "Other").replace(/-/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function groupMarketHeatMapTiles(tiles, groupBy) {
+  if (groupBy === "flat") return [{ key: "all", label: "All listed", tiles }];
+  const groups = new Map();
+  tiles.forEach((tile) => {
+    const key = groupBy === "size" ? (tile.sizeBucket || "other") : (tile.sectorKey || tile.sector || "other");
+    if (!groups.has(key)) {
+      groups.set(key, { key, label: marketHeatMapGroupLabel(key, groupBy), tiles: [] });
+    }
+    groups.get(key).tiles.push(tile);
+  });
+  return Array.from(groups.values()).sort((a, b) => b.tiles.length - a.tiles.length || a.label.localeCompare(b.label));
+}
+
+function syncMarketHeatMapSectorOptions(payload) {
+  const select = document.getElementById("market-heat-map-sector");
+  if (!select || !Array.isArray(payload?.sectors)) return;
+  const current = select.value || "all";
+  const options = [
+    `<option value="all">All sectors</option>`,
+    ...payload.sectors.map((item) => `<option value="${escapeHtml(item.key)}">${escapeHtml(item.label)} (${item.count})</option>`),
+  ].join("");
+  if (setHTMLIfChanged(select, options)) {
+    select.value = payload.sectors.some((item) => item.key === current) ? current : "all";
+  }
+}
+
+function scheduleHeatMapHistoryWarmup(payload) {
+  const symbols = (payload?.warmupSymbols || payload?.tiles?.map((tile) => tile.symbol) || [])
+    .filter(Boolean)
+    .slice(0, 160);
+  if (!symbols.length) return;
+  const ranges = ["1D", "5D", "1M"];
+  const key = `heat-map:${symbols.join(",")}::${ranges.join(",")}`;
+  if (state.historyWarmupKeys.has(key)) return;
+  state.historyWarmupKeys.add(key);
+  const run = () => {
+    api("/api/history/warm", {
+      method: "POST",
+      timeoutMs: 6000,
+      body: JSON.stringify({ symbols, ranges }),
+    }).then(() => {
+      scheduleHistoryProgressPoll(750);
+      pollHistoryProgress();
+    }).catch((error) => {
+      state.historyWarmupKeys.delete(key);
+      logNonAbort(error);
+    });
+  };
+  if ("requestIdleCallback" in window) {
+    window.requestIdleCallback(run, { timeout: 4000 });
+  } else {
+    window.setTimeout(run, 1200);
+  }
+}
+
 function renderMarketHeatMap(payload = state.marketHeatMap) {
   const grid = document.getElementById("market-heat-map-grid");
   const footer = document.getElementById("market-heat-map-footer");
   if (!grid) return;
+  syncMarketHeatMapSectorOptions(payload);
   const tiles = payload?.tiles || [];
   if (!tiles.length) {
     setHTMLIfChanged(grid, `<div class="market-heat-map-empty">Fetching market map…</div>`);
     if (footer) footer.textContent = "Using local universe manifests and live edge quotes where available.";
     return;
   }
-  const markup = tiles.map((tile) => {
-    const pct = Number(tile.changePct || 0);
-    const direction = pct > 0.15 ? "up" : pct < -0.15 ? "down" : "flat";
-    const span = Math.max(1, Math.min(3, Number(tile.span || 1)));
-    const color = marketHeatMapColor(pct);
-    const sourceLabel = tile.quality === "live" ? "Live" : "Proxy";
-    const title = `${tile.symbol} · ${tile.name} · ${formatPercent(pct)} · ${tile.source || sourceLabel}`;
-    const symbolLabel = escapeHtml(String(tile.symbol || "").replace(/\.(NS|BO)$/i, ""));
-    return `
-      <article class="market-heat-tile ${direction} span-${span} ${tile.quality === "live" ? "is-live" : "is-proxy"}"
-        style="--heat:${color}; --span:${span};"
-        title="${escapeHtml(title)}">
-        <span class="market-heat-logo">${escapeHtml(marketHeatMapInitials(tile.name, tile.symbol))}</span>
-        <strong>${symbolLabel}</strong>
-        <em>${formatPercent(pct)}</em>
-        <small>${sourceLabel}</small>
-      </article>
-    `;
-  }).join("");
+  const prefs = loadMarketHeatMapPrefs();
+  const groupBy = prefs.group || "sector";
+  const groups = groupMarketHeatMapTiles(tiles, groupBy);
+  const markup = groups.map((group) => `
+    <section class="market-heat-group" data-heat-group="${escapeHtml(group.key)}">
+      ${groupBy !== "flat" ? `<div class="market-heat-group-head"><strong>${escapeHtml(group.label)}</strong><span>${group.tiles.length} stocks</span></div>` : ""}
+      <div class="market-heat-group-grid">
+        ${group.tiles.map((tile) => {
+          const pct = Number(tile.changePct || 0);
+          const direction = pct > 0.15 ? "up" : pct < -0.15 ? "down" : "flat";
+          const span = Math.max(1, Math.min(3, Number(tile.span || 1)));
+          const color = marketHeatMapColor(pct);
+          const sourceLabel = tile.quality === "live" ? "Live" : "Proxy";
+          const title = `${tile.symbol} · ${tile.name} · ${formatPercent(pct)} · ${tile.source || sourceLabel}`;
+          const symbolLabel = escapeHtml(String(tile.symbol || "").replace(/\.(NS|BO)$/i, ""));
+          return `
+            <article class="market-heat-tile ${direction} span-${span} ${tile.quality === "live" ? "is-live" : "is-proxy"}"
+              style="--heat:${color}; --span:${span};"
+              title="${escapeHtml(title)}">
+              <span class="market-heat-logo">${escapeHtml(marketHeatMapInitials(tile.name, tile.symbol))}</span>
+              <strong>${symbolLabel}</strong>
+              <em>${formatPercent(pct)}</em>
+              <small>${sourceLabel} · ${escapeHtml(marketHeatMapSizeLabel(tile.sizeBucket))}</small>
+            </article>
+          `;
+        }).join("")}
+      </div>
+    </section>
+  `).join("");
   setHTMLIfChanged(grid, markup);
   if (footer) {
     const age = payload.updatedAt ? Math.max(0, Math.round((Date.now() - new Date(payload.updatedAt).getTime()) / 60000)) : 0;
-    footer.textContent = `${payload.periodLabel || payload.period || "Selected period"} · ${payload.liveCount || 0} live quote tiles · ${payload.proxyCount || 0} sector-proxy tiles · ${payload.sourceNote || "Tile size is a display proxy."} · updated ${age < 1 ? "just now" : `${age}m ago`}`;
+    const coverage = payload.universeCount ? `${payload.returnedCount || tiles.length}/${payload.filteredCount || payload.universeCount} shown from ${payload.universeCount} listed` : `${tiles.length} tiles`;
+    footer.textContent = `${payload.periodLabel || payload.period || "Selected period"} · ${coverage} · ${payload.liveCount || 0} live quote tiles · ${payload.proxyCount || 0} proxy tiles · ${payload.sourceNote || "Tile size is a display proxy."} · updated ${age < 1 ? "just now" : `${age}m ago`}`;
   }
 }
 
-async function fetchMarketHeatMap(market, period) {
+async function fetchMarketHeatMap(market, period, options = {}) {
   const requestId = ++state.marketHeatMapRequestId;
   renderMarketHeatMap();
   try {
-    const params = new URLSearchParams({ market, period, limit: market === "us" ? "84" : "42" });
+    const params = new URLSearchParams({
+      market,
+      period,
+      limit: options.limit || (market === "us" ? "240" : "240"),
+      sector: options.sector || "all",
+      size: options.size || "all",
+      sort: options.group === "sector" ? "sector" : "rank",
+    });
     const payload = await api(`/api/market-map?${params.toString()}`, { timeoutMs: 30000 });
     if (requestId !== state.marketHeatMapRequestId) return;
     state.marketHeatMap = payload;
     renderMarketHeatMap(payload);
+    scheduleHeatMapHistoryWarmup(payload);
   } catch (error) {
     logNonAbort(error);
     const fallback = fallbackMarketHeatMapPayload(market, period);
@@ -5640,21 +5762,66 @@ async function fetchMarketHeatMap(market, period) {
 function initMarketHeatMap() {
   const panel = document.getElementById("market-heat-map-panel");
   const regionSelect = document.getElementById("market-heat-map-region");
-  const periodTabs = document.querySelectorAll(".market-heat-map-tab");
+  const groupSelect = document.getElementById("market-heat-map-group");
+  const sectorSelect = document.getElementById("market-heat-map-sector");
+  const sizeSelect = document.getElementById("market-heat-map-size");
+  const limitSelect = document.getElementById("market-heat-map-limit");
+  const expandButton = document.getElementById("market-heat-map-expand");
+  const periodTabs = document.querySelectorAll(".market-heat-map-tab[data-period]");
   if (!panel || !regionSelect) return;
   const prefs = loadMarketHeatMapPrefs();
   let market = prefs.market || state.selectedRegion || "india";
   if (!["india", "us"].includes(market)) market = "india";
   let period = prefs.period || "1D";
+  let group = prefs.group || "sector";
+  let sector = prefs.sector || "all";
+  let size = prefs.size || "all";
+  let limit = prefs.limit || "240";
+  let expanded = Boolean(prefs.expanded);
   regionSelect.value = market;
+  if (groupSelect) groupSelect.value = group;
+  if (sectorSelect) sectorSelect.value = sector;
+  if (sizeSelect) sizeSelect.value = size;
+  if (limitSelect) limitSelect.value = limit;
+  panel.classList.toggle("is-expanded", expanded);
+  expandButton?.setAttribute("aria-pressed", expanded ? "true" : "false");
+  if (expandButton) setTextIfChanged(expandButton, expanded ? "Collapse" : "Expand");
   periodTabs.forEach((tab) => tab.classList.toggle("active", tab.dataset.period === period));
   const persistAndFetch = () => {
-    saveMarketHeatMapPrefs({ market, period });
-    fetchMarketHeatMap(market, period);
+    saveMarketHeatMapPrefs({ market, period, group, sector, size, limit, expanded });
+    fetchMarketHeatMap(market, period, { group, sector, size, limit });
   };
   regionSelect.addEventListener("change", () => {
     market = regionSelect.value;
+    sector = "all";
+    if (sectorSelect) sectorSelect.value = "all";
+    limit = market === "india" ? "240" : "240";
     persistAndFetch();
+  });
+  groupSelect?.addEventListener("change", () => {
+    group = groupSelect.value || "sector";
+    saveMarketHeatMapPrefs({ market, period, group, sector, size, limit, expanded });
+    renderMarketHeatMap();
+    fetchMarketHeatMap(market, period, { group, sector, size, limit });
+  });
+  sectorSelect?.addEventListener("change", () => {
+    sector = sectorSelect.value || "all";
+    persistAndFetch();
+  });
+  sizeSelect?.addEventListener("change", () => {
+    size = sizeSelect.value || "all";
+    persistAndFetch();
+  });
+  limitSelect?.addEventListener("change", () => {
+    limit = limitSelect.value || "240";
+    persistAndFetch();
+  });
+  expandButton?.addEventListener("click", () => {
+    expanded = !expanded;
+    panel.classList.toggle("is-expanded", expanded);
+    expandButton.setAttribute("aria-pressed", expanded ? "true" : "false");
+    setTextIfChanged(expandButton, expanded ? "Collapse" : "Expand");
+    saveMarketHeatMapPrefs({ market, period, group, sector, size, limit, expanded });
   });
   periodTabs.forEach((tab) => {
     tab.addEventListener("click", () => {

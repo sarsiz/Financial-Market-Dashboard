@@ -46,6 +46,12 @@ class HtmlContractTests(unittest.TestCase):
       "market-session-strip",
       "model-agreement-note",
       "toggle-detail-mode",
+      "ticker-search-button",
+      "market-heat-map-group",
+      "market-heat-map-sector",
+      "market-heat-map-size",
+      "market-heat-map-limit",
+      "market-heat-map-expand",
     ]
     for target in required_ids:
       self.assertIn(f'id="{target}"', self.index_html)
@@ -82,6 +88,7 @@ class HtmlContractTests(unittest.TestCase):
       "eventCache",
       "event-card-header",
       "dashboardRequestId",
+      "searchRequestId",
       "selectedRegion",
       "function renderImpactGraphWorkspace(",
       "decision-cockpit-card",
@@ -89,6 +96,8 @@ class HtmlContractTests(unittest.TestCase):
       "methodology-cockpit-hero",
       "function renderStockDossier(",
       "DOSSIER_CARD_META",
+      "SMA 5-200",
+      "simpleDossierKeys = [\"day\", \"ma\", \"activity\", \"benchmarks\"]",
       "data-flow-bar",
       "function renderDataFlowBar(",
       "function initStarfieldParallax(",
@@ -106,6 +115,9 @@ class HtmlContractTests(unittest.TestCase):
       "sector-matrix-benchmark",
       "sector-tile-top",
       "sector-tile-meta",
+      "function groupMarketHeatMapTiles(",
+      "function scheduleHeatMapHistoryWarmup(",
+      "market-heat-group",
       "chart-mode-tab",
       "function buildSyntheticCandles(",
       "function buildImpactGraphPresetPositions(",
@@ -115,6 +127,22 @@ class HtmlContractTests(unittest.TestCase):
     ]
     for snippet in expected_snippets:
       self.assertIn(snippet, self.app_js)
+
+  def test_dossier_layout_guards_exist(self):
+    styles = (ROOT / "styles.css").read_text()
+    expected_snippets = [
+      "body:not(.detail-mode) #dossier-benchmarks",
+      "grid-column: 1 / -1",
+      ".ma-dossier-list em small",
+      ".dossier-card-title strong",
+      "text-overflow: ellipsis",
+      "Reliability beats decoration",
+      ".scroll-reveal.is-visible",
+      ".market-heat-map-panel.is-expanded",
+      ".market-heat-group-grid",
+    ]
+    for snippet in expected_snippets:
+      self.assertIn(snippet, styles)
 
   def test_cloud_controls_removed_but_news_ticker_remains(self):
     self.assertNotIn("pop-radar-clouds", self.index_html)

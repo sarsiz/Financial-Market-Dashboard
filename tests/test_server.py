@@ -1,4 +1,5 @@
 import json
+import socket
 import sqlite3
 import tempfile
 import unittest
@@ -7,6 +8,30 @@ from pathlib import Path
 from unittest import mock
 
 import server
+
+
+class ServerStartupTests(unittest.TestCase):
+  def test_parse_port_validates_range_and_strings(self):
+    self.assertEqual(server.parse_port("8010"), 8010)
+    self.assertEqual(server.parse_port(None), server.DEFAULT_PORT)
+    with self.assertRaises(ValueError):
+      server.parse_port("not-a-port")
+    with self.assertRaises(ValueError):
+      server.parse_port("70000")
+
+  def test_build_server_falls_back_when_requested_port_is_busy(self):
+    blocker = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    blocker.bind(("127.0.0.1", 0))
+    blocker.listen(1)
+    requested_port = blocker.getsockname()[1]
+    httpd = None
+    try:
+      httpd, bound_port = server.build_server("127.0.0.1", requested_port)
+      self.assertGreater(bound_port, requested_port)
+    finally:
+      if httpd is not None:
+        httpd.server_close()
+      blocker.close()
 
 
 class TempDatabaseTestCase(unittest.TestCase):
@@ -158,6 +183,7 @@ class HistoryCacheTests(TempDatabaseTestCase):
 
   def test_allowed_outbound_url_blocks_unknown_and_http_hosts(self):
     self.assertTrue(server.is_allowed_outbound_url("https://query1.finance.yahoo.com/v7/finance/quote"))
+    self.assertTrue(server.is_allowed_outbound_url("https://archives.nseindia.com/content/equities/EQUITY_L.csv"))
     self.assertFalse(server.is_allowed_outbound_url("http://query1.finance.yahoo.com/v7/finance/quote"))
     self.assertFalse(server.is_allowed_outbound_url("https://example.com/data.json"))
 
@@ -379,6 +405,29 @@ class HistoryCacheTests(TempDatabaseTestCase):
     self.assertEqual(payload["periodLabel"], "5 days")
     self.assertIn("cacheState", payload)
     self.assertEqual(payload["sectors"][0]["relativePct"], 1.0)
+
+  def test_market_heat_map_uses_nse_all_and_filter_metadata(self):
+    members = [
+      {"symbol": "AAA.NS", "name": "AAA Bank", "sector": "Financials", "rank": 1},
+      {"symbol": "BBB.NS", "name": "BBB Tech", "sector": "Technology", "rank": 120},
+      {"symbol": "CCC.NS", "name": "CCC Tech", "sector": "Technology", "rank": 760},
+    ]
+    sector_payload = {
+      "source": "Unit sector matrix",
+      "sectors": [{"sector": "technology", "label": "Technology", "changePct": 2.0}],
+    }
+    with mock.patch.object(server, "load_market_map_members", return_value=(members, "nse_all", False)), mock.patch.object(
+      server, "fetch_live_quotes", return_value={}
+    ), mock.patch.object(server, "build_sector_matrix", return_value=sector_payload):
+      payload = server.build_market_heat_map("india", "1D", 20, "technology", "small", "sector")
+
+    self.assertEqual(payload["universe"], "nse_all")
+    self.assertEqual(payload["universeCount"], 3)
+    self.assertEqual(payload["filteredCount"], 1)
+    self.assertEqual(payload["tiles"][0]["symbol"], "CCC.NS")
+    self.assertEqual(payload["tiles"][0]["sizeBucket"], "small")
+    self.assertEqual(payload["filters"]["sector"], "technology")
+    self.assertIn("warmupSymbols", payload)
 
   def test_fetch_period_change_uses_google_index_quote_fallback(self):
     quote = {
@@ -699,6 +748,21 @@ class ForecastAndLabTests(unittest.TestCase):
 
     self.assertTrue(any(item["symbol"] == "GLENMARK.NS" for item in results))
     self.assertTrue(all("matchType" in item and "score" in item for item in results))
+
+  def test_local_search_does_not_match_short_sector_keyword_inside_company_name(self):
+    results = server.local_search_results("Hindustan Unilever")
+    symbols = [item["symbol"] for item in results[:5]]
+
+    self.assertIn("HINDUNILVR.NS", symbols)
+    self.assertNotIn("TSLA", symbols)
+    self.assertNotIn("TATAMOTORS.NS", symbols)
+
+  def test_fetch_yahoo_search_returns_strong_local_matches_without_remote_call(self):
+    with mock.patch.object(server, "json_get", return_value={"quotes": []}) as json_get:
+      results = server.fetch_yahoo_search("Hindustan Unilever")
+
+    self.assertEqual(results[0]["symbol"], "HINDUNILVR.NS")
+    json_get.assert_not_called()
 
   def test_build_decision_cockpit_returns_fact_based_scenarios(self):
     snapshot = {

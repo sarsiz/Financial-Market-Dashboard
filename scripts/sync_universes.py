@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import json
+import csv
+import io
 import re
 import sys
 import urllib.parse
@@ -175,13 +177,81 @@ def fetch_nasdaq_listed() -> list[dict]:
   return rows
 
 
+def infer_nse_sector(symbol: str, name: str) -> str:
+  fallback_sector = server.fallback_meta(symbol).get("sector")
+  if fallback_sector and fallback_sector != "Other":
+    return fallback_sector
+  text = f"{symbol} {name}".lower()
+  rules = [
+    ("financials", ("bank", "finance", "financial", "finserv", "capital", "nbfc", "housing", "insurance", "securities", "microfinance", "asset management")),
+    ("technology", ("tech", "software", "infotech", "systems", "digital", "data", "computer", "cyber", "solutions", "eclerx", "intellect")),
+    ("healthcare", ("pharma", "pharmaceutical", "labs", "laboratories", "health", "hospital", "diagnostic", "life sciences", "biotech", "medic")),
+    ("consumer discretionary", ("auto", "motors", "suzuki", "vehicle", "tyre", "jewellery", "retail", "fashion", "hotel", "travel", "leisure", "entertainment")),
+    ("consumer staples", ("foods", "food", "beverage", "brewer", "consumer", "unilever", "fmcg", "agro", "tea", "sugar", "dairy", "tobacco")),
+    ("industrials", ("engineering", "infra", "infrastructure", "construction", "logistics", "transport", "shipping", "ports", "aerospace", "defence", "industrial")),
+    ("materials", ("steel", "metal", "mining", "cement", "chem", "paint", "glass", "paper", "textile", "plast", "poly", "fertilis", "ceramic", "aluminium", "copper")),
+    ("energy", ("oil", "gas", "petro", "energy", "coal", "refinery", "lng")),
+    ("utilities", ("power", "grid", "electric", "utilities", "renewable", "solar", "wind")),
+    ("communication services", ("telecom", "communication", "media", "broadcast", "network")),
+    ("real estate", ("realty", "estate", "developer", "properties", "housing development")),
+  ]
+  for sector, keywords in rules:
+    if any(keyword in text for keyword in keywords):
+      return sector
+  return "Other"
+
+
+def fetch_nse_all_equities() -> list[dict]:
+  urls = [
+    "https://archives.nseindia.com/content/equities/EQUITY_L.csv",
+    "https://nsearchives.nseindia.com/content/equities/EQUITY_L.csv",
+  ]
+  text = ""
+  source_url = ""
+  for url in urls:
+    text = server.text_get(url) or ""
+    if "SYMBOL" in text.upper() and "," in text:
+      source_url = url
+      break
+  if not text:
+    return []
+
+  rows = []
+  reader = csv.DictReader(io.StringIO(text))
+  for rank, row in enumerate(reader, start=1):
+    raw_symbol = (row.get("SYMBOL") or "").strip().upper()
+    name = (row.get("NAME OF COMPANY") or row.get("NAME") or raw_symbol).strip()
+    series = (row.get("SERIES") or "").strip().upper()
+    isin = (row.get("ISIN NUMBER") or row.get("ISIN") or "").strip().upper()
+    if not raw_symbol or not name:
+      continue
+    symbol = raw_symbol if raw_symbol.endswith(".NS") else f"{raw_symbol}.NS"
+    rows.append(
+      {
+        "symbol": symbol,
+        "rawSymbol": raw_symbol,
+        "name": name,
+        "series": series,
+        "isin": isin,
+        "sector": infer_nse_sector(symbol, name),
+        "exchange": "NSE",
+        "region": "india",
+        "rank": rank,
+        "source": f"NSE equity securities list ({source_url or 'EQUITY_L.csv'})",
+      }
+    )
+  return rows
+
+
 def main() -> None:
   sp500 = preserve_existing_if_empty("sp500", fetch_sp500_constituents())
   sensex = preserve_existing_if_empty("sensex30", fetch_sensex_constituents())
+  nse_all = preserve_existing_if_empty("nse_all", fetch_nse_all_equities())
   nasdaq = preserve_existing_if_empty("nasdaq_listed", fetch_nasdaq_listed())
 
   write_json(DATA_DIR / "sp500.json", sp500)
   write_json(DATA_DIR / "sensex30.json", sensex)
+  write_json(DATA_DIR / "nse_all.json", nse_all)
   write_json(DATA_DIR / "nasdaq_listed.json", nasdaq)
   write_json(
     DATA_DIR / "manifest.json",
@@ -190,11 +260,12 @@ def main() -> None:
       "universes": {
         "sp500": {"count": len(sp500), "path": "data/universes/sp500.json"},
         "sensex30": {"count": len(sensex), "path": "data/universes/sensex30.json"},
+        "nse_all": {"count": len(nse_all), "path": "data/universes/nse_all.json"},
         "nasdaq_listed": {"count": len(nasdaq), "path": "data/universes/nasdaq_listed.json"},
       },
     },
   )
-  print(json.dumps({"sp500": len(sp500), "sensex30": len(sensex), "nasdaq_listed": len(nasdaq)}, indent=2))
+  print(json.dumps({"sp500": len(sp500), "sensex30": len(sensex), "nse_all": len(nse_all), "nasdaq_listed": len(nasdaq)}, indent=2))
 
 
 if __name__ == "__main__":

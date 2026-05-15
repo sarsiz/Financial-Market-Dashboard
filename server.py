@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import argparse
+import errno
 import gzip
 import json
 import html
@@ -38,6 +40,8 @@ PAPER_DIR = DATA_DIR / "papers"
 MACRO_DATA_DIR = DATA_DIR / "macro"
 VAULT_DIR = BASE_DIR / "vault" / "market-map"
 COMPANY_PROJECTS_PATH = DATA_DIR / "company_projects.json"
+DEFAULT_PORT = 8000
+PORT_SCAN_LIMIT = 20
 
 DEFAULT_CONFIG = {
   "provider": "yahoo",
@@ -276,8 +280,11 @@ SECTOR_BENCHMARKS: dict[str, list[dict]] = {
   ],
 }
 MARKET_MAP_UNIVERSES = {
-  "india": "sensex30",
+  "india": "nse_all",
   "us": "sp500",
+}
+MARKET_MAP_FALLBACK_UNIVERSES = {
+  "nse_all": "sensex30",
 }
 
 GOOGLE_FINANCE_INDEX_ALIASES: dict[str, list[str]] = {
@@ -815,6 +822,9 @@ OUTBOUND_ALLOWED_HOSTS = {
   "api.stlouisfed.org",
   "www.federalreserve.gov",
   "www.rbi.org.in",
+  "www.nseindia.com",
+  "archives.nseindia.com",
+  "nsearchives.nseindia.com",
   "www.alphavantage.co",
   "stooq.com",
 }
@@ -3249,19 +3259,28 @@ def fetch_yahoo_quote_summary(symbol: str) -> dict:
   ) or {}
 
 
+def search_terms(value: str) -> set[str]:
+  return {term for term in re.split(r"[^a-z0-9]+", (value or "").lower()) if len(term) >= 2}
+
+
 def _sector_matches_query(query_lower: str, meta: dict) -> bool:
   """Return True if the query matches sector or tag metadata of a ticker."""
   sector = meta.get("sector", "").lower()
   tags = [t.lower() for t in meta.get("tags", [])]
-  # Direct sector match
-  if query_lower in sector:
+  terms = search_terms(query_lower)
+  if not terms:
+    return False
+  sector_terms = search_terms(sector)
+  tag_terms = set().union(*(search_terms(tag) for tag in tags)) if tags else set()
+  # Direct sector/tag matches should be based on words, not tiny substrings inside company names.
+  if terms & sector_terms:
     return True
-  # Tag match
-  if any(query_lower in tag or tag in query_lower for tag in tags):
+  if terms & tag_terms:
     return True
   # Sector keyword → sector lookup
   for kw, matched_sectors in SECTOR_KEYWORDS.items():
-    if kw in query_lower or query_lower in kw:
+    keyword_terms = search_terms(kw)
+    if terms & keyword_terms:
       if any(ms in sector for ms in matched_sectors):
         return True
       if any(ms in tag for ms in matched_sectors for tag in tags):
@@ -3278,6 +3297,7 @@ def search_match_metadata(query: str, symbol: str, meta: dict) -> dict:
   alias_compact = [re.sub(r"[^A-Z0-9]+", " ", alias).strip() for alias in aliases]
   sector = meta.get("sector", "")
   tags = [tag.lower() for tag in meta.get("tags", [])]
+  terms = search_terms(query_lower)
   if cleaned == symbol or cleaned == symbol.replace(".NS", "") or cleaned == symbol.replace(".BO", ""):
     return {"matchType": "Symbol match", "matchReason": "Exact ticker symbol", "score": 100}
   if symbol.startswith(cleaned):
@@ -3289,10 +3309,12 @@ def search_match_metadata(query: str, symbol: str, meta: dict) -> dict:
   if cleaned in aliases or any(normalized_query in alias for alias in alias_compact):
     return {"matchType": "Alias match", "matchReason": "Known company alias", "score": 78}
   for keyword, matched_sectors in SECTOR_KEYWORDS.items():
-    if keyword in query_lower or query_lower in keyword:
+    if terms & search_terms(keyword):
       if any(matched in sector.lower() for matched in matched_sectors):
         return {"matchType": "Sector match", "matchReason": f"{keyword.title()} maps to {sector}", "score": 72}
-  if query_lower in sector.lower() or any(query_lower in tag or tag in query_lower for tag in tags):
+  sector_terms = search_terms(sector)
+  tag_terms = set().union(*(search_terms(tag) for tag in tags)) if tags else set()
+  if terms & sector_terms or terms & tag_terms:
     return {"matchType": "Sector match", "matchReason": sector or "Tag match", "score": 68}
   return {"matchType": "Local match", "matchReason": "Local universe match", "score": 50}
 
@@ -3381,6 +3403,9 @@ def ranked_results(query: str, remote_results: list[dict]) -> list[dict]:
 
 
 def fetch_yahoo_search(query: str) -> list[dict]:
+  local_results = local_search_results(query)
+  if local_results and max(float(item.get("score") or 0) for item in local_results) >= 78:
+    return ranked_results(query, [])
   quoted = urllib.parse.quote(query)
   payload = json_get(
     f"https://query1.finance.yahoo.com/v1/finance/search?q={quoted}&quotesCount=20&newsCount=0"
@@ -4973,6 +4998,15 @@ def load_universe_members(universe_name: str) -> list[dict]:
   except json.JSONDecodeError:
     return []
   return payload if isinstance(payload, list) else []
+
+
+def load_market_map_members(universe_name: str) -> tuple[list[dict], str, bool]:
+  members = load_universe_members(universe_name)
+  if members:
+    return members, universe_name, False
+  fallback_name = MARKET_MAP_FALLBACK_UNIVERSES.get(universe_name)
+  fallback_members = load_universe_members(fallback_name) if fallback_name else []
+  return fallback_members, fallback_name or universe_name, True
 
 
 def load_relation_graph(universe_name: str) -> dict:
@@ -8164,13 +8198,60 @@ def market_map_tile_span(index: int, quote: dict | None = None) -> int:
   return 1
 
 
-def build_market_heat_map(market: str = "india", period: str = "1D", limit: int = 80) -> dict:
+def market_map_size_bucket(member: dict, index: int) -> str:
+  raw_rank = member.get("rank") or member.get("marketCapRank") or member.get("displayRank")
+  try:
+    rank = int(raw_rank)
+  except (TypeError, ValueError):
+    rank = index + 1
+  if rank <= 100:
+    return "mega"
+  if rank <= 250:
+    return "large"
+  if rank <= 750:
+    return "mid"
+  return "small"
+
+
+def market_map_sector_options(members: list[dict]) -> list[dict]:
+  counts: dict[str, int] = {}
+  labels: dict[str, str] = {}
+  for member in members:
+    sector = str(member.get("sector") or fallback_meta(str(member.get("symbol") or "")).get("sector") or "Other")
+    key = canonical_sector_key(sector)
+    counts[key] = counts.get(key, 0) + 1
+    labels.setdefault(key, sector.title() if sector else "Other")
+  return [
+    {"key": key, "label": labels.get(key, key.title()), "count": count}
+    for key, count in sorted(counts.items(), key=lambda item: (-item[1], item[0]))
+  ]
+
+
+def filter_market_map_members(members: list[dict], sector: str = "all", size: str = "all") -> list[dict]:
+  sector_key = canonical_sector_key(sector) if sector and sector != "all" else "all"
+  size_key = (size or "all").lower()
+  filtered = []
+  for index, member in enumerate(members):
+    member_sector = canonical_sector_key(str(member.get("sector") or fallback_meta(str(member.get("symbol") or "")).get("sector") or "Other"))
+    member_size = market_map_size_bucket(member, index)
+    if sector_key != "all" and member_sector != sector_key:
+      continue
+    if size_key != "all" and member_size != size_key:
+      continue
+    filtered.append({**member, "_marketMapRank": index + 1, "_marketMapSize": member_size, "_marketMapSectorKey": member_sector})
+  return filtered
+
+
+def build_market_heat_map(market: str = "india", period: str = "1D", limit: int = 80, sector: str = "all", size: str = "all", sort: str = "rank") -> dict:
   normalized_market = market if market in MARKET_MAP_UNIVERSES else "india"
   normalized_period = period if period in SECTOR_PERIOD_LABELS else "1D"
-  universe_name = MARKET_MAP_UNIVERSES[normalized_market]
-  members = load_universe_members(universe_name)
-  max_items = int(clamp(float(limit or 80), 12, 120))
-  selected = members[:max_items]
+  requested_sector = sector or "all"
+  requested_size = size or "all"
+  requested_universe = MARKET_MAP_UNIVERSES[normalized_market]
+  members, universe_name, using_fallback_universe = load_market_map_members(requested_universe)
+  max_items = int(clamp(float(limit or 80), 12, 600))
+  filtered_members = filter_market_map_members(members, requested_sector, requested_size)
+  selected = filtered_members[:max_items]
   symbols = [str(item.get("symbol") or "").upper() for item in selected if item.get("symbol")]
   quote_map = fetch_live_quotes(symbols, fast=True)
   sector_payload = build_sector_matrix(normalized_market, normalized_period, None)
@@ -8206,23 +8287,40 @@ def build_market_heat_map(market: str = "india", period: str = "1D", limit: int 
       "name": quote.get("shortName") or quote.get("longName") or member.get("name") or fallback.get("name") or symbol,
       "sector": sector,
       "sectorKey": sector_key,
+      "sizeBucket": member.get("_marketMapSize") or market_map_size_bucket(member, index),
       "price": round(float(price), 2) if price is not None else None,
       "changePct": change_pct,
       "source": source,
       "quality": quality,
-      "rank": index + 1,
+      "rank": int(member.get("_marketMapRank") or index + 1),
       "span": market_map_tile_span(index, quote),
     })
+
+  sort_key = (sort or "rank").lower()
+  if sort_key == "sector":
+    tiles.sort(key=lambda item: (item.get("sectorKey") or "other", item.get("rank") or 999999))
+  elif sort_key == "change":
+    tiles.sort(key=lambda item: float(item.get("changePct") or 0.0), reverse=True)
+  elif sort_key == "name":
+    tiles.sort(key=lambda item: str(item.get("name") or item.get("symbol") or ""))
 
   return {
     "market": normalized_market,
     "universe": universe_name,
+    "requestedUniverse": requested_universe,
+    "usingFallbackUniverse": using_fallback_universe,
+    "universeCount": len(members),
+    "filteredCount": len(filtered_members),
+    "returnedCount": len(tiles),
+    "filters": {"sector": requested_sector, "size": requested_size, "sort": sort_key, "limit": max_items},
+    "sectors": market_map_sector_options(members),
     "period": normalized_period,
     "periodLabel": SECTOR_PERIOD_LABELS[normalized_period],
     "updatedAt": datetime.now(timezone.utc).isoformat(),
     "tiles": tiles,
+    "warmupSymbols": symbols[:160],
     "source": f"{universe_name} local manifest; live quotes where available; sector index proxy otherwise",
-    "sourceNote": "Tile area follows local universe rank or available volume, not verified market capitalization.",
+    "sourceNote": "Tile area follows local universe rank or available volume, not verified market capitalization. Daily history warmup is queued for the visible slice.",
     "liveCount": live_count,
     "proxyCount": max(len(tiles) - live_count, 0),
   }
@@ -8340,11 +8438,14 @@ class FinancialBoardHandler(BaseHTTPRequestHandler):
       params = urllib.parse.parse_qs(parsed.query)
       market = (params.get("market") or ["india"])[0].strip().lower()
       period = (params.get("period") or ["1D"])[0].strip().upper()
+      sector = (params.get("sector") or ["all"])[0].strip().lower() or "all"
+      size = (params.get("size") or ["all"])[0].strip().lower() or "all"
+      sort = (params.get("sort") or ["rank"])[0].strip().lower() or "rank"
       try:
         limit = int((params.get("limit") or ["80"])[0] or 80)
       except ValueError:
         limit = 80
-      return self.send_json(build_market_heat_map(market, period, limit))
+      return self.send_json(build_market_heat_map(market, period, limit, sector, size, sort))
     if parsed.path == "/api/data-sources":
       return self.send_json({"updatedAt": datetime.now(timezone.utc).isoformat(), "sources": TRUSTED_DATA_SOURCE_REGISTRY})
     if parsed.path == "/api/global-markets":
@@ -8507,12 +8608,65 @@ class QuietThreadingHTTPServer(ThreadingHTTPServer):
     super().handle_error(request, client_address)
 
 
-def run(port: int = 8000) -> None:
+def parse_port(value: str | int | None, default: int = DEFAULT_PORT) -> int:
+  if value in (None, ""):
+    return default
+  try:
+    port = int(value)
+  except (TypeError, ValueError) as exc:
+    raise ValueError(f"Port must be a number, got {value!r}") from exc
+  if port < 1 or port > 65535:
+    raise ValueError(f"Port must be between 1 and 65535, got {port}")
+  return port
+
+
+def build_server(host: str, port: int, allow_port_fallback: bool = True) -> tuple[QuietThreadingHTTPServer, int]:
+  last_error = None
+  max_port = min(65535, port + (PORT_SCAN_LIMIT if allow_port_fallback else 0))
+  for candidate in range(port, max_port + 1):
+    try:
+      return QuietThreadingHTTPServer((host, candidate), FinancialBoardHandler), candidate
+    except OSError as exc:
+      if exc.errno != errno.EADDRINUSE:
+        raise
+      last_error = exc
+  raise OSError(errno.EADDRINUSE, f"No available port found from {port} to {max_port}") from last_error
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+  parser = argparse.ArgumentParser(description="Run the Financial Board local server.")
+  parser.add_argument(
+    "-p",
+    "--port",
+    default=None,
+    help="Port to bind. Defaults to FINANCIAL_BOARD_PORT, PORT, or 8000.",
+  )
+  parser.add_argument(
+    "--strict-port",
+    action="store_true",
+    help="Fail instead of trying nearby ports when the requested port is already in use.",
+  )
+  return parser.parse_args(argv)
+
+
+def run(port: int | str | None = None, allow_port_fallback: bool = True) -> None:
   init_db()
-  server = QuietThreadingHTTPServer(("127.0.0.1", port), FinancialBoardHandler)
-  print(f"Financial Board running on http://127.0.0.1:{port}")
+  requested_port = parse_port(port or os.environ.get("FINANCIAL_BOARD_PORT") or os.environ.get("PORT"))
+  server, bound_port = build_server("127.0.0.1", requested_port, allow_port_fallback=allow_port_fallback)
+  if bound_port != requested_port:
+    print(f"Port {requested_port} is already in use; using {bound_port} instead.")
+  print(f"Financial Board running on http://127.0.0.1:{bound_port}")
   server.serve_forever()
 
 
+def main(argv: list[str] | None = None) -> int:
+  args = parse_args(argv)
+  try:
+    run(args.port, allow_port_fallback=not args.strict_port)
+  except KeyboardInterrupt:
+    print("\nFinancial Board stopped.")
+  return 0
+
+
 if __name__ == "__main__":
-  run()
+  raise SystemExit(main())

@@ -131,6 +131,8 @@ python3 server.py
 ```
 
 Then open [http://127.0.0.1:8000](http://127.0.0.1:8000).
+If `8000` is already in use, the server prints the next available local URL.
+You can also choose a port with `python3 server.py --port 8001` or `FINANCIAL_BOARD_PORT=8001 python3 server.py`.
 
 ## Test
 
@@ -287,6 +289,7 @@ The repo now supports a simple durable pipeline for large stock universes:
 
 ```bash
 python3 scripts/sync_universes.py
+python3 scripts/backfill_history.py --universe nse_all --range 1D --limit 300
 python3 scripts/backfill_history.py --universe sensex30 --range 1Y
 python3 scripts/backfill_history.py --universe sp500 --range 1Y
 python3 scripts/backfill_history.py --universe nasdaq_listed --range 1Y --limit 250
@@ -303,7 +306,7 @@ python3 scripts/prepare_market_graph.py --nasdaq-limit 250
 
 Why this shape:
 
-- universes are stored as plain JSON manifests
+- universes are stored as plain JSON manifests; the India market map uses the local `nse_all` manifest from NSE's equity securities list when available
 - historical records are cached once and reused
 - relation graphs are generated from cached history plus sector structure
 - company/entity relationship nodes can be layered on top of stock graphs for deeper context

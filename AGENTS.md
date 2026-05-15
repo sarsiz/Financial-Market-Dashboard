@@ -7,6 +7,7 @@
 - Reuse existing response shapes where possible, and expand them with additive keys so the frontend can stage-render without breaking older panels.
 - When live data is missing, return documented fallback/mock data with source notes instead of blank panels or invented “live” claims.
 - Use the local historical cache as the source of truth for older data. Fetch the live edge, then persist the older series and reuse it rather than scraping the same back history repeatedly.
+- For NSE breadth views, maintain the `nse_all` local universe manifest and queue bounded daily/history warmups for visible heatmap slices automatically; do not require manual reminders for routine daily-value storage.
 - Keep universe/history/relations pipelines scriptable and deterministic. Prefer plain JSON manifests plus resumable backfill jobs over hidden one-off logic.
 - Treat `vault/market-map/` as the local agent memory system. Durable notes go in stable folders like `companies/`, `concepts/`, `papers/`, `playbooks/`, `research/`, and `workflows/`; temporary captures should stay in `inbox/` or `sessions/` until promoted.
 - Do not commit local data. `data/` and `kb/` may keep only folder placeholders such as `.gitkeep`; `vault/market-map/` must not be tracked at all. Never upload watchlists, caches, generated market maps, provider payloads, databases, job manifests, local notes, or research captures.
