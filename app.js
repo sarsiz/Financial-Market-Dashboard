@@ -25,6 +25,7 @@ const REFRESH_INTERVALS = {
   sectorsLive: 20_000,
   historyActive: 3_500,
   historyIdle: 30_000,
+  chartLive: 1_500,
 };
 
 const DASHBOARD_CACHE_MAX_AGE_MS = 10 * 60_000;
@@ -253,6 +254,7 @@ const state = {
   pendingImpactGraph: null,
   revealObserver: null,
   lastOverviewChartRefreshAt: 0,
+  lastLiveChartRenderAt: 0,
   chartHoverFrame: null,
   chartHoverEvent: null,
   historyWarmupKeys: new Set(),
@@ -959,7 +961,7 @@ function renderMarketDiscovery(discoveryItems, sourceLabel) {
     <div class="discovery-chip-stack">
       ${discoveryItems.length ? discoveryItems.map((item) => `
         <button type="button" data-symbol="${item.symbol}">
-          <strong>${item.symbol}</strong>
+          <strong>${String(item.symbol || "").replace(/\.(NS|BO)$/i, "")}</strong>
           <span>${formatPercent(item.latestMove)} latest</span>
           <span>${formatPercent(item.twoDayMove)} 2D</span>
           <em>${item.reason} · ${item.confidence}</em>
@@ -1578,7 +1580,7 @@ function patchOverviewLiveSurface(active, forecast, { redrawChart = false } = {}
       active.historySeries?.length ? active.historySeries : (active.history || []),
       forecast.projected || [],
       state.chartFeatures,
-      { currency: active.currency, range: state.chartRange, overlayId: "hero-chart-hover" },
+      { currency: active.currency, range: state.chartRange, overlayId: "hero-chart-hover", item: active },
     );
   }
 }
@@ -1591,7 +1593,7 @@ function renderHeroChartOnly(active = state.dashboard?.active) {
     active.historySeries?.length ? active.historySeries : (active.history || []),
     forecast.projected || [],
     state.chartFeatures,
-    { currency: active.currency, range: state.chartRange, overlayId: "hero-chart-hover" },
+    { currency: active.currency, range: state.chartRange, overlayId: "hero-chart-hover", item: active },
   );
   document.querySelectorAll(".range-tab").forEach((button) => {
     button.classList.toggle("active", button.dataset.range === state.chartRange);
@@ -1606,6 +1608,16 @@ function renderHeroChartOnly(active = state.dashboard?.active) {
   if (sma50) sma50.checked = Boolean(state.chartFeatures.sma50);
   if (bands) bands.checked = Boolean(state.chartFeatures.bands);
   renderDataFlowBar();
+}
+
+function shouldRedrawLiveChart() {
+  const svg = document.getElementById("hero-projection-chart");
+  const now = Date.now();
+  if (svg?.dataset.chartReady !== "1" || now - state.lastLiveChartRenderAt >= REFRESH_INTERVALS.chartLive) {
+    state.lastLiveChartRenderAt = now;
+    return true;
+  }
+  return false;
 }
 
 function formatDuration(seconds) {
@@ -1986,7 +1998,7 @@ async function loadOverviewFast({ silent = false } = {}) {
       patchOverviewLiveSurface(
         state.dashboard.active,
         state.dashboard.active.forecast || emptyForecastPayload(),
-        { redrawChart: ["1D", "3D", "5D"].includes(normalizeChartRange(state.chartRange)) },
+        { redrawChart: true },
       );
     }
     renderTopbar();
@@ -2676,6 +2688,8 @@ function normalizeHistorySeries(history, range = "1M") {
       .map((item) => ({
         value: Number(item.value),
         timestamp: item.timestamp || null,
+        providerTimestamp: item.providerTimestamp || null,
+        observedTimestamp: item.observedTimestamp || null,
       }))
       .filter((item) => Number.isFinite(item.value));
   }
@@ -2685,22 +2699,40 @@ function normalizeHistorySeries(history, range = "1M") {
 function mergeQuoteIntoActiveHistory(active = {}, previousActive = {}, updatedAt = "", range = state.chartRange) {
   const price = Number(active.price);
   if (!Number.isFinite(price)) return active;
-  const timestamp = active.asOf || updatedAt || new Date().toISOString();
+  const providerTimestamp = active.asOf || "";
+  const observedTimestamp = active.receivedAt || updatedAt || new Date().toISOString();
+  const timestamp = providerTimestamp || observedTimestamp;
   const normalizedRange = normalizeChartRange(range);
   const nextActive = { ...active };
   const previousSeries = Array.isArray(previousActive.historySeries) ? previousActive.historySeries : [];
   if (previousSeries.length) {
-    const nextPoint = { value: price, timestamp };
     const nextSeries = [...previousSeries];
     const lastPoint = nextSeries[nextSeries.length - 1] || {};
     const lastTime = lastPoint.timestamp ? new Date(lastPoint.timestamp).getTime() : 0;
     const nextTime = timestamp ? new Date(timestamp).getTime() : 0;
-    const canAppend = normalizedRange === "1D" && nextTime && lastTime && nextTime > lastTime + 30_000;
+    const observedTime = observedTimestamp ? new Date(observedTimestamp).getTime() : 0;
+    const priceChanged = Math.abs(Number(lastPoint.value) - price) > Math.max(Math.abs(price) * 0.00001, 0.0001);
+    const providerAdvanced = Boolean(nextTime && lastTime && nextTime > lastTime);
+    const liveTimestamp = providerAdvanced ? nextTime : observedTime;
+    const livePoint = {
+      value: price,
+      timestamp: liveTimestamp ? new Date(liveTimestamp).toISOString() : timestamp,
+      providerTimestamp,
+      observedTimestamp,
+    };
+    const appendGap = normalizedRange === "1D" ? 5_000 : 15_000;
+    const canAppend = ["1D", "3D", "5D"].includes(normalizedRange)
+      && priceChanged
+      && liveTimestamp
+      && lastTime
+      && liveTimestamp > lastTime + appendGap;
     if (canAppend) {
-      nextSeries.push(nextPoint);
-      nextActive.historySeries = nextSeries.slice(-240);
+      nextSeries.push(livePoint);
+      nextActive.historySeries = nextSeries.slice(-320);
+    } else if (priceChanged || providerAdvanced) {
+      nextSeries[nextSeries.length - 1] = { ...lastPoint, ...livePoint };
+      nextActive.historySeries = nextSeries;
     } else {
-      nextSeries[nextSeries.length - 1] = { ...lastPoint, ...nextPoint };
       nextActive.historySeries = nextSeries;
     }
   }
@@ -2735,29 +2767,42 @@ function buildProjectedSeries(historySeries, projected, range = "1M") {
   }));
 }
 
-function formatAxisDate(timestamp, range = "1M") {
-  if (!timestamp) return "";
-  const date = new Date(timestamp);
-  const normalizedRange = normalizeChartRange(range);
-  const longRanges = new Set(["2Y", "3Y", "5Y", "MAX"]);
-  const options = normalizedRange === "1D"
-    ? { hour: "2-digit", minute: "2-digit" }
-    : (normalizedRange === "3D" || normalizedRange === "5D")
-      ? { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }
-      : (normalizedRange === "1Y" || longRanges.has(normalizedRange))
-      ? { month: "short", year: "2-digit" }
-      : { day: "2-digit", month: "short" };
-  return date.toLocaleString([], options);
+function chartTimeZone(options = {}) {
+  return options.timeZone || exchangeTimeZoneForItem(options.item || state.dashboard?.active || {});
 }
 
-function formatTooltipDate(timestamp, range = "1M") {
+function chartZoneLabel(options = {}) {
+  const item = options.item || state.dashboard?.active || {};
+  return item.marketSession?.hoursLabel?.split(" ").pop() || chartTimeZone(options).replace(/^[^/]+\//, "").replace(/_/g, " ");
+}
+
+function formatAxisDate(timestamp, range = "1M", options = {}) {
+  if (!timestamp) return "";
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return "";
+  const normalizedRange = normalizeChartRange(range);
+  const longRanges = new Set(["2Y", "3Y", "5Y", "MAX"]);
+  const timeZone = chartTimeZone(options);
+  const formatterOptions = normalizedRange === "1D"
+    ? { timeZone, hour: "2-digit", minute: "2-digit" }
+    : (normalizedRange === "3D" || normalizedRange === "5D")
+      ? { timeZone, day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }
+      : (normalizedRange === "1Y" || longRanges.has(normalizedRange))
+      ? { timeZone, month: "short", year: "2-digit" }
+      : { timeZone, day: "2-digit", month: "short" };
+  return date.toLocaleString([], formatterOptions);
+}
+
+function formatTooltipDate(timestamp, range = "1M", options = {}) {
   if (!timestamp) return "Time unavailable";
   const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return "Time unavailable";
   const normalizedRange = normalizeChartRange(range);
-  const options = ["1D", "3D", "5D"].includes(normalizedRange)
-    ? { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }
-    : { day: "2-digit", month: "short", year: "numeric" };
-  return date.toLocaleString([], options);
+  const timeZone = chartTimeZone(options);
+  const formatterOptions = ["1D", "3D", "5D"].includes(normalizedRange)
+    ? { timeZone, day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }
+    : { timeZone, day: "2-digit", month: "short", year: "numeric" };
+  return `${date.toLocaleString([], formatterOptions)} ${chartZoneLabel(options)}`;
 }
 
 function stdDev(values) {
@@ -2875,7 +2920,7 @@ function drawProjection(svg, historyInput, projectedInput, features = {}, option
   )).filter((index) => index >= 0 && index < historySeries.length);
   const xTicks = xTickIndices.map((index) => ({
     x: margin.left + ((index / (pointTotal - 1 || 1)) * (width - margin.left - margin.right)),
-    label: formatAxisDate(historySeries[index]?.timestamp, options.range || "1M"),
+    label: formatAxisDate(historySeries[index]?.timestamp, options.range || "1M", options),
   }));
 
   const hoverPoints = historySeries.map((item, index) => {
@@ -2969,7 +3014,7 @@ function drawProjection(svg, historyInput, projectedInput, features = {}, option
     if (hoverCard.dataset.hoverIndex !== String(nearestIndex)) {
       hoverCard.dataset.hoverIndex = String(nearestIndex);
       setTextIfChanged(hoverCard.querySelector("[data-hover-price]"), formatCurrency(nearest.value, options.currency || "USD"));
-      setTextIfChanged(hoverCard.querySelector("[data-hover-date]"), formatTooltipDate(nearest.timestamp, options.range || "1M"));
+      setTextIfChanged(hoverCard.querySelector("[data-hover-date]"), formatTooltipDate(nearest.timestamp, options.range || "1M", options));
     }
     const leftPercent = Math.max(8, Math.min(78, (nearest.x / width) * 100));
     hoverCard.style.left = `${leftPercent}%`;
@@ -5048,15 +5093,18 @@ function renderDeferredPanels() {
 function applyLiveQuoteUpdate(payload) {
   if (!state.dashboard || !payload) return;
   state.dashboard.updatedAt = payload.updatedAt;
-  processRecentTickerAlerts(payload.watchlist || []);
+  const usableQuotes = (payload.watchlist || []).filter((item) => Number.isFinite(Number(item.price)));
+  const payloadActiveUsable = payload.active && Number.isFinite(Number(payload.active.price));
+  if (!usableQuotes.length && !payloadActiveUsable) return;
+  processRecentTickerAlerts(usableQuotes);
 
-  const quoteMap = new Map((payload.watchlist || []).map((item) => [item.symbol, item]));
+  const quoteMap = new Map(usableQuotes.map((item) => [item.symbol, item]));
   state.dashboard.watchlist = (state.dashboard.watchlist || []).map((item) => {
     const live = quoteMap.get(item.symbol);
     return live ? { ...item, ...live } : item;
   });
 
-  if (payload.active && state.dashboard.active?.symbol === payload.active.symbol) {
+  if (payloadActiveUsable && state.dashboard.active?.symbol === payload.active.symbol) {
     const previousActive = state.dashboard.active;
     state.dashboard.active = {
       ...state.dashboard.active,
@@ -5087,7 +5135,7 @@ function applyLiveQuoteUpdate(payload) {
     patchOverviewLiveSurface(
       state.dashboard.active,
       state.dashboard.active.forecast || emptyForecastPayload(),
-      { redrawChart: ["1D", "3D", "5D"].includes(normalizeChartRange(state.chartRange)) },
+      { redrawChart: shouldRedrawLiveChart() },
     );
   }
   renderTopbar();
@@ -5577,24 +5625,34 @@ function marketHeatMapInitials(name = "", symbol = "") {
   return (initials || String(symbol).slice(0, 2) || "?").toUpperCase();
 }
 
+function canonicalSectorKey(value = "") {
+  return String(value || "other").toLowerCase().replace(/&/g, " and ").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "other";
+}
+
 function fallbackMarketHeatMapPayload(market = "india", period = "1D") {
   const watchlistTiles = (state.dashboard?.watchlist || []).slice(0, 18).map((item, index) => ({
     symbol: item.symbol,
     name: item.name || item.symbol,
     sector: item.exchange || market,
+    sectorKey: canonicalSectorKey(item.exchange || market),
+    sizeBucket: index < 6 ? "mega" : "large",
     changePct: Number(item.changePercent || 0),
     span: index < 3 ? 2 : 1,
     quality: item.dataSourceType === "live" || /live|google|yahoo/i.test(item.dataSource || "") ? "live" : "proxy",
     source: item.dataSource || "Dashboard watchlist fallback",
+    rank: index + 1,
   }));
   const sectorTiles = (state.sectorStripSectors || []).slice(0, 16).map((item) => ({
     symbol: item.symbol || item.label || item.name || "SECTOR",
     name: item.name || item.label || item.symbol || "Sector",
     sector: item.sector || item.label || market,
+    sectorKey: canonicalSectorKey(item.sector || item.label || market),
+    sizeBucket: "mega",
     changePct: Number(item.changePct ?? item.changePercent ?? item.change ?? 0),
     span: 2,
     quality: "proxy",
     source: item.source || "Sector strip fallback",
+    rank: 999,
   }));
   const tiles = [...watchlistTiles, ...sectorTiles].filter((tile) => tile.symbol);
   if (!tiles.length) return null;
@@ -5606,6 +5664,7 @@ function fallbackMarketHeatMapPayload(market = "india", period = "1D") {
     tiles,
     liveCount: tiles.filter((tile) => tile.quality === "live").length,
     proxyCount: tiles.filter((tile) => tile.quality !== "live").length,
+    sectorGroups: buildClientMarketHeatMapSectorGroups(tiles),
     sourceNote: "Frontend fallback from loaded watchlist and sector strip while the market-map endpoint recovers.",
   };
 }
@@ -5617,6 +5676,15 @@ function marketHeatMapSizeLabel(size = "") {
     mid: "251-750",
     small: "751+",
   })[String(size || "").toLowerCase()] || "Unranked";
+}
+
+function marketHeatMapScopeLabel(scope = "") {
+  return ({
+    top100: "Top 100",
+    top250: "Top 250",
+    top750: "Top 750",
+    all: "All listed",
+  })[String(scope || "").toLowerCase()] || "Top 250";
 }
 
 function marketHeatMapGroupLabel(key, groupBy) {
@@ -5635,6 +5703,74 @@ function groupMarketHeatMapTiles(tiles, groupBy) {
     groups.get(key).tiles.push(tile);
   });
   return Array.from(groups.values()).sort((a, b) => b.tiles.length - a.tiles.length || a.label.localeCompare(b.label));
+}
+
+function buildClientMarketHeatMapSectorGroups(tiles = []) {
+  const groups = new Map();
+  tiles.forEach((tile) => {
+    const key = tile.sectorKey || canonicalSectorKey(tile.sector || "Other");
+    if (!groups.has(key)) {
+      groups.set(key, {
+        key,
+        label: marketHeatMapGroupLabel(key, "sector"),
+        count: 0,
+        liveCount: 0,
+        proxyCount: 0,
+        avgChangePct: 0,
+        companies: [],
+      });
+    }
+    const group = groups.get(key);
+    group.count += 1;
+    if (tile.quality === "live") group.liveCount += 1;
+    else group.proxyCount += 1;
+    group.companies.push(tile);
+  });
+  return Array.from(groups.values()).map((group) => {
+    const changes = group.companies.map((item) => Number(item.changePct || 0)).filter(Number.isFinite);
+    return {
+      ...group,
+      avgChangePct: changes.length ? changes.reduce((sum, value) => sum + value, 0) / changes.length : 0,
+      companies: [...group.companies].sort((a, b) => Number(a.rank || 999999) - Number(b.rank || 999999)),
+    };
+  });
+}
+
+function marketHeatMapSectorDetail(group, payload = state.marketHeatMap) {
+  const companies = (payload?.sectorGroups || buildClientMarketHeatMapSectorGroups(payload?.tiles || []))
+    .find((item) => item.key === group.key)?.companies || group.tiles || [];
+  if (!companies.length) return "";
+  const rows = companies.slice(0, 180).map((company) => {
+    const pct = Number(company.changePct || 0);
+    const direction = pct > 0.15 ? "up" : pct < -0.15 ? "down" : "flat";
+    const sourceLabel = company.quality === "live" ? "Live" : "Proxy";
+    return `
+      <tr data-symbol="${escapeHtml(company.symbol || "")}">
+        <td><b>${escapeHtml(String(company.symbol || "").replace(/\.(NS|BO)$/i, ""))}</b><span>${escapeHtml(company.name || company.symbol || "")}</span></td>
+        <td>${escapeHtml(marketHeatMapSizeLabel(company.sizeBucket))}</td>
+        <td>${company.price == null ? "n/a" : formatCurrency(company.price, payload?.market === "india" ? "INR" : "USD")}</td>
+        <td class="${direction}">${formatPercent(pct)}</td>
+        <td>${sourceLabel}</td>
+      </tr>
+    `;
+  }).join("");
+  const omitted = companies.length > 180 ? `<p>${companies.length - 180} more rows are kept in the local heatmap payload for this view.</p>` : "";
+  return `
+    <div class="market-heat-sector-detail">
+      <div class="market-heat-sector-summary">
+        <span>${escapeHtml(marketHeatMapScopeLabel(payload?.filters?.scope))}</span>
+        <strong>${escapeHtml(group.label)} · ${companies.length} companies</strong>
+        <em>${formatPercent(group.avgChangePct || 0)} avg · ${group.liveCount || 0} live / ${group.proxyCount || 0} proxy</em>
+      </div>
+      <div class="market-heat-table-wrap">
+        <table class="market-heat-company-table">
+          <thead><tr><th>Company</th><th>Scope</th><th>Price</th><th>Move</th><th>Source</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+      ${omitted}
+    </div>
+  `;
 }
 
 function syncMarketHeatMapSectorOptions(payload) {
@@ -5692,10 +5828,17 @@ function renderMarketHeatMap(payload = state.marketHeatMap) {
   }
   const prefs = loadMarketHeatMapPrefs();
   const groupBy = prefs.group || "sector";
-  const groups = groupMarketHeatMapTiles(tiles, groupBy);
+  const openGroup = prefs.openGroup || "";
+  const sectorGroupMap = new Map((payload?.sectorGroups || buildClientMarketHeatMapSectorGroups(tiles)).map((item) => [item.key, item]));
+  const groups = groupMarketHeatMapTiles(tiles, groupBy).map((group) => ({ ...group, ...(sectorGroupMap.get(group.key) || {}) }));
   const markup = groups.map((group) => `
-    <section class="market-heat-group" data-heat-group="${escapeHtml(group.key)}">
-      ${groupBy !== "flat" ? `<div class="market-heat-group-head"><strong>${escapeHtml(group.label)}</strong><span>${group.tiles.length} stocks</span></div>` : ""}
+    <section class="market-heat-group ${openGroup === group.key ? "is-open" : ""}" data-heat-group="${escapeHtml(group.key)}">
+      ${groupBy !== "flat" ? `
+        <button class="market-heat-group-head" type="button" data-heat-open-group="${escapeHtml(group.key)}" aria-expanded="${openGroup === group.key ? "true" : "false"}">
+          <strong>${escapeHtml(group.label)}</strong>
+          <span>${group.count || group.tiles.length} stocks · ${formatPercent(group.avgChangePct || 0)} avg</span>
+        </button>
+      ` : ""}
       <div class="market-heat-group-grid">
         ${group.tiles.map((tile) => {
           const pct = Number(tile.changePct || 0);
@@ -5717,13 +5860,15 @@ function renderMarketHeatMap(payload = state.marketHeatMap) {
           `;
         }).join("")}
       </div>
+      ${openGroup === group.key ? marketHeatMapSectorDetail(group, payload) : ""}
     </section>
   `).join("");
   setHTMLIfChanged(grid, markup);
   if (footer) {
     const age = payload.updatedAt ? Math.max(0, Math.round((Date.now() - new Date(payload.updatedAt).getTime()) / 60000)) : 0;
-    const coverage = payload.universeCount ? `${payload.returnedCount || tiles.length}/${payload.filteredCount || payload.universeCount} shown from ${payload.universeCount} listed` : `${tiles.length} tiles`;
-    footer.textContent = `${payload.periodLabel || payload.period || "Selected period"} · ${coverage} · ${payload.liveCount || 0} live quote tiles · ${payload.proxyCount || 0} proxy tiles · ${payload.sourceNote || "Tile size is a display proxy."} · updated ${age < 1 ? "just now" : `${age}m ago`}`;
+    const scopeLabel = marketHeatMapScopeLabel(payload.filters?.scope);
+    const coverage = payload.universeCount ? `${payload.returnedCount || tiles.length}/${payload.filteredCount || payload.scopeCount || payload.universeCount} shown from ${scopeLabel.toLowerCase()} (${payload.universeCount} listed)` : `${tiles.length} tiles`;
+    footer.textContent = `${payload.periodLabel || payload.period || "Selected period"} · ${coverage} · ${payload.liveCount || 0} live quote tiles · ${payload.proxyCount || 0} proxy tiles · local snapshot ${payload.cacheState || "fresh"} · ${payload.sourceNote || "Tile size is a display proxy."} · updated ${age < 1 ? "just now" : `${age}m ago`}`;
   }
 }
 
@@ -5738,6 +5883,7 @@ async function fetchMarketHeatMap(market, period, options = {}) {
       sector: options.sector || "all",
       size: options.size || "all",
       sort: options.group === "sector" ? "sector" : "rank",
+      scope: options.scope || "top250",
     });
     const payload = await api(`/api/market-map?${params.toString()}`, { timeoutMs: 30000 });
     if (requestId !== state.marketHeatMapRequestId) return;
@@ -5764,9 +5910,11 @@ function initMarketHeatMap() {
   const regionSelect = document.getElementById("market-heat-map-region");
   const groupSelect = document.getElementById("market-heat-map-group");
   const sectorSelect = document.getElementById("market-heat-map-sector");
+  const scopeSelect = document.getElementById("market-heat-map-scope");
   const sizeSelect = document.getElementById("market-heat-map-size");
   const limitSelect = document.getElementById("market-heat-map-limit");
   const expandButton = document.getElementById("market-heat-map-expand");
+  const grid = document.getElementById("market-heat-map-grid");
   const periodTabs = document.querySelectorAll(".market-heat-map-tab[data-period]");
   if (!panel || !regionSelect) return;
   const prefs = loadMarketHeatMapPrefs();
@@ -5775,12 +5923,14 @@ function initMarketHeatMap() {
   let period = prefs.period || "1D";
   let group = prefs.group || "sector";
   let sector = prefs.sector || "all";
+  let scope = prefs.scope || "top250";
   let size = prefs.size || "all";
   let limit = prefs.limit || "240";
   let expanded = Boolean(prefs.expanded);
   regionSelect.value = market;
   if (groupSelect) groupSelect.value = group;
   if (sectorSelect) sectorSelect.value = sector;
+  if (scopeSelect) scopeSelect.value = scope;
   if (sizeSelect) sizeSelect.value = size;
   if (limitSelect) limitSelect.value = limit;
   panel.classList.toggle("is-expanded", expanded);
@@ -5788,24 +5938,32 @@ function initMarketHeatMap() {
   if (expandButton) setTextIfChanged(expandButton, expanded ? "Collapse" : "Expand");
   periodTabs.forEach((tab) => tab.classList.toggle("active", tab.dataset.period === period));
   const persistAndFetch = () => {
-    saveMarketHeatMapPrefs({ market, period, group, sector, size, limit, expanded });
-    fetchMarketHeatMap(market, period, { group, sector, size, limit });
+    const openGroup = loadMarketHeatMapPrefs().openGroup || "";
+    saveMarketHeatMapPrefs({ market, period, group, sector, scope, size, limit, expanded, openGroup });
+    fetchMarketHeatMap(market, period, { group, sector, scope, size, limit });
   };
   regionSelect.addEventListener("change", () => {
     market = regionSelect.value;
     sector = "all";
     if (sectorSelect) sectorSelect.value = "all";
+    scope = market === "india" ? "top250" : "top250";
+    if (scopeSelect) scopeSelect.value = scope;
     limit = market === "india" ? "240" : "240";
     persistAndFetch();
   });
   groupSelect?.addEventListener("change", () => {
     group = groupSelect.value || "sector";
-    saveMarketHeatMapPrefs({ market, period, group, sector, size, limit, expanded });
+    saveMarketHeatMapPrefs({ ...loadMarketHeatMapPrefs(), market, period, group, sector, scope, size, limit, expanded });
     renderMarketHeatMap();
-    fetchMarketHeatMap(market, period, { group, sector, size, limit });
+    fetchMarketHeatMap(market, period, { group, sector, scope, size, limit });
   });
   sectorSelect?.addEventListener("change", () => {
     sector = sectorSelect.value || "all";
+    saveMarketHeatMapPrefs({ ...loadMarketHeatMapPrefs(), openGroup: sector === "all" ? "" : sector });
+    persistAndFetch();
+  });
+  scopeSelect?.addEventListener("change", () => {
+    scope = scopeSelect.value || "top250";
     persistAndFetch();
   });
   sizeSelect?.addEventListener("change", () => {
@@ -5821,7 +5979,16 @@ function initMarketHeatMap() {
     panel.classList.toggle("is-expanded", expanded);
     expandButton.setAttribute("aria-pressed", expanded ? "true" : "false");
     setTextIfChanged(expandButton, expanded ? "Collapse" : "Expand");
-    saveMarketHeatMapPrefs({ market, period, group, sector, size, limit, expanded });
+    saveMarketHeatMapPrefs({ ...loadMarketHeatMapPrefs(), market, period, group, sector, scope, size, limit, expanded });
+  });
+  grid?.addEventListener("click", (event) => {
+    const button = event.target instanceof Element ? event.target.closest("[data-heat-open-group]") : null;
+    if (!button) return;
+    const openGroup = button.getAttribute("data-heat-open-group") || "";
+    const prefsNow = loadMarketHeatMapPrefs();
+    const nextOpenGroup = prefsNow.openGroup === openGroup ? "" : openGroup;
+    saveMarketHeatMapPrefs({ ...prefsNow, market, period, group, sector, scope, size, limit, expanded, openGroup: nextOpenGroup });
+    renderMarketHeatMap();
   });
   periodTabs.forEach((tab) => {
     tab.addEventListener("click", () => {

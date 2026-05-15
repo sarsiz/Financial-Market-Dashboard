@@ -183,6 +183,8 @@
             </aside>
           </div>
 
+          <section id="market-discovery" class="market-discovery glass-panel"></section>
+
           <article id="market-heat-map-panel" class="glass-panel market-heat-map-panel">
             <div class="section-heading market-heat-map-heading">
               <div>
@@ -201,6 +203,12 @@
                 </select>
                 <select id="market-heat-map-sector" class="sector-ctrl-select" aria-label="Filter heat map sector">
                   <option value="all" selected>All sectors</option>
+                </select>
+                <select id="market-heat-map-scope" class="sector-ctrl-select" aria-label="Heat map universe scope">
+                  <option value="top100">Top 100</option>
+                  <option value="top250" selected>Top 250</option>
+                  <option value="top750">Top 750</option>
+                  <option value="all">All listed</option>
                 </select>
                 <select id="market-heat-map-size" class="sector-ctrl-select" aria-label="Filter heat map size">
                   <option value="all" selected>All sizes</option>
@@ -234,7 +242,6 @@
             </div>
             <div id="stock-dossier-nav" class="dossier-nav"></div>
             <div id="stock-dossier" class="stock-dossier"></div>
-            <div id="market-discovery" class="market-discovery"></div>
           </article>
 
         </section>

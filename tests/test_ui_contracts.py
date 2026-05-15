@@ -49,6 +49,7 @@ class HtmlContractTests(unittest.TestCase):
       "ticker-search-button",
       "market-heat-map-group",
       "market-heat-map-sector",
+      "market-heat-map-scope",
       "market-heat-map-size",
       "market-heat-map-limit",
       "market-heat-map-expand",
@@ -59,6 +60,14 @@ class HtmlContractTests(unittest.TestCase):
   def test_index_contains_expected_top_level_tabs(self):
     tabs = re.findall(r'data-tab="([^"]+)"', self.index_html)
     self.assertEqual(tabs, ["overview", "bond-market", "inflation", "equity-context", "events-calendar", "methodology", "watchlist-implications", "comparison"])
+
+  def test_market_discovery_sits_before_heatmap_and_dossier(self):
+    discovery_index = self.index_html.index('id="market-discovery"')
+    heatmap_index = self.index_html.index('id="market-heat-map-panel"')
+    dossier_index = self.index_html.index('id="stock-dossier-panel"')
+
+    self.assertLess(discovery_index, heatmap_index)
+    self.assertLess(heatmap_index, dossier_index)
 
   def test_topbar_macro_title_and_live_market_header_removed(self):
     self.assertNotIn("Live Markets", self.index_html)
@@ -116,7 +125,10 @@ class HtmlContractTests(unittest.TestCase):
       "sector-tile-top",
       "sector-tile-meta",
       "function groupMarketHeatMapTiles(",
+      "function marketHeatMapSectorDetail(",
+      "data-heat-open-group",
       "function scheduleHeatMapHistoryWarmup(",
+      "usableQuotes",
       "market-heat-group",
       "chart-mode-tab",
       "function buildSyntheticCandles(",
@@ -140,6 +152,8 @@ class HtmlContractTests(unittest.TestCase):
       ".scroll-reveal.is-visible",
       ".market-heat-map-panel.is-expanded",
       ".market-heat-group-grid",
+      ".market-heat-sector-detail",
+      ".market-heat-company-table",
     ]
     for snippet in expected_snippets:
       self.assertIn(snippet, styles)
@@ -202,6 +216,10 @@ class HtmlContractTests(unittest.TestCase):
     self.assertIn("chartType: \"line\"", self.app_js)
     self.assertIn("chartType === \"candles\"", self.app_js)
     self.assertIn("chartType === \"bars\"", self.app_js)
+    self.assertIn("chartTimeZone(options)", self.app_js)
+    self.assertIn("exchangeTimeZoneForItem(options.item", self.app_js)
+    self.assertIn("shouldRedrawLiveChart()", self.app_js)
+    self.assertIn("appendGap = normalizedRange === \"1D\" ? 5_000 : 15_000", self.app_js)
     self.assertIn("repeat(auto-fit, minmax(142px, 1fr))", styles)
     self.assertIn("font-size: 0.86rem", styles)
     self.assertIn("Financial Services", self.app_js)

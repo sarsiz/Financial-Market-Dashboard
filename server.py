@@ -247,12 +247,14 @@ _QUOTE_FETCH_LOCK = threading.Lock()
 _QUOTE_PROVIDER_HEALTH_LOCK = threading.Lock()
 _QUOTE_PROVIDER_HEALTH: dict[str, dict] = {}
 _MEMORY_PAYLOAD_CACHE_LOCK = threading.Lock()
+_SERVER_STOPPING = threading.Event()
 QUOTE_CACHE_TTL = 2
 QUOTE_STALE_TTL = 600
 QUOTE_PROVIDER_FAILURE_COOLDOWN = 45
 QUOTE_PROVIDER_TIMEOUT_SECONDS = 5
 QUOTE_PROVIDER_PARALLEL_TIMEOUT_SECONDS = 8
 LIVE_QUOTE_EDGE_SECONDS = 90
+QUOTE_STREAM_INTERVAL_SECONDS = 1.5
 SECTOR_PERIOD_LABELS = {
   "1D": "1 day",
   "5D": "5 days",
@@ -285,6 +287,12 @@ MARKET_MAP_UNIVERSES = {
 }
 MARKET_MAP_FALLBACK_UNIVERSES = {
   "nse_all": "sensex30",
+}
+MARKET_MAP_SCOPE_LIMITS = {
+  "top100": 100,
+  "top250": 250,
+  "top750": 750,
+  "all": 0,
 }
 
 GOOGLE_FINANCE_INDEX_ALIASES: dict[str, list[str]] = {
@@ -1058,6 +1066,7 @@ PAYLOAD_CACHE_MAX_AGE = {
   "region_inflation": 21600,
   "region_events": 1800,
   "region_calendar": 21600,
+  "market_heat_map": 300,
 }
 
 
@@ -2268,6 +2277,8 @@ def save_live_quote_cache(quotes: dict[str, dict]) -> None:
 
 
 def fetch_live_quotes_from_providers(symbols: list[str]) -> dict[str, dict]:
+  if _SERVER_STOPPING.is_set():
+    return {}
   unresolved = [symbol.upper() for symbol in symbols if symbol]
   if not unresolved:
     return {}
@@ -2326,11 +2337,15 @@ def fetch_live_quotes_from_providers(symbols: list[str]) -> dict[str, dict]:
       return {**provisional, **resolved}
 
   parallel = [provider for provider in chain if provider.get("parallel") and quote_provider_available(provider["id"])]
-  if not parallel:
+  if not parallel or _SERVER_STOPPING.is_set():
     return {**provisional, **resolved}
   remaining_symbols = [symbol for symbol in unresolved if symbol not in resolved]
   executor = ThreadPoolExecutor(max_workers=min(8, len(parallel)))
-  futures = {executor.submit(provider["fetch"], remaining_symbols): provider for provider in parallel}
+  try:
+    futures = {executor.submit(provider["fetch"], remaining_symbols): provider for provider in parallel}
+  except RuntimeError:
+    executor.shutdown(wait=False, cancel_futures=True)
+    return {**provisional, **resolved}
   pending_futures = set(futures)
   deadline = time.time() + QUOTE_PROVIDER_PARALLEL_TIMEOUT_SECONDS
 
@@ -2370,10 +2385,15 @@ def refresh_live_quote_cache_async(symbols: list[str]) -> None:
 
   def worker() -> None:
     try:
+      if _SERVER_STOPPING.is_set():
+        return
       fresh, _ = cached_live_quotes(cleaned)
       missing = [symbol for symbol in cleaned if symbol not in fresh]
-      if missing:
+      if missing and not _SERVER_STOPPING.is_set():
         save_live_quote_cache(fetch_live_quotes_from_providers(missing))
+    except RuntimeError:
+      if not _SERVER_STOPPING.is_set():
+        raise
     finally:
       _QUOTE_FETCH_LOCK.release()
 
@@ -7920,7 +7940,7 @@ def build_radar_payload(symbol: str | None = None) -> dict:
   }
 
 
-def build_live_quotes(symbols: list[str], active: str | None) -> dict:
+def build_live_quotes(symbols: list[str], active: str | None, allow_history_fallback: bool = True) -> dict:
   cleaned = [symbol.upper() for symbol in symbols if symbol]
   if not cleaned:
     cleaned = DEFAULT_WATCHLIST.copy()
@@ -7937,7 +7957,7 @@ def build_live_quotes(symbols: list[str], active: str | None) -> dict:
     price = quote.get("regularMarketPrice")
     previous_close = quote.get("regularMarketPreviousClose")
     data_source = quote.get("quoteSource") or ("Live source" if quote else "Fallback data")
-    if price is None or previous_close is None:
+    if (price is None or previous_close is None) and allow_history_fallback:
       history, history_meta = build_history(symbol, allow_live_refresh=False)
       if len(history) >= 2:
         price = history[-1]
@@ -7946,6 +7966,8 @@ def build_live_quotes(symbols: list[str], active: str | None) -> dict:
       else:
         price = None
         previous_close = None
+    if (price is None or previous_close is None) and not allow_history_fallback:
+      continue
     history_as_of = (history_meta.get("timestamps") or [None])[-1] if history_meta.get("timestamps") else None
     as_of = history_as_of if source_label_is_history(data_source) else quote_effective_as_of(quote, data_source, history_as_of)
     session = build_market_session(
@@ -7982,7 +8004,8 @@ def build_live_quotes(symbols: list[str], active: str | None) -> dict:
   return {
     "updatedAt": updated_at,
     "watchlist": items,
-    "active": active_item or items[0],
+    "active": active_item or (items[0] if items else None),
+    "mode": "stream" if not allow_history_fallback else "full",
   }
 
 
@@ -8227,6 +8250,19 @@ def market_map_sector_options(members: list[dict]) -> list[dict]:
   ]
 
 
+def normalize_market_map_scope(scope: str = "top250") -> str:
+  normalized = (scope or "top250").lower()
+  return normalized if normalized in MARKET_MAP_SCOPE_LIMITS else "top250"
+
+
+def apply_market_map_scope(members: list[dict], scope: str = "top250") -> tuple[list[dict], str, int]:
+  normalized_scope = normalize_market_map_scope(scope)
+  limit = MARKET_MAP_SCOPE_LIMITS[normalized_scope]
+  if limit <= 0:
+    return members, normalized_scope, len(members)
+  return members[:limit], normalized_scope, limit
+
+
 def filter_market_map_members(members: list[dict], sector: str = "all", size: str = "all") -> list[dict]:
   sector_key = canonical_sector_key(sector) if sector and sector != "all" else "all"
   size_key = (size or "all").lower()
@@ -8242,19 +8278,98 @@ def filter_market_map_members(members: list[dict], sector: str = "all", size: st
   return filtered
 
 
-def build_market_heat_map(market: str = "india", period: str = "1D", limit: int = 80, sector: str = "all", size: str = "all", sort: str = "rank") -> dict:
+def market_map_company_payload(member: dict, quote: dict, sector_changes: dict, sector_source: str, period: str, index: int) -> tuple[dict, bool]:
+  symbol = str(member.get("symbol") or "").upper()
+  fallback = fallback_meta(symbol)
+  sector = member.get("sector") or fallback.get("sector") or "Other"
+  sector_key = canonical_sector_key(str(sector))
+  sector_change = sector_changes.get(sector_key, 0.0)
+  live_1d = period == "1D" and quote_is_usable(quote) and quote.get("regularMarketChangePercent") is not None
+  price = quote.get("regularMarketPrice")
+  if price is None:
+    price = fallback.get("basePrice")
+  if live_1d:
+    change_pct = round(float(quote.get("regularMarketChangePercent") or 0.0), 2)
+    source = quote.get("quoteSource") or "Live quote"
+    quality = "live"
+  else:
+    change_pct = proxy_change_for_symbol(symbol, sector_change)
+    source = f"Sector index proxy ({sector_source or 'market data'})"
+    quality = "sector-proxy"
+  payload = {
+    "symbol": symbol,
+    "name": quote.get("shortName") or quote.get("longName") or member.get("name") or fallback.get("name") or symbol,
+    "sector": sector,
+    "sectorKey": sector_key,
+    "sizeBucket": member.get("_marketMapSize") or market_map_size_bucket(member, index),
+    "price": round(float(price), 2) if price is not None else None,
+    "changePct": change_pct,
+    "source": source,
+    "quality": quality,
+    "rank": int(member.get("_marketMapRank") or index + 1),
+    "span": market_map_tile_span(index, quote),
+  }
+  return payload, live_1d
+
+
+def build_market_map_sector_groups(companies: list[dict]) -> list[dict]:
+  groups: dict[str, dict] = {}
+  for company in companies:
+    key = company.get("sectorKey") or canonical_sector_key(company.get("sector") or "Other")
+    group = groups.setdefault(
+      key,
+      {
+        "key": key,
+        "label": str(company.get("sector") or "Other").title(),
+        "count": 0,
+        "liveCount": 0,
+        "proxyCount": 0,
+        "avgChangePct": 0.0,
+        "best": None,
+        "worst": None,
+        "companies": [],
+      },
+    )
+    group["count"] += 1
+    if company.get("quality") == "live":
+      group["liveCount"] += 1
+    else:
+      group["proxyCount"] += 1
+    group["companies"].append(company)
+    if not group["best"] or float(company.get("changePct") or 0.0) > float(group["best"].get("changePct") or 0.0):
+      group["best"] = company
+    if not group["worst"] or float(company.get("changePct") or 0.0) < float(group["worst"].get("changePct") or 0.0):
+      group["worst"] = company
+
+  sector_groups = []
+  for group in groups.values():
+    changes = [float(item.get("changePct") or 0.0) for item in group["companies"]]
+    group["avgChangePct"] = round(sum(changes) / len(changes), 2) if changes else 0.0
+    group["companies"] = sorted(group["companies"], key=lambda item: int(item.get("rank") or 999999))
+    sector_groups.append(group)
+  return sorted(sector_groups, key=lambda item: (-int(item.get("count") or 0), item.get("label") or ""))
+
+
+def market_heat_map_cache_key(market: str, period: str, limit: int, sector: str, size: str, sort: str, scope: str) -> str:
+  return "::".join(["market_heat_map", market, period, str(limit), sector or "all", size or "all", sort or "rank", scope or "top250"])
+
+
+def build_market_heat_map(market: str = "india", period: str = "1D", limit: int = 80, sector: str = "all", size: str = "all", sort: str = "rank", scope: str = "top250") -> dict:
   normalized_market = market if market in MARKET_MAP_UNIVERSES else "india"
   normalized_period = period if period in SECTOR_PERIOD_LABELS else "1D"
   requested_sector = sector or "all"
   requested_size = size or "all"
+  requested_scope = normalize_market_map_scope(scope)
   requested_universe = MARKET_MAP_UNIVERSES[normalized_market]
   members, universe_name, using_fallback_universe = load_market_map_members(requested_universe)
-  max_items = int(clamp(float(limit or 80), 12, 600))
-  filtered_members = filter_market_map_members(members, requested_sector, requested_size)
+  scoped_members, normalized_scope, scope_count = apply_market_map_scope(members, requested_scope)
+  max_items = int(clamp(float(limit or 80), 12, 1000))
+  filtered_members = filter_market_map_members(scoped_members, requested_sector, requested_size)
   selected = filtered_members[:max_items]
   symbols = [str(item.get("symbol") or "").upper() for item in selected if item.get("symbol")]
   quote_map = fetch_live_quotes(symbols, fast=True)
   sector_payload = build_sector_matrix(normalized_market, normalized_period, None)
+  sector_source = sector_payload.get("source") or "market data"
   sector_changes = {
     canonical_sector_key(item.get("sector") or item.get("label")): float(item.get("changePct") or 0.0)
     for item in sector_payload.get("sectors", [])
@@ -8265,36 +8380,10 @@ def build_market_heat_map(market: str = "india", period: str = "1D", limit: int 
   for index, member in enumerate(selected):
     symbol = str(member.get("symbol") or "").upper()
     quote = quote_map.get(symbol) or {}
-    sector = member.get("sector") or fallback_meta(symbol).get("sector") or "Other"
-    sector_key = canonical_sector_key(str(sector))
-    sector_change = sector_changes.get(sector_key, 0.0)
-    live_1d = normalized_period == "1D" and quote_is_usable(quote) and quote.get("regularMarketChangePercent") is not None
-    fallback = fallback_meta(symbol)
-    price = quote.get("regularMarketPrice")
-    if price is None:
-      price = fallback.get("basePrice")
+    company, live_1d = market_map_company_payload(member, quote, sector_changes, sector_source, normalized_period, index)
     if live_1d:
-      change_pct = round(float(quote.get("regularMarketChangePercent") or 0.0), 2)
-      source = quote.get("quoteSource") or "Live quote"
-      quality = "live"
       live_count += 1
-    else:
-      change_pct = proxy_change_for_symbol(symbol, sector_change)
-      source = f"Sector index proxy ({sector_payload.get('source') or 'market data'})"
-      quality = "sector-proxy"
-    tiles.append({
-      "symbol": symbol,
-      "name": quote.get("shortName") or quote.get("longName") or member.get("name") or fallback.get("name") or symbol,
-      "sector": sector,
-      "sectorKey": sector_key,
-      "sizeBucket": member.get("_marketMapSize") or market_map_size_bucket(member, index),
-      "price": round(float(price), 2) if price is not None else None,
-      "changePct": change_pct,
-      "source": source,
-      "quality": quality,
-      "rank": int(member.get("_marketMapRank") or index + 1),
-      "span": market_map_tile_span(index, quote),
-    })
+    tiles.append(company)
 
   sort_key = (sort or "rank").lower()
   if sort_key == "sector":
@@ -8310,20 +8399,49 @@ def build_market_heat_map(market: str = "india", period: str = "1D", limit: int 
     "requestedUniverse": requested_universe,
     "usingFallbackUniverse": using_fallback_universe,
     "universeCount": len(members),
+    "scopeCount": scope_count,
     "filteredCount": len(filtered_members),
     "returnedCount": len(tiles),
-    "filters": {"sector": requested_sector, "size": requested_size, "sort": sort_key, "limit": max_items},
-    "sectors": market_map_sector_options(members),
+    "filters": {"sector": requested_sector, "size": requested_size, "sort": sort_key, "limit": max_items, "scope": normalized_scope},
+    "scopes": [
+      {"key": key, "label": "All listed" if key == "all" else f"Top {value}", "count": len(members) if value <= 0 else min(value, len(members))}
+      for key, value in MARKET_MAP_SCOPE_LIMITS.items()
+    ],
+    "sectors": market_map_sector_options(scoped_members),
     "period": normalized_period,
     "periodLabel": SECTOR_PERIOD_LABELS[normalized_period],
     "updatedAt": datetime.now(timezone.utc).isoformat(),
     "tiles": tiles,
+    "tableRows": tiles,
+    "sectorGroups": build_market_map_sector_groups(tiles),
     "warmupSymbols": symbols[:160],
     "source": f"{universe_name} local manifest; live quotes where available; sector index proxy otherwise",
-    "sourceNote": "Tile area follows local universe rank or available volume, not verified market capitalization. Daily history warmup is queued for the visible slice.",
+    "sourceNote": f"Universe scope is {normalized_scope.replace('top', 'top ')} from the local manifest. Tile area follows local universe rank or available volume, not verified market capitalization. Daily history warmup is queued for the visible slice and table snapshots are cached locally.",
     "liveCount": live_count,
     "proxyCount": max(len(tiles) - live_count, 0),
   }
+
+
+def build_market_heat_map_with_cache(market: str, period: str, limit: int, sector: str, size: str, sort: str, scope: str) -> dict:
+  normalized_scope = normalize_market_map_scope(scope)
+  cache_key = market_heat_map_cache_key(market, period, limit, sector, size, sort, normalized_scope)
+  try:
+    payload = build_market_heat_map(market, period, limit, sector, size, sort, normalized_scope)
+    save_payload_cache(cache_key, payload, payload.get("source") or "Market heat map")
+    payload["cacheState"] = "fresh"
+    payload["cacheKey"] = cache_key
+    return payload
+  except Exception:
+    cached = load_cached_payload(cache_key)
+    if cached:
+      payload, source, updated_at = cached
+      fallback_payload = dict(payload)
+      fallback_payload["cacheState"] = "stale"
+      fallback_payload["cacheSource"] = source
+      fallback_payload["cacheUpdatedAt"] = updated_at
+      fallback_payload["cacheKey"] = cache_key
+      return fallback_payload
+    raise
 
 
 def build_overview_payload(symbols: list[str], active: str | None, region_key: str | None = None) -> dict:
@@ -8441,11 +8559,12 @@ class FinancialBoardHandler(BaseHTTPRequestHandler):
       sector = (params.get("sector") or ["all"])[0].strip().lower() or "all"
       size = (params.get("size") or ["all"])[0].strip().lower() or "all"
       sort = (params.get("sort") or ["rank"])[0].strip().lower() or "rank"
+      scope = (params.get("scope") or ["top250"])[0].strip().lower() or "top250"
       try:
         limit = int((params.get("limit") or ["80"])[0] or 80)
       except ValueError:
         limit = 80
-      return self.send_json(build_market_heat_map(market, period, limit, sector, size, sort))
+      return self.send_json(build_market_heat_map_with_cache(market, period, limit, sector, size, sort, scope))
     if parsed.path == "/api/data-sources":
       return self.send_json({"updatedAt": datetime.now(timezone.utc).isoformat(), "sources": TRUSTED_DATA_SOURCE_REGISTRY})
     if parsed.path == "/api/global-markets":
@@ -8552,7 +8671,10 @@ class FinancialBoardHandler(BaseHTTPRequestHandler):
     self.send_header("Content-Length", str(len(data)))
     self.send_header("Cache-Control", "no-store, max-age=0")
     self.end_headers()
-    self.wfile.write(data)
+    try:
+      self.wfile.write(data)
+    except (BrokenPipeError, ConnectionResetError):
+      return
 
   def send_json(self, payload: dict) -> None:
     raw = json.dumps(payload).encode("utf-8")
@@ -8587,12 +8709,12 @@ class FinancialBoardHandler(BaseHTTPRequestHandler):
     self.end_headers()
 
     try:
-      for _ in range(120):
-        payload = build_live_quotes(symbols, active)
+      for _ in range(240):
+        payload = build_live_quotes(symbols, active, allow_history_fallback=False)
         message = f"event: quote\ndata: {json.dumps(payload)}\n\n".encode("utf-8")
         self.wfile.write(message)
         self.wfile.flush()
-        time.sleep(2.0)
+        time.sleep(QUOTE_STREAM_INTERVAL_SECONDS)
     except (BrokenPipeError, ConnectionResetError):
       return
 
@@ -8650,13 +8772,18 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def run(port: int | str | None = None, allow_port_fallback: bool = True) -> None:
+  _SERVER_STOPPING.clear()
   init_db()
   requested_port = parse_port(port or os.environ.get("FINANCIAL_BOARD_PORT") or os.environ.get("PORT"))
   server, bound_port = build_server("127.0.0.1", requested_port, allow_port_fallback=allow_port_fallback)
   if bound_port != requested_port:
     print(f"Port {requested_port} is already in use; using {bound_port} instead.")
   print(f"Financial Board running on http://127.0.0.1:{bound_port}")
-  server.serve_forever()
+  try:
+    server.serve_forever()
+  finally:
+    _SERVER_STOPPING.set()
+    server.server_close()
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -8664,6 +8791,7 @@ def main(argv: list[str] | None = None) -> int:
   try:
     run(args.port, allow_port_fallback=not args.strict_port)
   except KeyboardInterrupt:
+    _SERVER_STOPPING.set()
     print("\nFinancial Board stopped.")
   return 0
 

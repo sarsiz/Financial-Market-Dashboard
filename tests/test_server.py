@@ -254,6 +254,15 @@ class HistoryCacheTests(TempDatabaseTestCase):
     self.assertEqual(payload["active"]["asOf"], checked_at)
     self.assertEqual(payload["active"]["quoteFreshness"]["state"], "fresh")
 
+  def test_stream_live_quotes_do_not_block_on_history_fallback(self):
+    with mock.patch.object(server, "fetch_live_quotes", return_value={}), mock.patch.object(server, "build_history") as history_mock:
+      payload = server.build_live_quotes(["AAPL"], "AAPL", allow_history_fallback=False)
+
+    self.assertEqual(payload["mode"], "stream")
+    self.assertEqual(payload["watchlist"], [])
+    self.assertIsNone(payload["active"])
+    history_mock.assert_not_called()
+
   def test_history_derived_quotes_infer_session_from_exchange_hours(self):
     self.assertEqual(server.quote_session_state({"marketState": "CLOSED"}, "History-derived"), "REGULAR")
     self.assertEqual(server.quote_session_state({"marketState": "CLOSED"}, "Google Finance"), "CLOSED")
@@ -419,14 +428,19 @@ class HistoryCacheTests(TempDatabaseTestCase):
     with mock.patch.object(server, "load_market_map_members", return_value=(members, "nse_all", False)), mock.patch.object(
       server, "fetch_live_quotes", return_value={}
     ), mock.patch.object(server, "build_sector_matrix", return_value=sector_payload):
-      payload = server.build_market_heat_map("india", "1D", 20, "technology", "small", "sector")
+      payload = server.build_market_heat_map("india", "1D", 20, "technology", "small", "sector", "all")
 
     self.assertEqual(payload["universe"], "nse_all")
     self.assertEqual(payload["universeCount"], 3)
+    self.assertEqual(payload["scopeCount"], 3)
     self.assertEqual(payload["filteredCount"], 1)
     self.assertEqual(payload["tiles"][0]["symbol"], "CCC.NS")
     self.assertEqual(payload["tiles"][0]["sizeBucket"], "small")
     self.assertEqual(payload["filters"]["sector"], "technology")
+    self.assertEqual(payload["filters"]["scope"], "all")
+    self.assertEqual(payload["sectorGroups"][0]["key"], "technology")
+    self.assertEqual(payload["sectorGroups"][0]["companies"][0]["symbol"], "CCC.NS")
+    self.assertIn("tableRows", payload)
     self.assertIn("warmupSymbols", payload)
 
   def test_fetch_period_change_uses_google_index_quote_fallback(self):
