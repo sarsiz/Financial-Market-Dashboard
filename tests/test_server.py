@@ -181,9 +181,54 @@ class HistoryCacheTests(TempDatabaseTestCase):
     self.assertEqual(source, "RSS")
     self.assertTrue(updated_at)
 
+  def test_save_and_load_market_events_round_trip(self):
+    saved = server.save_market_events(
+      [
+        {
+          "title": "Opening Bell: Nifty tests breakout",
+          "url": "https://www.paytmmoney.com/blog/opening-bell-nifty/",
+          "source": "Paytm Money Market Pulse",
+          "category": "markets",
+          "publishedAt": "2026-05-15T03:00:00+00:00",
+        }
+      ],
+      "markets",
+      "ICICIBANK.NS",
+    )
+
+    self.assertEqual(saved, 1)
+    items = server.load_market_events("markets", "ICICIBANK.NS", limit=5)
+    self.assertEqual(len(items), 1)
+    self.assertEqual(items[0]["source"], "Paytm Money Market Pulse")
+    self.assertEqual(items[0]["symbols"], ["ICICIBANK.NS"])
+    self.assertTrue(items[0]["localDb"])
+
+  def test_build_event_feed_persists_paytm_market_insights(self):
+    paytm_item = {
+      "title": "Market Radar spots IT leadership",
+      "url": "https://www.paytmmoney.com/blog/market-radar-it/",
+      "source": "Paytm Money Market Pulse",
+      "publishedAt": "2026-05-15T03:00:00+00:00",
+      "category": "markets",
+    }
+
+    with mock.patch.object(server, "fetch_google_news_rss", return_value=[]), mock.patch.object(
+      server, "fetch_popular_rss_items", return_value=[]
+    ), mock.patch.object(server, "duckduckgo_search", return_value=[]), mock.patch.object(
+      server, "fetch_market_insight_items", return_value=[paytm_item]
+    ), mock.patch.object(server, "generate_local_llm_answer", return_value=None):
+      payload = server.build_event_feed("markets", "ICICIBANK.NS")
+
+    self.assertEqual(payload["items"][0]["source"], "Paytm Money Market Pulse")
+    self.assertEqual(payload["localStore"]["table"], "market_events")
+    self.assertGreaterEqual(payload["localStore"]["storedCount"], 1)
+    stored = server.load_market_events("markets", "ICICIBANK.NS", limit=5)
+    self.assertEqual(stored[0]["title"], "Market Radar spots IT leadership")
+
   def test_allowed_outbound_url_blocks_unknown_and_http_hosts(self):
     self.assertTrue(server.is_allowed_outbound_url("https://query1.finance.yahoo.com/v7/finance/quote"))
     self.assertTrue(server.is_allowed_outbound_url("https://archives.nseindia.com/content/equities/EQUITY_L.csv"))
+    self.assertTrue(server.is_allowed_outbound_url("https://www.paytmmoney.com/blog/category/market-pulse/feed/"))
     self.assertFalse(server.is_allowed_outbound_url("http://query1.finance.yahoo.com/v7/finance/quote"))
     self.assertFalse(server.is_allowed_outbound_url("https://example.com/data.json"))
 
@@ -1029,7 +1074,9 @@ class ForecastAndLabTests(unittest.TestCase):
       server,
       "fetch_popular_rss_items",
       return_value=[{"title": "BBC says partnership expands", "url": "https://example.com/bbc", "source": "BBC Business", "publishedAt": "2026-04-01T02:00:00+00:00"}],
-    ), mock.patch.object(server, "duckduckgo_search", return_value=[]), mock.patch.object(server, "generate_local_llm_answer", return_value=None):
+    ), mock.patch.object(server, "duckduckgo_search", return_value=[]), mock.patch.object(
+      server, "save_market_events", return_value=0
+    ), mock.patch.object(server, "generate_local_llm_answer", return_value=None):
       payload = server.build_event_feed("partnerships", "ICICIBANK.NS")
 
     self.assertEqual(payload["category"], "partnerships")
@@ -1056,6 +1103,8 @@ class ForecastAndLabTests(unittest.TestCase):
       server,
       "duckduckgo_search",
       return_value=[],
+    ), mock.patch.object(server, "fetch_market_insight_items", return_value=[]), mock.patch.object(
+      server, "save_market_events", return_value=0
     ), mock.patch.object(server, "generate_local_llm_answer", return_value=None):
       payload = server.build_event_feed("all", "ICICIBANK.NS")
 

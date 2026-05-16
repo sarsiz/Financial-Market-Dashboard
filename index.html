@@ -137,6 +137,7 @@
                 </div>
               </div>
               <div id="prediction-panel" class="prediction-panel"></div>
+              <div id="short-horizon-card" class="short-horizon-card" aria-live="polite"></div>
             </article>
 
             <article class="hero-chart-card glass-panel">
@@ -343,6 +344,16 @@
               <div class="section-heading">
                 <h3>Macro Events</h3>
                 <span>What moved, why, and what matters next</span>
+              </div>
+              <div class="event-control-row">
+                <button class="event-chip active" type="button" data-category="markets">Markets</button>
+                <button class="event-chip" type="button" data-category="business">Business</button>
+                <button class="event-chip" type="button" data-category="world">World</button>
+                <button class="event-chip" type="button" data-category="deals">Deals</button>
+                <form id="event-search-form" class="event-search-form">
+                  <input id="event-search-input" type="search" placeholder="Search events" aria-label="Search market events">
+                  <button type="submit">Search</button>
+                </form>
               </div>
               <div id="macro-events-list" class="event-list"></div>
             </article>

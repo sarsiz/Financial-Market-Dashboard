@@ -164,11 +164,11 @@ const DEFAULT_DOSSIER_ORDER = [
   "ma",
   "peers",
   "benchmarks",
-  "metrics",
-  "activity",
   "fundamentals",
+  "activity",
   "consensus",
   "links",
+  "metrics",
 ];
 
 const DOSSIER_CARD_META = {
@@ -176,7 +176,7 @@ const DOSSIER_CARD_META = {
   ma: { title: "Trend stack", span: 4, tier: "primary", value: "predictive" },
   peers: { title: "Peer comparison", span: 6, tier: "primary", value: "context" },
   benchmarks: { title: "Benchmark comparison", span: 8, tier: "primary", value: "context" },
-  activity: { title: "Range watch", span: 4, tier: "primary", value: "predictive" },
+  activity: { title: "Range watch", span: 4, tier: "support", value: "predictive" },
   metrics: { title: "Show all metrics", span: 12, tier: "metrics", value: "reference" },
   fundamentals: { title: "Fundamentals", span: 4, tier: "support", value: "supporting" },
   consensus: { title: "Expert consensus", span: 4, tier: "support", value: "external" },
@@ -205,7 +205,7 @@ const state = {
   recentTickers: loadStoredRecentTickers(),
   chartRange: localStorage.getItem(STORAGE_KEYS.chartRange) || "1M",
   chartFeatures: loadStoredChartFeatures(),
-  eventCategory: localStorage.getItem(STORAGE_KEYS.eventCategory) || "business",
+  eventCategory: localStorage.getItem(STORAGE_KEYS.eventCategory) || "markets",
   eventResult: null,
   dashboard: null,
   presets: [],
@@ -253,6 +253,8 @@ const state = {
   impactResizeTimer: null,
   pendingImpactGraph: null,
   revealObserver: null,
+  dossierMasonryFrame: null,
+  dossierResizeObserver: null,
   lastOverviewChartRefreshAt: 0,
   lastLiveChartRenderAt: 0,
   chartHoverFrame: null,
@@ -331,6 +333,13 @@ function loadStoredChartFeatures() {
 function loadStoredDossierOrder() {
   try {
     const stored = JSON.parse(localStorage.getItem(STORAGE_KEYS.dossierOrder) || "[]");
+    const oldDefaultOrders = [
+      ["day", "ma", "peers", "benchmarks", "metrics", "activity", "fundamentals", "consensus", "links"],
+      ["day", "ma", "peers", "benchmarks", "metrics", "fundamentals", "activity", "consensus", "links"],
+    ];
+    if (Array.isArray(stored) && oldDefaultOrders.some((order) => stored.join("|") === order.join("|"))) {
+      return DEFAULT_DOSSIER_ORDER.slice();
+    }
     return DEFAULT_DOSSIER_ORDER.filter((key) => stored.includes(key)).length
       ? DEFAULT_DOSSIER_ORDER.filter((key) => stored.includes(key)).sort((a, b) => stored.indexOf(a) - stored.indexOf(b))
       : DEFAULT_DOSSIER_ORDER.slice();
@@ -978,8 +987,49 @@ function setupDossierControls(container) {
       container.querySelectorAll("[data-metric-pill]").forEach((pill) => {
         pill.hidden = Boolean(query) && !pill.dataset.metricPill.includes(query);
       });
+      scheduleDossierMasonry(container);
     });
   });
+}
+
+function relayoutDossierMasonry(container = document.getElementById("stock-dossier")) {
+  if (!container) return;
+  const cards = Array.from(container.querySelectorAll("[data-dossier-card]"));
+  if (!cards.length) return;
+  const styles = getComputedStyle(container);
+  const rowHeight = Number.parseFloat(styles.getPropertyValue("--dossier-masonry-row")) || 8;
+  const rowGap = Number.parseFloat(styles.rowGap) || 0;
+  cards.forEach((card) => {
+    card.style.gridRowEnd = "auto";
+    card.style.removeProperty("--dossier-row-span");
+  });
+  // Force layout after clearing row spans so scrollHeight reflects content, not the previous packed height.
+  void container.offsetHeight;
+  cards.forEach((card) => {
+    const rawHeight = card.scrollHeight;
+    const span = Math.max(8, Math.ceil((rawHeight + rowGap) / (rowHeight + rowGap)));
+    card.style.setProperty("--dossier-row-span", String(span));
+    card.style.gridRowEnd = `span ${span}`;
+  });
+}
+
+function scheduleDossierMasonry(container = document.getElementById("stock-dossier")) {
+  if (!container) return;
+  window.cancelAnimationFrame(state.dossierMasonryFrame);
+  state.dossierMasonryFrame = window.requestAnimationFrame(() => {
+    relayoutDossierMasonry(container);
+  });
+}
+
+function observeDossierMasonry(container) {
+  if (!container || !("ResizeObserver" in window)) {
+    scheduleDossierMasonry(container);
+    return;
+  }
+  state.dossierResizeObserver?.disconnect();
+  state.dossierResizeObserver = new ResizeObserver(() => scheduleDossierMasonry(container));
+  state.dossierResizeObserver.observe(container);
+  scheduleDossierMasonry(container);
 }
 
 function setupDossierDrag(container) {
@@ -1005,6 +1055,7 @@ function setupDossierDrag(container) {
       card.classList.remove("dragging");
       container.classList.remove("is-dragging");
       syncOrder();
+      scheduleDossierMasonry(container);
     });
   });
 
@@ -1039,6 +1090,7 @@ function setupDossierDrag(container) {
   container.ondrop = (event) => {
     event.preventDefault();
     syncOrder();
+    scheduleDossierMasonry(container);
   };
 }
 
@@ -1065,7 +1117,7 @@ function renderStockDossier(active) {
   const visibleMovingAverages = state.detailMode
     ? movingAverages
     : movingAverages.filter((item) => item.value !== null && item.value !== undefined).slice(0, 4);
-  const simpleDossierKeys = ["day", "ma", "activity", "benchmarks"];
+  const simpleDossierKeys = ["day", "ma", "fundamentals", "activity", "benchmarks"];
   const visibleDossierKeys = state.detailMode ? DEFAULT_DOSSIER_ORDER : simpleDossierKeys;
   setTextIfChanged(
     panel.querySelector(".section-heading span"),
@@ -1079,8 +1131,9 @@ function renderStockDossier(active) {
       ${[
         ["Snapshot", "dossier-day"],
         ["Averages", "dossier-ma"],
-        ["Benchmarks", "dossier-benchmarks"],
+        ["Quality", "dossier-fundamentals"],
         ["Range", "dossier-activity"],
+        ["Benchmarks", "dossier-benchmarks"],
         ...(state.detailMode ? [
           ["Peers", "dossier-peers"],
           ["Metrics", "dossier-metrics"],
@@ -1226,15 +1279,20 @@ function renderStockDossier(active) {
       <div class="source-provenance">${(dossier.sourceProvenance || []).map((item) => `<span>${item.label}: ${item.usedFor}</span>`).join("")}</div>`,
     }),
   };
-  const orderedKeys = visibleDossierKeys
-    .filter((key) => state.dossierOrder.includes(key))
-    .sort((a, b) => state.dossierOrder.indexOf(a) - state.dossierOrder.indexOf(b))
-    .concat(visibleDossierKeys.filter((key) => !state.dossierOrder.includes(key)))
-    .filter((key) => cards[key]);
+  const orderedKeys = (state.detailMode
+    ? visibleDossierKeys
+        .filter((key) => state.dossierOrder.includes(key))
+        .sort((a, b) => state.dossierOrder.indexOf(a) - state.dossierOrder.indexOf(b))
+        .concat(visibleDossierKeys.filter((key) => !state.dossierOrder.includes(key)))
+    : visibleDossierKeys
+  ).filter((key) => cards[key]);
   const dossierChanged = setHTMLIfChanged(node, orderedKeys.map((key) => cards[key]).join(""));
   if (dossierChanged) {
     setupDossierControls(node);
     setupDossierDrag(node);
+    observeDossierMasonry(node);
+  } else {
+    scheduleDossierMasonry(node);
   }
   const discoveryChanged = setHTMLIfChanged(discoveryNode, renderMarketDiscovery(discoveryItems, state.dashboard?.discovery?.source || "Local scan"));
   if (discoveryChanged) {
@@ -1507,6 +1565,56 @@ function renderPredictionPanel(active, forecast) {
   revealSection("prediction-panel");
 }
 
+function renderShortHorizonCard(active, forecast) {
+  // Hand-crafted short-horizon directional model (see scripts/short_horizon_model.py).
+  // Renders side-by-side with the existing prediction panel so the user can compare
+  // the calibrated short-horizon call against the longer-horizon classic/modern blend.
+  const node = document.getElementById("short-horizon-card");
+  if (!node) return;
+  const sh = forecast?.shortHorizon;
+  if (!sh || !sh.available) {
+    setHTMLIfChanged(node, `<div class="sh-empty">Short-horizon model: ${sh?.reason || "warming up."}</div>`);
+    return;
+  }
+  const dir = sh.direction || "Neutral";
+  const dirClass = dir === "Bullish" ? "sh-bullish" : dir === "Bearish" ? "sh-bearish" : "sh-neutral";
+  const expected = Number(sh.expectedReturnPct || 0);
+  const coneLow = Number(sh.coneLowPct || 0);
+  const coneHigh = Number(sh.coneHighPct || 0);
+  const conf = Number(sh.confidence || 0);
+  const skill = sh.skill || {};
+  const hit = Number(skill.hit_rate_pct || 0);
+  const skillSamples = Number(skill.samples || 0);
+  const skillIc = Number(skill.ic || 0);
+  const horizon = sh.horizon || 5;
+  const notes = Array.isArray(sh.notes) ? sh.notes.slice(0, 2) : [];
+  const skillBadge = skillSamples >= 20
+    ? `${hit.toFixed(0)}% hit · IC ${skillIc.toFixed(2)} · n=${skillSamples}`
+    : "Skill: warming up";
+
+  const html = `
+    <div class="sh-card ${dirClass}">
+      <div class="sh-head">
+        <span class="sh-title">Short-Horizon Forecast</span>
+        <span class="sh-horizon">${horizon}-bar · calibrated</span>
+      </div>
+      <div class="sh-body">
+        <div class="sh-call">
+          <span class="sh-direction">${dir}</span>
+          <strong class="sh-expected">${expected >= 0 ? "+" : ""}${expected.toFixed(2)}%</strong>
+          <span class="sh-cone">cone ${coneLow >= 0 ? "+" : ""}${coneLow.toFixed(2)}% … ${coneHigh >= 0 ? "+" : ""}${coneHigh.toFixed(2)}%</span>
+        </div>
+        <div class="sh-meta">
+          <span class="sh-conf">${conf.toFixed(0)}% conf</span>
+          <span class="sh-skill" title="Walk-forward hit rate / information coefficient / sample size">${skillBadge}</span>
+        </div>
+      </div>
+      ${notes.length ? `<div class="sh-notes">${notes.map((n) => `<span>${n}</span>`).join("")}</div>` : ""}
+    </div>
+  `;
+  setHTMLIfChanged(node, html);
+}
+
 function patchHeroSurface(active, forecast, { renderPrediction = true, renderStats = true, renderSparkline = true } = {}) {
   const agreement = forecast.models?.agreement || { label: "Pending", score: 0, summary: "Agreement refreshing." };
   const recommendation = active.recommendation || { buy: 0, hold: 100, sell: 0, signal: "Refreshing" };
@@ -1561,6 +1669,7 @@ function patchHeroSurface(active, forecast, { renderPrediction = true, renderSta
   clearChartSkeleton();
   if (renderPrediction) {
     renderPredictionPanel(active, forecast);
+    renderShortHorizonCard(active, forecast);
   }
   renderTradePlanPanel(active, forecast);
 }
@@ -4048,6 +4157,9 @@ function renderBanner() {
 
 function renderEventFeed() {
   const list = document.getElementById("event-list");
+  document.querySelectorAll(".event-chip").forEach((button) => {
+    button.classList.toggle("active", button.dataset.category === state.eventCategory);
+  });
   if (!list) return;
   const items = state.eventResult?.items?.length
     ? [...state.eventResult.items].sort((a, b) => String(b.publishedAt || "").localeCompare(String(a.publishedAt || ""))).slice(0, 3)
@@ -4260,12 +4372,16 @@ function renderMacroEvents() {
   const eventsNode = document.getElementById("macro-events-list");
   const watchNode = document.getElementById("macro-watch-next");
   if (!eventsNode || !watchNode) return;
-  if (!region?.events) {
+  const eventPayload = state.eventResult?.items?.length ? state.eventResult : region?.events;
+  if (!eventPayload) {
     eventsNode.innerHTML = "";
     watchNode.innerHTML = "";
     return;
   }
-  eventsNode.innerHTML = (region.events.items || [])
+  document.querySelectorAll(".event-chip").forEach((button) => {
+    button.classList.toggle("active", button.dataset.category === state.eventCategory);
+  });
+  eventsNode.innerHTML = (eventPayload.items || [])
     .slice(0, 6)
     .map(
       (item) => `
@@ -4274,7 +4390,7 @@ function renderMacroEvents() {
             <strong>${item.title}</strong>
             <span class="event-tag">${String(item.category || "event").toUpperCase()}</span>
           </div>
-          <p>${item.source ? `Source: ${item.source} • ` : ""}${formatEventDateTime(item.publishedAt)}${isFreshUpdate(item.publishedAt) ? ` • ${liveBadgeMarkup()}` : ""}</p>
+          <p>${item.source ? `Source: ${item.source} • ` : ""}${formatEventDateTime(item.publishedAt)}${item.sourceType ? ` • ${item.sourceType.replace(/_/g, " ")}` : ""}${isFreshUpdate(item.publishedAt) ? ` • ${liveBadgeMarkup()}` : ""}</p>
         </div>
       `,
     )
@@ -6227,6 +6343,7 @@ function bindEvents() {
       persistWatchlist();
       await loadEventFeed();
       renderEventFeed();
+      renderMacroEvents();
       flashStatus("Feed ready", 1000);
     });
   });
@@ -6234,7 +6351,7 @@ function bindEvents() {
   document.getElementById("event-search-form")?.addEventListener("submit", async (event) => {
     event.preventDefault();
     const keyword = document.getElementById("event-search-input")?.value.trim();
-    if (keyword) { await loadEventFeed(keyword); renderEventFeed(); flashStatus("Feed ready", 1000); }
+    if (keyword) { await loadEventFeed(keyword); renderEventFeed(); renderMacroEvents(); flashStatus("Feed ready", 1000); }
   });
 
   document.querySelectorAll(".tab").forEach((tab) => {
@@ -6253,6 +6370,7 @@ function bindEvents() {
     document.getElementById("compact-menu-toggle")?.setAttribute("aria-expanded", isOpen ? "true" : "false");
   });
   window.addEventListener("resize", () => {
+    scheduleDossierMasonry();
     if (!state.impactGraphCy) return;
     window.clearTimeout(state.impactResizeTimer);
     state.impactResizeTimer = window.setTimeout(() => {

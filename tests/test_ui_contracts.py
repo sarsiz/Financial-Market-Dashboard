@@ -31,6 +31,7 @@ class HtmlContractTests(unittest.TestCase):
       "equity-summary",
       "sector-grid",
       "macro-events-list",
+      "event-search-input",
       "macro-watch-next",
       "methodology-headline",
       "methodology-cockpit",
@@ -56,6 +57,7 @@ class HtmlContractTests(unittest.TestCase):
     ]
     for target in required_ids:
       self.assertIn(f'id="{target}"', self.index_html)
+    self.assertIn('data-category="markets"', self.index_html)
 
   def test_index_contains_expected_top_level_tabs(self):
     tabs = re.findall(r'data-tab="([^"]+)"', self.index_html)
@@ -106,7 +108,7 @@ class HtmlContractTests(unittest.TestCase):
       "function renderStockDossier(",
       "DOSSIER_CARD_META",
       "SMA 5-200",
-      "simpleDossierKeys = [\"day\", \"ma\", \"activity\", \"benchmarks\"]",
+      "simpleDossierKeys = [\"day\", \"ma\", \"fundamentals\", \"activity\", \"benchmarks\"]",
       "data-flow-bar",
       "function renderDataFlowBar(",
       "function initStarfieldParallax(",

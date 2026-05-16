@@ -16,7 +16,7 @@ Full-stack dark financial dashboard with:
 
 - `server.py`: threaded Python HTTP server, JSON API, SQLite watchlist storage, market data adapters, forecast engine
 - `index.html`, `styles.css`, `app.js`: dashboard client
-- `financial_board.db`: created automatically on first run, now stores saved watchlists and local historical-price cache entries
+- `financial_board.db`: created automatically on first run, now stores saved watchlists, local historical-price cache entries, derived insights, and source-labeled market events
 - `data/universes/`: synced index and exchange membership files
 - `data/relations/`: precomputed stock relation graphs built from cached history
 - `data/company_networks.json`: local company/entity relationship hints for deeper market maps
@@ -59,6 +59,7 @@ This platform is built as a lightweight full-stack app with a browser client and
 - the browser now hits a lightweight overview endpoint first, so watchlist quotes and the active overview can paint before the heavier full dashboard finishes
 - Academy and Research now degrade gracefully: they show market-structure-first content immediately, use shorter local-LLM time budgets, and fall back to web-grounded or rules-based answers when the LLM is slow
 - event flow is now timestamp-aware and significance-ranked, so important recent and prior events remain visible with source and publish time
+- market events are persisted into the local `market_events` SQLite table after each refresh, including Paytm Money Market Pulse/Stocks, Economic Times Markets, MarketWatch, Google News RSS, and other configured publisher feeds
 - market radar has its own refresh path and now auto-refreshes every 15 minutes without waiting for the full dashboard refresh
 - market radar surfaces a compact news ticker, sentiment box, and event hotspots from live news items without the older floating cloud layer
 - market radar now blends live event headlines with macro pulse and active-ticker micro context, so the section reflects both top-down and stock-specific pressure
@@ -72,7 +73,7 @@ This platform is built as a lightweight full-stack app with a browser client and
 - watchlist implications now use a dedicated graph workspace with pan/zoom and details instead of a cramped inline SVG
 - universe sync, historical backfill, and relation-graph generation are now explicit scripts so large-market datasets can be refreshed deterministically
 - the top watch overview can be compacted away with a user toggle, and the radar panel stays dense by using ticker/hotspot surfaces instead of floating cards
-- news retrieval now blends Google News RSS with popular publisher RSS feeds like BBC and NPR, then dedupes and ranks them server-side
+- news retrieval now blends Google News RSS with Paytm Money Market Pulse/Stocks and popular publisher RSS feeds like BBC and NPR, then dedupes, ranks, and stores them server-side
 - large charts now carry timestamp-aware history series, axis labels, and hover inspection instead of only raw close arrays
 - local-LLM features are pinned to `Bonsai-8B-1bit`, even if another model name is saved in config, to keep inference lighter and more predictable
 - factor governance and paper-backed protocol are now local datasets, so cadence, significance, provenance, and methodology are explicit rather than hidden in code
@@ -95,6 +96,7 @@ The dashboard keeps provider usage factual and labelled. Current and candidate s
 - Alpha Vantage: quotes, adjusted history, market status, earnings calendar, and estimates where API keys permit.
 - Google Finance: live quote edge fallback, especially for exchange-suffixed regional symbols.
 - Yahoo Finance: quote summary, chart live edge, fundamentals, and public consensus fields.
+- Paytm Money Market Pulse/Stocks: India-market event and trading-context blog feeds used as source-labeled market insight input.
 - Stooq: daily CSV history fallback when live quote providers are unavailable.
 - Finnhub: candidate source for analyst price targets, recommendation trends, estimates, ownership, and company profiles.
 - Financial Modeling Prep: candidate source for analyst revenue/EPS estimates.
@@ -363,6 +365,8 @@ This project keeps provider calls on the server side so:
 - `POST /api/config`
 - `GET /api/academy?symbol=ICICIBANK.NS`
 - `GET /api/events?category=world&symbol=ICICIBANK.NS`
+- `GET /api/events?category=markets&symbol=ICICIBANK.NS`
+- `GET /api/market-events?category=markets&symbol=ICICIBANK.NS&limit=20`
 - `GET /api/overview?symbols=ICICIBANK.NS,AAPL&active=AAPL`
 - `GET /api/presets`
 - regional macro, inflation, policy, calendar, and comparison payloads are returned inside `POST /api/dashboard`
@@ -371,6 +375,18 @@ This project keeps provider calls on the server side so:
 - `POST /api/watchlists`
 - `POST /api/dashboard`
 - `POST /api/lab`
+
+## Refreshing market event memory
+
+The server automatically stores refreshed event/news items in `financial_board.db`, table `market_events`. To warm it manually without opening the browser:
+
+```bash
+python3 scripts/refresh_market_events.py --category markets
+python3 scripts/refresh_market_events.py --category markets --symbol ICICIBANK.NS
+python3 scripts/refresh_market_events.py --category all --query "RBI inflation Nifty earnings latest"
+```
+
+Keep this DB local and uncommitted. Promote only durable interpretation notes into `vault/market-map/` or `kb/` when they are useful beyond a single news cycle.
 
 ## Validation and limitation
 

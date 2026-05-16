@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import errno
 import gzip
+import hashlib
 import json
 import html
 import math
@@ -26,6 +27,12 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+# Short-horizon directional model — additive, evaluated offline against the
+# existing build_forecast (see scripts/compare_models.py + the report at
+# vault/market-map/short_horizon_compare.json).
+sys.path.insert(0, str(Path(__file__).resolve().parent / "scripts"))
+import short_horizon_model as _shm  # noqa: E402
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -589,6 +596,7 @@ FALLBACK_MACRO_PULSE = [
 
 EVENT_CATEGORY_QUERIES = {
   "all": "latest market moving events world business war deals partnerships layoffs brands today",
+  "markets": "latest stock market events India US equities rates earnings market pulse today",
   "business": "latest global business news markets earnings deals",
   "world": "latest world news geopolitics economy today",
   "war": "latest war news global conflict defense markets today",
@@ -598,7 +606,36 @@ EVENT_CATEGORY_QUERIES = {
   "brands": "latest brand launches campaigns retail consumer brands today",
 }
 
+MARKET_INSIGHT_RSS_FEEDS = [
+  {
+    "url": "https://www.paytmmoney.com/blog/category/market-pulse/feed/",
+    "source": "Paytm Money Market Pulse",
+    "category": "markets",
+  },
+  {
+    "url": "https://www.paytmmoney.com/blog/category/stocks/feed/",
+    "source": "Paytm Money Stocks",
+    "category": "markets",
+  },
+  {
+    "url": "https://economictimes.indiatimes.com/markets/rssfeeds/1977021501.cms",
+    "source": "Economic Times Markets",
+    "category": "markets",
+  },
+  {
+    "url": "https://feeds.content.dowjones.io/public/rss/mw_marketpulse",
+    "source": "MarketWatch MarketPulse",
+    "category": "markets",
+  },
+  {
+    "url": "https://feeds.content.dowjones.io/public/rss/mw_topstories",
+    "source": "MarketWatch Top Stories",
+    "category": "markets",
+  },
+]
+
 POPULAR_RSS_FEEDS = {
+  "markets": MARKET_INSIGHT_RSS_FEEDS,
   "business": [
     {"url": "https://feeds.bbci.co.uk/news/business/rss.xml", "source": "BBC Business"},
     {"url": "https://www.npr.org/rss/rss.php?id=1006", "source": "NPR Business"},
@@ -822,6 +859,7 @@ OUTBOUND_ALLOWED_HOSTS = {
   "rss.nytimes.com",
   "feeds.content.dowjones.io",
   "economictimes.indiatimes.com",
+  "www.paytmmoney.com",
   "timesofindia.indiatimes.com",
   "www.smh.com.au",
   "www.abc.net.au",
@@ -850,6 +888,7 @@ OUTBOUND_MIN_INTERVAL = {
   "rss.nytimes.com": 4.0,
   "feeds.content.dowjones.io": 4.0,
   "economictimes.indiatimes.com": 4.0,
+  "www.paytmmoney.com": 4.0,
   "timesofindia.indiatimes.com": 4.0,
   "www.smh.com.au": 4.0,
   "www.abc.net.au": 4.0,
@@ -875,6 +914,7 @@ OUTBOUND_CACHE_TTL = {
   "rss.nytimes.com": 900,
   "feeds.content.dowjones.io": 900,
   "economictimes.indiatimes.com": 900,
+  "www.paytmmoney.com": 900,
   "timesofindia.indiatimes.com": 900,
   "www.smh.com.au": 900,
   "www.abc.net.au": 900,
@@ -996,6 +1036,29 @@ def init_db() -> None:
             PRIMARY KEY(symbol, interval, insight_key)
           )
           """
+        )
+        connection.execute(
+          """
+          CREATE TABLE IF NOT EXISTS market_events (
+            event_id TEXT PRIMARY KEY,
+            title TEXT NOT NULL,
+            url TEXT,
+            source TEXT NOT NULL,
+            category TEXT NOT NULL,
+            symbols_json TEXT NOT NULL,
+            published_at TEXT,
+            fetched_at TEXT NOT NULL,
+            relevance_score REAL NOT NULL,
+            significance_score REAL NOT NULL,
+            payload_json TEXT NOT NULL
+          )
+          """
+        )
+        connection.execute(
+          "CREATE INDEX IF NOT EXISTS idx_market_events_category_time ON market_events(category, published_at, fetched_at)"
+        )
+        connection.execute(
+          "CREATE INDEX IF NOT EXISTS idx_market_events_source ON market_events(source)"
         )
         connection.commit()
       finally:
@@ -1296,6 +1359,147 @@ def load_derived_insight(symbol: str, interval: str, insight_key: str) -> dict |
   payload["source"] = row[1]
   payload["updatedAt"] = row[2]
   return payload
+
+
+def stable_market_event_id(item: dict) -> str:
+  seed = "|".join(
+    [
+      str(item.get("url") or "").strip(),
+      str(item.get("title") or "").strip().lower(),
+      str(item.get("source") or "").strip().lower(),
+      str(item.get("publishedAt") or item.get("published_at") or "").strip(),
+    ]
+  )
+  return hashlib.sha256(seed.encode("utf-8")).hexdigest()[:24]
+
+
+def normalize_event_symbols(symbol: str | None = None, extra_symbols: list[str] | None = None) -> list[str]:
+  symbols = []
+  for value in [symbol, *(extra_symbols or [])]:
+    if not value:
+      continue
+    cleaned = normalize_symbol(str(value).strip().upper())
+    if cleaned and cleaned not in symbols:
+      symbols.append(cleaned)
+  return symbols
+
+
+def save_market_events(items: list[dict], category: str, symbol: str | None = None) -> int:
+  init_db()
+  cleaned_rows = []
+  fetched_at = datetime.now(timezone.utc).isoformat()
+  normalized_category = (category or "markets").strip().lower() or "markets"
+  for item in items or []:
+    title = str(item.get("title") or "").strip()
+    if not title:
+      continue
+    item_category = (item.get("category") or normalized_category or "markets").strip().lower()
+    url = str(item.get("url") or "").strip()
+    source = str(item.get("source") or (urllib.parse.urlparse(url).netloc.replace("www.", "") if url else "Unknown")).strip() or "Unknown"
+    symbols = normalize_event_symbols(symbol, item.get("symbols") if isinstance(item.get("symbols"), list) else [])
+    relevance = float(market_relevance_score(item, item_category, symbol))
+    significance = float(event_significance_score(item, item_category, symbol))
+    payload = {
+      **item,
+      "title": title,
+      "url": url,
+      "source": source,
+      "category": item_category,
+      "symbols": symbols,
+      "publishedAt": item.get("publishedAt"),
+      "fetchedAt": fetched_at,
+      "relevance": relevance,
+      "significance": significance,
+      "localDb": True,
+    }
+    cleaned_rows.append(
+      (
+        item.get("eventId") or stable_market_event_id(payload),
+        title,
+        url,
+        source,
+        item_category,
+        json.dumps(symbols),
+        item.get("publishedAt"),
+        fetched_at,
+        relevance,
+        significance,
+        json.dumps(payload),
+      )
+    )
+  if not cleaned_rows:
+    return 0
+  with DB_LOCK:
+    connection = sqlite3.connect(DB_PATH)
+    try:
+      connection.executemany(
+        """
+        INSERT INTO market_events(
+          event_id, title, url, source, category, symbols_json, published_at,
+          fetched_at, relevance_score, significance_score, payload_json
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(event_id) DO UPDATE SET
+          title = excluded.title,
+          url = excluded.url,
+          source = excluded.source,
+          category = excluded.category,
+          symbols_json = excluded.symbols_json,
+          published_at = COALESCE(excluded.published_at, market_events.published_at),
+          fetched_at = excluded.fetched_at,
+          relevance_score = excluded.relevance_score,
+          significance_score = excluded.significance_score,
+          payload_json = excluded.payload_json
+        """,
+        cleaned_rows,
+      )
+      connection.commit()
+    finally:
+      connection.close()
+  return len(cleaned_rows)
+
+
+def load_market_events(category: str = "all", symbol: str | None = None, limit: int = 20, max_age_hours: int = 168) -> list[dict]:
+  init_db()
+  normalized_category = (category or "all").strip().lower()
+  cutoff = (datetime.now(timezone.utc) - timedelta(hours=max_age_hours)).isoformat()
+  with DB_LOCK:
+    connection = sqlite3.connect(DB_PATH)
+    try:
+      rows = connection.execute(
+        """
+        SELECT event_id, payload_json, category, symbols_json, published_at, fetched_at
+        FROM market_events
+        WHERE fetched_at >= ?
+        ORDER BY COALESCE(published_at, fetched_at) DESC, significance_score DESC
+        LIMIT ?
+        """,
+        (cutoff, max(limit * 4, limit)),
+      ).fetchall()
+    finally:
+      connection.close()
+  wanted_symbol = normalize_symbol(symbol) if symbol else ""
+  items = []
+  for event_id, payload_json, row_category, symbols_json, published_at, fetched_at in rows:
+    if normalized_category not in {"all", ""} and row_category != normalized_category:
+      continue
+    try:
+      payload = json.loads(payload_json)
+      symbols = json.loads(symbols_json)
+    except json.JSONDecodeError:
+      continue
+    if wanted_symbol and wanted_symbol not in symbols:
+      continue
+    payload["eventId"] = event_id
+    payload["category"] = payload.get("category") or row_category
+    payload["symbols"] = symbols
+    payload["publishedAt"] = payload.get("publishedAt") or published_at
+    payload["storedAt"] = fetched_at
+    payload["localDb"] = True
+    items.append(payload)
+    if len(items) >= limit:
+      break
+  return items
 
 
 def build_moving_average_insight(symbol: str, history: list[float], interval: str = "1d", persist: bool = True) -> dict:
@@ -3571,6 +3775,32 @@ def fetch_popular_rss_items(category: str) -> list[dict]:
   return results
 
 
+def fetch_market_insight_items(limit_per_feed: int = 5) -> list[dict]:
+  """Pull source-labeled market insight feeds, led by Paytm Money Market Pulse."""
+  feeds = MARKET_INSIGHT_RSS_FEEDS
+  with ThreadPoolExecutor(max_workers=min(5, len(feeds))) as executor:
+    futures = [
+      executor.submit(fetch_rss_feed, feed["url"], feed.get("source", ""), limit_per_feed)
+      for feed in feeds
+    ]
+
+  results: list[dict] = []
+  for feed, future in zip(feeds, futures):
+    try:
+      fetched = future.result()
+    except Exception:
+      fetched = []
+    for item in fetched:
+      results.append(
+        {
+          **item,
+          "category": feed.get("category") or "markets",
+          "sourceType": "market_insight_rss",
+        }
+      )
+  return results
+
+
 def fetch_bls_cpi_snapshot() -> dict | None:
   payload = post_json(
     "https://api.bls.gov/publicAPI/v2/timeseries/data/",
@@ -3741,6 +3971,8 @@ RADAR_SOURCE_BOOSTS = {
   "npr world": 4,
   "nyt business": 5,
   "nyt world": 5,
+  "paytm money market pulse": 6,
+  "paytm money stocks": 5,
   "marketwatch top stories": 5,
   "marketwatch marketpulse": 5,
   "economic times markets": 4,
@@ -3765,7 +3997,7 @@ def market_relevance_score(item: dict, category: str, symbol: str | None = None)
   for term in MARKET_IRRELEVANT_TERMS:
     if term in text:
       score -= 5
-  if category in {"business", "deals", "partnerships", "layoffs", "brands"}:
+  if category in {"markets", "business", "deals", "partnerships", "layoffs", "brands"}:
     score += 2
   if category in {"world", "war"}:
     score += sum(term in text for term in {"oil", "shipping", "sanction", "tariff", "rates", "inflation", "energy"})
@@ -3823,7 +4055,7 @@ def event_significance_score(item: dict, category: str, symbol: str | None = Non
     score += sum(keyword in text for keyword in {"deal", "agreement", "alliance", "order", "stake"})
   if category == "layoffs":
     score += sum(keyword in text for keyword in {"layoff", "cut", "restructuring", "headcount"})
-  if category == "business":
+  if category in {"markets", "business"}:
     score += sum(keyword in text for keyword in {"earnings", "guidance", "margin", "revenue", "profit"})
   if symbol:
     meta = fallback_meta(symbol)
@@ -3958,11 +4190,13 @@ def build_event_feed(category: str, symbol: str | None = None, keyword: str | No
     symbol_query = f" {symbol_meta['name']} {symbol_meta['exchange']}"
   query = (keyword or "").strip() or f"{EVENT_CATEGORY_QUERIES[normalized]}{symbol_query}"
   results = []
+  market_insight_results: list[dict] = []
 
   if normalized == "all":
     with ThreadPoolExecutor(max_workers=8) as executor:
       future_map = {
         ("search", "all"): executor.submit(duckduckgo_search, query),
+        ("market_insights", "markets"): executor.submit(fetch_market_insight_items, 5),
       }
       for category_key in event_categories:
         category_query = f"{EVENT_CATEGORY_QUERIES[category_key]}{symbol_query}"
@@ -3976,18 +4210,23 @@ def build_event_feed(category: str, symbol: str | None = None, keyword: str | No
           continue
         if source_type == "search":
           enriched = [{**item, "category": item.get("category") or "all"} for item in fetched]
+        elif source_type == "market_insights":
+          enriched = [{**item, "category": item.get("category") or "markets"} for item in fetched]
+          market_insight_results = merge_event_items(market_insight_results, enriched)
         else:
           enriched = [{**item, "category": category_key} for item in fetched]
         results = merge_event_items(results, enriched)
   else:
-    with ThreadPoolExecutor(max_workers=3) as executor:
+    with ThreadPoolExecutor(max_workers=4) as executor:
       google_future = executor.submit(fetch_google_news_rss, query)
       popular_future = executor.submit(fetch_popular_rss_items, normalized)
       search_future = executor.submit(duckduckgo_search, query)
+      insight_future = executor.submit(fetch_market_insight_items, 5) if normalized in {"markets", "business"} else None
       rss_results = [{**item, "category": normalized} for item in google_future.result()]
       popular_results = [{**item, "category": normalized} for item in popular_future.result()]
       search_results = [{**item, "category": normalized} for item in search_future.result()]
-    results = merge_event_items(rss_results, popular_results, search_results)
+      market_insight_results = [{**item, "category": item.get("category") or "markets"} for item in insight_future.result()] if insight_future is not None else []
+    results = merge_event_items(rss_results, popular_results, search_results, market_insight_results)
 
   titles = [item.get("title", "") for item in results if item.get("title")]
   if symbol and normalized in {"partnerships", "deals", "brands", "layoffs"}:
@@ -4000,7 +4239,10 @@ def build_event_feed(category: str, symbol: str | None = None, keyword: str | No
     results = merge_event_items(results, company_results)
     titles = [item.get("title", "") for item in results if item.get("title")]
 
+  live_result_count = len(results)
   results = filter_market_relevant_items(results, normalized, symbol)
+  if not results:
+    results = load_market_events(normalized, symbol, limit=12, max_age_hours=168)
 
   results = sorted(
     results,
@@ -4040,14 +4282,19 @@ def build_event_feed(category: str, symbol: str | None = None, keyword: str | No
     item_category = item.get("category") or normalized
     structured_items.append(
       {
+        "eventId": item.get("eventId") or stable_market_event_id(item),
         "title": item.get("title", "Update"),
         "url": url,
         "source": item.get("source") or (urllib.parse.urlparse(url).netloc.replace("www.", "") if url else ""),
         "category": item_category,
         "publishedAt": item.get("publishedAt"),
         "significance": event_significance_score(item, item_category, symbol),
+        "relevance": market_relevance_score(item, item_category, symbol),
+        "sourceType": item.get("sourceType") or ("local_db" if item.get("localDb") else "rss_search"),
+        "storedAt": item.get("storedAt"),
       }
     )
+  stored_count = save_market_events(structured_items, normalized, symbol)
 
   return {
     "category": normalized,
@@ -4055,6 +4302,13 @@ def build_event_feed(category: str, symbol: str | None = None, keyword: str | No
     "brief": brief,
     "asOf": datetime.now(timezone.utc).isoformat(),
     "items": structured_items,
+    "localStore": {
+      "db": DB_PATH.name,
+      "table": "market_events",
+      "storedCount": stored_count,
+      "liveResultCount": live_result_count,
+      "marketInsightSources": [feed["source"] for feed in MARKET_INSIGHT_RSS_FEEDS],
+    },
   }
 
 
@@ -5913,6 +6167,57 @@ def build_forecast(symbol: str, quote: dict, summary: dict, history: list[float]
   }
 
 
+def build_short_horizon_forecast(history: list[float], horizon: int = 5) -> dict:
+  """JSON-safe wrapper around scripts/short_horizon_model.predict. Runs the
+  hand-crafted short-horizon directional model (see CLAUDE.md + the methodology
+  report) and computes a quick walk-forward skill score versus a flat baseline.
+
+  Returns a dict suitable for direct inclusion in the forecast payload. All keys
+  are namespaced under shortHorizon so this is purely additive — no existing
+  keys are renamed or overwritten."""
+  horizon = max(1, min(int(horizon), 10))
+  if not history or len(history) < 25:
+    return {
+      "horizon": horizon,
+      "available": False,
+      "reason": "Need at least 25 historical bars to compute features.",
+    }
+
+  forecast = _shm.predict(history, horizon=horizon)
+  # Rolling skill check: only meaningful with >=80 bars. Lower bound otherwise.
+  skill = {"samples": 0, "mae_pp": 0.0, "hit_rate_pct": 0.0, "ic": 0.0,
+           "skill_vs_flat": 0.0, "status": "warmup"}
+  if len(history) >= 80:
+    new_metrics = _shm.walk_forward_backtest(history, horizon=horizon, predict_fn=_shm.predict)
+    flat_metrics = _shm.walk_forward_backtest(history, horizon=horizon, predict_fn=_shm.predict_flat)
+    flat_mae = flat_metrics.get("mae_pp") or 0.0
+    new_mae = new_metrics.get("mae_pp") or 0.0
+    skill_vs_flat = (flat_mae - new_mae) / flat_mae if flat_mae > 0 else 0.0
+    skill = {
+      "samples": int(new_metrics.get("samples", 0)),
+      "mae_pp": float(new_metrics.get("mae_pp", 0.0)),
+      "hit_rate_pct": float(new_metrics.get("hit_rate_pct", 0.0)),
+      "ic": float(new_metrics.get("ic", 0.0)),
+      "skill_vs_flat": round(skill_vs_flat, 4),
+      "status": "evaluated",
+    }
+  return {
+    "available": True,
+    "horizon": forecast.horizon,
+    "expectedReturnPct": forecast.expected_return_pct,
+    "perDayDriftPct": forecast.per_day_drift_pct,
+    "realizedVolDailyPct": forecast.realized_vol_daily,
+    "coneLowPct": forecast.cone_low_pct,
+    "coneHighPct": forecast.cone_high_pct,
+    "direction": forecast.direction,
+    "confidence": forecast.confidence,
+    "features": forecast.features,
+    "notes": forecast.notes,
+    "skill": skill,
+    "weights": _shm.WEIGHTS,
+  }
+
+
 def build_backtest(symbol: str, history: list[float], quote: dict, summary: dict, horizon: int, stress: str, news_count: int) -> dict:
   minimum_history = max(12, horizon + 4)
   empty = {
@@ -6624,6 +6929,10 @@ def build_ticker_snapshot(symbol: str, quote: dict | None = None, stress: str = 
   previous_close = float(quote.get("regularMarketPreviousClose") or (history[-2] if len(history) > 1 else latest_price))
   change_percent = float(quote.get("regularMarketChangePercent") or pct_change(latest_price, previous_close))
   forecast = build_forecast(symbol, quote, summary, model_history, stress=stress, horizon=horizon, news_count=news_count)
+  # Additive: hand-crafted short-horizon model output rides on the same
+  # forecast object under a namespaced key. Horizon is independent from the
+  # existing forecast horizon (capped at 10 for the short-horizon model).
+  forecast["shortHorizon"] = build_short_horizon_forecast(model_history, horizon=min(int(horizon), 10))
   backtest = build_backtest(symbol, model_history, quote, summary, horizon, stress, news_count)
   # Self-retraining: blend new walk-forward residuals into a persisted state and
   # apply the learned bias correction before downstream consumers see the forecast.
@@ -8525,6 +8834,21 @@ class FinancialBoardHandler(BaseHTTPRequestHandler):
       symbol = ((params.get("symbol") or [""])[0] or "").upper() or None
       keyword = (params.get("q") or [""])[0]
       return self.send_json(build_event_feed(category, symbol, keyword))
+    if parsed.path == "/api/market-events":
+      params = urllib.parse.parse_qs(parsed.query)
+      category = (params.get("category") or ["all"])[0]
+      symbol = ((params.get("symbol") or [""])[0] or "").upper() or None
+      try:
+        limit = int((params.get("limit") or ["20"])[0] or 20)
+      except ValueError:
+        limit = 20
+      return self.send_json(
+        {
+          "items": load_market_events(category, symbol, limit=max(1, min(limit, 100))),
+          "asOf": datetime.now(timezone.utc).isoformat(),
+          "localStore": {"db": DB_PATH.name, "table": "market_events"},
+        }
+      )
     if parsed.path == "/api/radar":
       params = urllib.parse.parse_qs(parsed.query)
       symbol = ((params.get("symbol") or [""])[0] or "").upper() or None
@@ -8577,6 +8901,26 @@ class FinancialBoardHandler(BaseHTTPRequestHandler):
       return self.send_json(build_overview_payload(symbols, active, region))
     if parsed.path == "/api/history/status":
       return self.send_json(history_warmup_status())
+    if parsed.path == "/api/short-horizon":
+      params = urllib.parse.parse_qs(parsed.query)
+      symbol = ((params.get("symbol") or [""])[0]).upper()
+      if not symbol:
+        return self.send_error(HTTPStatus.BAD_REQUEST, "symbol is required")
+      try:
+        horizon = int((params.get("horizon") or ["5"])[0])
+      except ValueError:
+        horizon = 5
+      chart_range = ((params.get("range") or ["1Y"])[0]).upper()
+      history, _ = build_history(symbol, chart_range)
+      if not history or len(history) < 25:
+        history, _ = build_history(symbol, "1Y")
+      return self.send_json({
+        "symbol": symbol,
+        "horizon": horizon,
+        "asOf": datetime.now(timezone.utc).isoformat(),
+        "shortHorizon": build_short_horizon_forecast(history, horizon=horizon),
+        "historyBars": len(history),
+      })
     if parsed.path == "/api/stream":
       params = urllib.parse.parse_qs(parsed.query)
       symbols = [item for item in ((params.get("symbols") or [""])[0].split(",")) if item]

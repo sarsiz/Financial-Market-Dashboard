@@ -3652,6 +3652,14 @@ button[type="submit"],
   gap: 8px;
 }
 
+.event-control-row {
+  display: grid;
+  grid-template-columns: repeat(4, max-content) minmax(180px, 1fr);
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
 .event-chip {
   min-width: 0;
   height: 32px;
@@ -6003,8 +6011,8 @@ body.app-ready .pulse-card {
 
 .market-heat-group-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(42px, 1fr));
-  grid-auto-rows: 42px;
+  grid-template-columns: repeat(auto-fill, minmax(52px, 1fr));
+  grid-auto-rows: 52px;
   grid-auto-flow: dense;
   gap: 3px;
   min-width: 0;
@@ -6076,6 +6084,15 @@ body.app-ready .pulse-card {
   font-size: 0.52rem;
   line-height: 1;
   font-family: var(--font-mono);
+}
+
+.market-heat-tile:not(.span-2):not(.span-3) strong {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-height: 0.88;
+  white-space: normal;
+  word-break: break-all;
 }
 
 .market-heat-tile em {
@@ -6265,6 +6282,12 @@ body.app-ready .pulse-card {
 }
 
 @media (max-width: 600px) {
+  .event-control-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .event-control-row .event-search-form {
+    grid-column: 1 / -1;
+  }
   .sector-matrix-grid {
     grid-template-columns: 1fr;
   }
@@ -6309,8 +6332,8 @@ body.app-ready .pulse-card {
   }
   .market-heat-group-grid,
   .market-heat-map-panel.is-expanded .market-heat-group-grid {
-    grid-template-columns: repeat(auto-fill, minmax(38px, 1fr));
-    grid-auto-rows: 38px;
+    grid-template-columns: repeat(auto-fill, minmax(58px, 1fr));
+    grid-auto-rows: 58px;
   }
   .market-heat-sector-summary {
     grid-template-columns: 1fr;
@@ -7073,6 +7096,106 @@ body.app-ready .pulse-card {
   contain: layout style paint;
   animation: pred-fade-in 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
+/* Short-Horizon Forecast card — calibrated 1-10 day directional model.
+   Sits below the main prediction panel, intentionally compact. */
+.short-horizon-card {
+  margin: 0 0 16px;
+  contain: layout style paint;
+  animation: pred-fade-in 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.short-horizon-card .sh-card {
+  border-radius: 14px;
+  background: rgba(8, 8, 12, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-left: 3px solid var(--sh-accent, #f3b85f);
+  padding: 12px 14px;
+  display: grid;
+  grid-template-rows: auto auto auto;
+  gap: 8px;
+}
+.short-horizon-card .sh-card.sh-bullish { --sh-accent: #3fe08e; }
+.short-horizon-card .sh-card.sh-bearish { --sh-accent: #ff6b6b; }
+.short-horizon-card .sh-card.sh-neutral { --sh-accent: #f3b85f; }
+.short-horizon-card .sh-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+.short-horizon-card .sh-title {
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.72);
+  font-weight: 600;
+}
+.short-horizon-card .sh-horizon {
+  font-size: 10.5px;
+  color: rgba(255, 255, 255, 0.45);
+}
+.short-horizon-card .sh-body {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.short-horizon-card .sh-call {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.short-horizon-card .sh-direction {
+  font-size: 11px;
+  color: var(--sh-accent);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.short-horizon-card .sh-expected {
+  font-size: 22px;
+  color: var(--sh-accent);
+  line-height: 1.1;
+}
+.short-horizon-card .sh-cone {
+  font-size: 10.5px;
+  color: rgba(255, 255, 255, 0.5);
+}
+.short-horizon-card .sh-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.62);
+}
+.short-horizon-card .sh-conf {
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.85);
+}
+.short-horizon-card .sh-skill {
+  font-size: 10.5px;
+  color: rgba(255, 255, 255, 0.5);
+  cursor: help;
+}
+.short-horizon-card .sh-notes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 10.5px;
+  color: rgba(255, 255, 255, 0.5);
+}
+.short-horizon-card .sh-notes span {
+  padding: 2px 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 999px;
+}
+.short-horizon-card .sh-empty {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.35);
+  padding: 8px 4px;
+}
 @keyframes pred-fade-in {
   from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: translateY(0); }
@@ -7683,7 +7806,13 @@ body:not(.detail-mode) .dossier-nav-scroll {
 .sidebar-copy { font-size: 0.68rem; line-height: 1.4; }
 
 /* Regime pill */
-.regime-pill { font-size: 0.62rem; padding: 2px 7px; }
+.regime-pill {
+  max-width: min(56%, 260px);
+  padding: 3px 7px;
+  font-size: 0.62rem;
+  line-height: 1.18;
+  white-space: normal;
+}
 
 /* Forecast range text */
 .forecast-range { font-size: 0.7rem; }
@@ -7989,7 +8118,10 @@ body:not(.detail-mode) .dossier-nav-scroll {
 
 /* Dossier layout polish: keep simple mode balanced and prevent dense labels from colliding. */
 .stock-dossier {
+  --dossier-masonry-row: 8px;
   grid-auto-flow: dense;
+  grid-auto-rows: var(--dossier-masonry-row);
+  align-items: start;
 }
 
 .dossier-card,
@@ -7997,15 +8129,95 @@ body:not(.detail-mode) .dossier-nav-scroll {
   min-width: 0;
 }
 
+.dossier-card {
+  contain: layout style;
+  container-type: inline-size;
+  grid-row-end: span var(--dossier-row-span, 24);
+  height: auto;
+  min-height: 0;
+  overflow: visible;
+}
+
+.dossier-tier-primary,
+.dossier-tier-support,
+.dossier-tier-metrics,
+.dossier-tier-strip {
+  height: auto;
+  min-height: 0;
+}
+
+.dossier-card-body {
+  min-height: 0;
+  overflow: visible;
+}
+
+.dossier-tier-primary .dossier-card-body {
+  overflow-y: visible;
+}
+
+.metric-command-card,
+.range-watch-card {
+  min-height: 0;
+}
+
+@media (max-width: 1160px) {
+  .app-shell {
+    grid-template-columns: minmax(0, 1fr);
+    height: auto;
+  }
+
+  .sidebar,
+  .dashboard {
+    width: 100%;
+    min-width: 0;
+  }
+}
+
+.range-watch-card {
+  align-self: start;
+}
+
+.dossier-card-title {
+  align-items: start;
+}
+
+.dossier-card-title span,
+.dossier-card-title strong,
+.dossier-card-title small,
+.dossier-card-summary,
+.dossier-context-line span,
+.dossier-metric-grid strong,
+.dossier-mini-grid strong,
+.range-watch-stack strong,
+.range-watch-stack small,
+.event-card strong,
+.event-card p {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.dossier-card-title span,
 .dossier-card-title strong,
 .dossier-card-title small {
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .dossier-card-title strong {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   letter-spacing: 0;
+  line-height: 1.12;
+  white-space: normal;
+}
+
+.dossier-card-title small {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-height: 1.2;
+  white-space: normal;
 }
 
 .dossier-card-summary,
@@ -8015,6 +8227,47 @@ body:not(.detail-mode) .dossier-nav-scroll {
 
 .dossier-context-line span {
   max-width: 100%;
+  white-space: normal;
+  line-height: 1.25;
+}
+
+.dossier-metric-grid strong,
+.dossier-mini-grid strong {
+  white-space: normal;
+  line-height: 1.16;
+}
+
+.range-watch-card .dossier-card-title {
+  margin-bottom: 8px;
+}
+
+.range-watch-stack {
+  margin-top: 0;
+}
+
+.range-watch-stack article {
+  display: grid;
+  align-content: start;
+  min-height: 72px;
+}
+
+.range-watch-stack strong,
+.range-watch-stack small {
+  white-space: normal;
+}
+
+.range-watch-stack strong {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-height: 1.12;
+}
+
+.range-watch-stack small {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-height: 1.18;
 }
 
 body:not(.detail-mode) #stock-dossier {
@@ -8024,12 +8277,23 @@ body:not(.detail-mode) #stock-dossier {
 
 body:not(.detail-mode) #dossier-day,
 body:not(.detail-mode) #dossier-ma,
-body:not(.detail-mode) #dossier-activity {
+body:not(.detail-mode) #dossier-fundamentals {
   grid-column: span 4;
+}
+
+body:not(.detail-mode) #dossier-activity {
+  grid-column: 9 / span 4;
 }
 
 body:not(.detail-mode) #dossier-benchmarks {
   grid-column: 1 / -1;
+}
+
+@media (min-width: 1181px) {
+  body.detail-mode #dossier-fundamentals,
+  body.detail-mode #dossier-activity {
+    grid-column: 9 / span 4;
+  }
 }
 
 .ma-dossier-list {
@@ -8081,7 +8345,8 @@ body:not(.detail-mode) #dossier-benchmarks {
 
 @media (max-width: 1180px) {
   body:not(.detail-mode) #dossier-day,
-  body:not(.detail-mode) #dossier-ma {
+  body:not(.detail-mode) #dossier-ma,
+  body:not(.detail-mode) #dossier-fundamentals {
     grid-column: span 6;
   }
 
@@ -8094,6 +8359,7 @@ body:not(.detail-mode) #dossier-benchmarks {
 @media (max-width: 900px) {
   body:not(.detail-mode) #dossier-day,
   body:not(.detail-mode) #dossier-ma,
+  body:not(.detail-mode) #dossier-fundamentals,
   body:not(.detail-mode) #dossier-activity,
   body:not(.detail-mode) #dossier-benchmarks {
     grid-column: 1 / -1;
@@ -8101,6 +8367,36 @@ body:not(.detail-mode) #dossier-benchmarks {
 
   .ma-dossier-list div {
     grid-template-columns: minmax(40px, 0.55fr) minmax(0, 1fr) minmax(52px, 0.7fr);
+  }
+}
+
+@media (max-width: 620px) {
+  .dossier-card-title {
+    grid-template-columns: minmax(0, 1fr);
+    padding-right: 34px;
+  }
+
+  .dossier-card-title small {
+    grid-column: 1;
+    grid-row: auto;
+    justify-self: start;
+    max-width: 100%;
+    text-align: left;
+  }
+}
+
+@container (max-width: 260px) {
+  .dossier-card-title {
+    grid-template-columns: minmax(0, 1fr);
+    padding-right: 34px;
+  }
+
+  .dossier-card-title small {
+    grid-column: 1;
+    grid-row: auto;
+    justify-self: start;
+    max-width: 100%;
+    text-align: left;
   }
 }
 
