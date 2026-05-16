@@ -2832,12 +2832,9 @@ button[type="submit"],
 .academy-panel,
 .research-panel {
   padding: 14px;
-  content-visibility: auto;
-  contain-intrinsic-size: 320px;
 }
 
 .spotlight {
-  content-visibility: visible;
   contain: layout paint;
 }
 
@@ -4277,12 +4274,12 @@ svg {
   }
 
   .sidebar {
-    order: 2;
+    order: 1;
     grid-template-columns: 1fr;
   }
 
   .dashboard {
-    order: 1;
+    order: 2;
   }
 
   .source-panel {
@@ -5787,6 +5784,11 @@ body.app-ready .pulse-card {
   min-width: 0;
 }
 
+.discovery-compact-head div {
+  display: grid;
+  gap: 2px;
+}
+
 .discovery-compact-head span,
 .discovery-compact-head small {
   color: rgba(255, 255, 255, 0.5);
@@ -6082,17 +6084,12 @@ body.app-ready .pulse-card {
 
 .market-heat-tile strong {
   font-size: 0.52rem;
-  line-height: 1;
+  line-height: 1.18;
   font-family: var(--font-mono);
 }
 
 .market-heat-tile:not(.span-2):not(.span-3) strong {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  line-height: 0.88;
-  white-space: normal;
-  word-break: break-all;
+  display: none;
 }
 
 .market-heat-tile em {
@@ -7094,6 +7091,8 @@ body.app-ready .pulse-card {
   border: 1px solid rgba(255, 255, 255, 0.06);
   padding: 16px;
   contain: layout style paint;
+  container-type: inline-size;
+  overflow: hidden;
   animation: pred-fade-in 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 /* Short-Horizon Forecast card — calibrated 1-10 day directional model.
@@ -7494,7 +7493,34 @@ body.app-ready .pulse-card {
   .pred-direction-label { text-align: center; justify-items: center; }
   .pred-models-row { justify-content: center; }
   .pred-fan-band { grid-template-columns: 28px 1fr 56px 56px; }
-  .pred-factor-row { grid-template-columns: 72px 1fr 44px; }
+  .pred-factor-row { grid-template-columns: 92px minmax(0, 1fr) 44px; }
+}
+
+@container (max-width: 760px) {
+  .prediction-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .pred-direction-card {
+    grid-template-columns: minmax(82px, 108px) minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    justify-items: start;
+    align-items: center;
+  }
+
+  .pred-gauge {
+    width: min(100%, 96px);
+    grid-row: 1 / span 2;
+  }
+
+  .pred-direction-label {
+    text-align: left;
+    justify-items: start;
+  }
+
+  .pred-models-row {
+    justify-content: flex-start;
+  }
 }
 
 /* Smooth transition when switching stocks */
@@ -7566,15 +7592,15 @@ body.app-ready .pulse-card {
 /* Hero grid: spotlight left, chart right */
 .hero-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(420px, 0.92fr) minmax(420px, 1.08fr);
   grid-template-areas: unset;
   gap: 12px;
-  align-items: stretch;
+  align-items: start;
 }
 .spotlight { grid-area: unset; }
 .spotlight,
 .hero-chart-card {
-  height: 100%;
+  height: auto;
 }
 @media (max-width: 1100px) {
   .hero-grid { grid-template-columns: 1fr; }
@@ -7920,8 +7946,8 @@ body:not(.detail-mode) .dossier-nav-scroll {
 .stock-dossier-panel,
 .market-heat-map-panel,
 .sector-matrix-panel {
-  content-visibility: auto;
-  contain-intrinsic-size: 1px 520px;
+  content-visibility: visible;
+  contain-intrinsic-size: auto;
 }
 
 .macro-panel,
@@ -8094,6 +8120,24 @@ body:not(.detail-mode) .dossier-nav-scroll {
 .trade-plan-foot span:first-child {
   color: rgba(243, 184, 95, 0.76);
   font-family: var(--font-mono);
+}
+
+@media (min-width: 1181px) {
+  .spotlight,
+  .hero-chart-card {
+    max-height: min(820px, calc(100vh - 132px));
+    overflow-y: auto;
+    overflow-x: hidden;
+    scrollbar-gutter: stable;
+  }
+}
+
+@media (max-width: 1180px) {
+  .spotlight,
+  .hero-chart-card {
+    max-height: none;
+    overflow: visible;
+  }
 }
 
 @media (max-width: 1280px) {
@@ -8397,6 +8441,68 @@ body:not(.detail-mode) #dossier-benchmarks {
     justify-self: start;
     max-width: 100%;
     text-align: left;
+  }
+}
+
+@media (max-width: 600px) {
+  .global-market-overview {
+    padding: 8px 10px;
+  }
+
+  .overview-header-row {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+    align-items: stretch;
+  }
+
+  .overview-header-row .global-market-overview-head {
+    width: 100%;
+    max-width: none;
+  }
+
+  .overview-header-row #sector-overview-strip {
+    width: 100%;
+    max-width: none;
+    margin-left: 0;
+    justify-content: flex-start;
+  }
+
+  .sector-overview-strip {
+    flex-wrap: nowrap !important;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+  }
+
+  .sector-overview-strip::-webkit-scrollbar {
+    display: none;
+  }
+
+  .sector-strip-chip {
+    flex: 0 0 auto;
+  }
+
+  .market-discovery {
+    overflow: visible;
+  }
+
+  .discovery-chip-stack {
+    grid-auto-flow: row;
+    grid-auto-columns: unset;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    overflow: visible;
+  }
+
+  .discovery-chip-stack button {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .discovery-chip-stack strong,
+  .discovery-chip-stack span,
+  .discovery-chip-stack em {
+    white-space: normal;
+    overflow-wrap: anywhere;
   }
 }
 
