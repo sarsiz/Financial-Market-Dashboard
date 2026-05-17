@@ -1,0 +1,2826 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Financial Board — redesign</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    /* surfaces */
+    --bg-0:        #0a0d12;       /* app background */
+    --bg-1:        #0e1218;       /* panels */
+    --bg-2:        #131820;       /* elevated rows */
+    --bg-3:        #181e28;       /* hover */
+    --line:        #1f2530;       /* hairline */
+    --line-soft:   #161b24;
+    --line-strong: #2b3340;
+
+    /* text */
+    --fg:        #e6e9ef;
+    --fg-mute:   #8a93a4;
+    --fg-dim:    #5b6373;
+    --fg-faint:  #3b4150;
+
+    /* brand + semantic */
+    --amber:     #f5a524;
+    --amber-soft:#f5a52420;
+    --up:        #2ecc71;          /* gain */
+    --up-soft:   #2ecc7115;
+    --down:      #ef4d4d;          /* loss */
+    --down-soft: #ef4d4d15;
+    --cyan:      #54b9d1;          /* informational only */
+    --warn:      #f7c948;
+
+    /* type */
+    --f-ui:   "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    --f-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+    /* radii */
+    --r-sm: 4px;
+    --r-md: 6px;
+    --r-lg: 8px;
+  }
+
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--bg-0);
+    color: var(--fg);
+    font-family: var(--f-ui);
+    font-size: 13px;
+    line-height: 1.4;
+    font-feature-settings: "tnum" 1, "cv11" 1, "ss01" 1;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    overflow: hidden;
+    height: 100vh;
+  }
+
+  .mono   { font-family: var(--f-mono); font-feature-settings: "tnum" 1; }
+  .num    { font-family: var(--f-mono); font-variant-numeric: tabular-nums; font-weight: 500; }
+  .up     { color: var(--up); }
+  .down   { color: var(--down); }
+  .flat   { color: var(--fg-mute); }
+  .muted  { color: var(--fg-mute); }
+  .dim    { color: var(--fg-dim); }
+  .label  { font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--fg-dim); font-weight: 600; }
+
+  /* ============================================================
+     LAYOUT
+     ============================================================ */
+  .shell {
+    display: grid;
+    grid-template-rows: 36px 28px 1fr 22px;
+    height: 100vh;
+  }
+
+  /* ---- TOP BAR ---- */
+  .topbar {
+    display: grid;
+    grid-template-columns: 220px 1fr auto;
+    align-items: center;
+    background: var(--bg-1);
+    border-bottom: 1px solid var(--line);
+    padding: 0 14px 0 0;
+    gap: 18px;
+  }
+  .brand {
+    display: flex; align-items: center; gap: 10px;
+    padding: 0 14px;
+    height: 100%;
+    border-right: 1px solid var(--line);
+  }
+  .brand-mark {
+    width: 18px; height: 18px;
+    background:
+      linear-gradient(135deg, var(--amber) 0%, #e07c0a 100%);
+    border-radius: 3px;
+    position: relative;
+  }
+  .brand-mark::after {
+    content: "";
+    position: absolute; inset: 4px;
+    border: 1.5px solid var(--bg-1);
+    border-radius: 1px;
+    border-right-color: transparent;
+    border-bottom-color: transparent;
+  }
+  .brand-name {
+    font-weight: 700; font-size: 13px; letter-spacing: -0.005em;
+  }
+  .brand-name b { color: var(--amber); }
+
+  .topnav { display: flex; align-items: center; gap: 4px; height: 100%; }
+  .topnav a {
+    color: var(--fg-mute);
+    padding: 0 12px; line-height: 36px;
+    font-size: 12px; font-weight: 500;
+    border-bottom: 2px solid transparent;
+    text-decoration: none;
+    transition: color 80ms;
+  }
+  .topnav a:hover { color: var(--fg); }
+  .topnav a.active { color: var(--fg); border-bottom-color: var(--amber); }
+
+  .top-tools {
+    display: flex; align-items: center; gap: 8px;
+  }
+  .search-box {
+    display: flex; align-items: center; gap: 6px;
+    background: var(--bg-2);
+    border: 1px solid var(--line);
+    border-radius: var(--r-md);
+    height: 24px; padding: 0 8px;
+    width: 240px;
+  }
+  .search-box svg { width: 12px; height: 12px; color: var(--fg-dim); }
+  .search-box input {
+    background: transparent; border: 0; outline: 0; flex: 1;
+    color: var(--fg); font: inherit;
+    font-size: 12px;
+  }
+  .search-box input::placeholder { color: var(--fg-dim); }
+  .search-box .kbd {
+    font-family: var(--f-mono); font-size: 10px;
+    color: var(--fg-dim);
+    background: var(--bg-1);
+    padding: 1px 5px; border-radius: 3px;
+    border: 1px solid var(--line);
+  }
+
+  .seg {
+    display: inline-flex;
+    background: var(--bg-2);
+    border: 1px solid var(--line);
+    border-radius: var(--r-md);
+    overflow: hidden;
+    height: 24px;
+  }
+  .seg button {
+    background: transparent; border: 0; outline: 0;
+    color: var(--fg-mute); font: inherit; font-size: 11px;
+    padding: 0 10px;
+    cursor: pointer;
+    font-weight: 500;
+  }
+  .seg button.active { background: var(--bg-3); color: var(--fg); }
+  .seg button + button { border-left: 1px solid var(--line); }
+
+  .icon-btn {
+    width: 24px; height: 24px;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: var(--bg-2);
+    border: 1px solid var(--line);
+    border-radius: var(--r-md);
+    color: var(--fg-mute);
+    cursor: pointer;
+  }
+  .icon-btn:hover { color: var(--fg); background: var(--bg-3); }
+
+  /* ---- TICKER TAPE ---- */
+  .tape {
+    background: var(--bg-1);
+    border-bottom: 1px solid var(--line);
+    overflow: hidden;
+    position: relative;
+    display: flex;
+    align-items: center;
+    font-family: var(--f-mono);
+    font-size: 11.5px;
+    white-space: nowrap;
+  }
+  .tape::before {
+    content: "";
+    position: absolute; left: 0; top: 0; bottom: 0; width: 60px;
+    background: linear-gradient(90deg, var(--bg-1), transparent);
+    z-index: 2; pointer-events: none;
+  }
+  .tape::after {
+    content: "";
+    position: absolute; right: 0; top: 0; bottom: 0; width: 60px;
+    background: linear-gradient(270deg, var(--bg-1), transparent);
+    z-index: 2; pointer-events: none;
+  }
+  .tape-track {
+    display: flex; gap: 22px;
+    padding-left: 14px;
+    animation: scroll-tape 90s linear infinite;
+  }
+  .tape-row { display: flex; align-items: center; gap: 6px; }
+  .tape-row .sym { color: var(--fg); font-weight: 600; }
+  .tape-row .val { color: var(--fg-mute); }
+  .tape-row .delta { font-weight: 600; }
+  .tape .dot {
+    display: inline-block; width: 4px; height: 4px;
+    background: var(--fg-faint);
+    border-radius: 50%; margin: 0 4px;
+  }
+  @keyframes scroll-tape {
+    from { transform: translateX(0); }
+    to   { transform: translateX(-50%); }
+  }
+
+  /* ---- BODY: 3-column grid ---- */
+  .body {
+    display: grid;
+    grid-template-columns: 250px 1fr;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  /* ---- SIDEBAR (left) ---- */
+  .sidebar {
+    background: var(--bg-1);
+    border-right: 1px solid var(--line);
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+  }
+  .sb-section {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--line);
+  }
+  .sb-head {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 10px;
+  }
+  .sb-head .title { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--fg-mute); font-weight: 600; }
+  .sb-head .count {
+    font-size: 10px; color: var(--fg-dim);
+    background: var(--bg-2);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 1px 6px;
+    font-family: var(--f-mono);
+  }
+  .sb-head .add {
+    color: var(--fg-mute); cursor: pointer; width: 18px; height: 18px;
+    display: inline-flex; align-items: center; justify-content: center;
+    border-radius: 3px;
+  }
+  .sb-head .add:hover { background: var(--bg-2); color: var(--fg); }
+
+  .watch-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 6px 8px;
+    padding: 6px 0;
+    border-bottom: 1px solid var(--line-soft);
+    cursor: pointer;
+    position: relative;
+  }
+  .watch-row:last-child { border-bottom: 0; }
+  .watch-row:hover { background: var(--bg-2); margin: 0 -14px; padding: 6px 14px; }
+  .watch-row.active {
+    background: var(--bg-2); margin: 0 -14px; padding: 6px 14px;
+    box-shadow: inset 2px 0 0 var(--amber);
+  }
+  .watch-row .sym {
+    font-family: var(--f-mono); font-size: 12px; font-weight: 600;
+    color: var(--fg);
+    letter-spacing: -0.01em;
+  }
+  .watch-row .name {
+    font-size: 11px; color: var(--fg-mute);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .watch-row .px {
+    font-family: var(--f-mono); font-size: 12px; font-weight: 600;
+    text-align: right; color: var(--fg);
+  }
+  .watch-row .chg {
+    font-family: var(--f-mono); font-size: 11px;
+    text-align: right; font-weight: 500;
+  }
+  .watch-row .spark {
+    grid-column: 1 / -1;
+    height: 14px; margin-top: 2px;
+    display: none;
+  }
+  .watch-row.active .spark { display: block; }
+
+  /* presets */
+  .preset {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    padding: 7px 9px;
+    margin-bottom: 4px;
+    background: var(--bg-2);
+    border: 1px solid var(--line);
+    border-radius: var(--r-md);
+    cursor: pointer;
+    font-size: 12px;
+  }
+  .preset:hover { border-color: var(--line-strong); background: var(--bg-3); }
+  .preset .pn { color: var(--fg); font-weight: 500; }
+  .preset .pc { font-family: var(--f-mono); font-size: 10px; color: var(--fg-dim); }
+
+  /* ---- MAIN ---- */
+  .main {
+    overflow-y: auto;
+    overflow-x: hidden;
+    background: var(--bg-0);
+  }
+
+  /* benchmarks strip */
+  .bench {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 1px;
+    background: var(--line);
+    border-bottom: 1px solid var(--line);
+  }
+  .bench-cell {
+    background: var(--bg-1);
+    padding: 8px 12px;
+    display: grid;
+    gap: 3px;
+    position: relative;
+    min-width: 0;
+  }
+  .bench-cell .b-head {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 11px;
+    min-width: 0;
+  }
+  .bench-cell .b-flag {
+    width: 14px; height: 10px; border-radius: 1.5px; display: inline-block;
+    border: 1px solid var(--line-strong);
+    flex-shrink: 0;
+  }
+  .bench-cell .b-country { color: var(--fg); font-weight: 600; font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1 1 auto; min-width: 0; }
+  .bench-cell .b-status {
+    font-family: var(--f-mono); font-size: 9px;
+    color: var(--fg-dim);
+    padding: 1px 4px;
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    flex-shrink: 0;
+    letter-spacing: 0.04em;
+  }
+  .bench-cell .b-status.open {
+    color: var(--up); border-color: rgba(46,204,113,0.25); background: var(--up-soft);
+  }
+  .bench-cell .b-time {
+    font-family: var(--f-mono); font-size: 10px; color: var(--fg-mute);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .bench-cell .b-indices {
+    margin-top: 2px; display: grid; gap: 2px;
+  }
+  .bench-cell .b-idx {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: 8px; row-gap: 1px;
+    align-items: baseline;
+    font-size: 11px;
+    line-height: 1.3;
+  }
+  .bench-cell .b-idx .idx-name { color: var(--fg-mute); font-size: 10.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bench-cell .b-idx .idx-val  { font-family: var(--f-mono); color: var(--fg); font-weight: 600; font-size: 11.5px; white-space: nowrap; }
+  .bench-cell .b-idx .idx-chg  { font-family: var(--f-mono); font-size: 10.5px; font-weight: 500; text-align: right; white-space: nowrap; grid-column: 2; }
+  .b-idx .idx-name { grid-column: 1; }
+  .b-idx .idx-val { grid-column: 2; }
+
+  /* breaking news ribbon */
+  .news-ribbon {
+    display: flex; align-items: center;
+    background: var(--bg-1);
+    border-bottom: 1px solid var(--line);
+    height: 32px;
+    padding: 0 14px;
+    gap: 10px;
+    overflow: hidden;
+  }
+  .news-ribbon .badge {
+    font-size: 10px; letter-spacing: 0.1em;
+    color: var(--down); font-weight: 700;
+    border: 1px solid var(--down);
+    padding: 1px 6px; border-radius: 3px;
+    background: var(--down-soft);
+  }
+  .news-ribbon .news-list {
+    display: flex; gap: 22px; font-size: 12px;
+    white-space: nowrap;
+    flex: 1; overflow: hidden;
+    position: relative;
+  }
+  .news-ribbon .news-list .item { color: var(--fg-mute); }
+  .news-ribbon .news-list .item b { color: var(--fg); font-weight: 600; }
+  .news-ribbon .risk {
+    margin-left: auto;
+    font-size: 10px; letter-spacing: 0.1em;
+    color: var(--warn);
+    border: 1px solid rgba(247,201,72,0.35);
+    background: rgba(247,201,72,0.08);
+    padding: 1px 6px; border-radius: 3px;
+    font-weight: 600;
+  }
+
+  /* tabs */
+  .tabs {
+    display: flex;
+    border-bottom: 1px solid var(--line);
+    background: var(--bg-0);
+    padding: 0 14px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tabs button {
+    background: transparent; border: 0; outline: 0;
+    color: var(--fg-mute); cursor: pointer;
+    font: inherit; font-size: 12px; font-weight: 500;
+    padding: 10px 14px;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    white-space: nowrap;
+  }
+  .tabs button:hover { color: var(--fg); }
+  .tabs button.active {
+    color: var(--fg);
+    border-bottom-color: var(--amber);
+  }
+  .tabs .tabs-right { margin-left: auto; display: flex; align-items: center; gap: 6px; padding: 7px 0; }
+
+  /* CONTENT GRID */
+  .content {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 320px;
+    gap: 1px;
+    background: var(--line);
+  }
+  .content > * { min-width: 0; }
+  .panel {
+    background: var(--bg-0);
+    padding: 14px 16px;
+  }
+  .panel + .panel { border-top: 1px solid var(--line); }
+  .panel-head {
+    display: flex; align-items: baseline; justify-content: space-between;
+    margin-bottom: 12px;
+    flex-wrap: wrap; gap: 8px;
+  }
+  .panel-head .left { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; min-width: 0; }
+  .panel-head h2 {
+    font-size: 13px; font-weight: 600; margin: 0; color: var(--fg);
+    letter-spacing: -0.005em;
+  }
+  .panel-head .sub { font-size: 11px; color: var(--fg-dim); }
+
+  /* ---- STOCK HEADER ---- */
+  .stock-head {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: start;
+    gap: 24px;
+    padding: 16px;
+    border-bottom: 1px solid var(--line);
+  }
+  .stock-head .meta {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 11px; color: var(--fg-mute); margin-bottom: 4px;
+    flex-wrap: wrap;
+  }
+  .stock-head .meta .pill {
+    border: 1px solid var(--line); padding: 1px 6px; border-radius: 3px;
+    font-family: var(--f-mono); font-size: 10px;
+    color: var(--fg-mute);
+    white-space: nowrap;
+  }
+  .stock-head .meta .pill.live { color: var(--up); border-color: rgba(46,204,113,0.3); background: var(--up-soft); }
+  .stock-head .meta .pill.closed { color: var(--fg-mute); }
+  .stock-head .meta .dot {
+    width: 4px; height: 4px; background: var(--fg-faint); border-radius: 50%;
+  }
+  .stock-head h1 {
+    font-size: 18px; font-weight: 700; margin: 0;
+    letter-spacing: -0.01em;
+  }
+  .stock-head h1 small {
+    font-size: 12px; font-weight: 500; color: var(--fg-mute);
+    margin-left: 8px;
+  }
+  .stock-price {
+    display: flex; align-items: baseline; gap: 12px;
+    margin-top: 6px;
+  }
+  .stock-price .px {
+    font-family: var(--f-mono);
+    font-size: 30px; font-weight: 700;
+    color: var(--fg);
+    letter-spacing: -0.02em;
+    line-height: 1;
+  }
+  .stock-price .ccy { font-size: 13px; color: var(--fg-mute); font-weight: 500; }
+  .stock-price .chg {
+    font-family: var(--f-mono); font-size: 13px; font-weight: 600;
+    white-space: nowrap;
+  }
+  .stock-price .chg .abs { color: var(--fg-mute); margin-left: 6px; font-weight: 500; }
+  .stock-aux {
+    display: grid; grid-template-columns: auto auto auto auto auto auto; gap: 18px;
+    margin-top: 10px;
+    font-size: 11px;
+  }
+  .stock-aux .kv { display: grid; gap: 2px; }
+  .stock-aux .kv .k { color: var(--fg-dim); font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 500; }
+  .stock-aux .kv .v { color: var(--fg); font-family: var(--f-mono); font-size: 12px; font-weight: 500; }
+
+  .stock-head-right {
+    display: flex; flex-direction: column; gap: 8px;
+    align-items: flex-end;
+  }
+  .signal {
+    display: flex; align-items: center; gap: 10px;
+    background: var(--bg-1);
+    border: 1px solid var(--line);
+    border-radius: var(--r-md);
+    padding: 8px 12px;
+  }
+  .signal .gauge {
+    width: 36px; height: 36px;
+    position: relative;
+  }
+  .signal .gauge svg { width: 100%; height: 100%; }
+  .signal .gauge .v {
+    position: absolute; inset: 0;
+    display: grid; place-items: center;
+    font-family: var(--f-mono); font-size: 10px; font-weight: 600;
+  }
+  .signal .stext { display: grid; gap: 1px; }
+  .signal .stext .ss { font-size: 11px; font-weight: 600; color: var(--fg); letter-spacing: 0.04em; }
+  .signal .stext .sd { font-size: 10px; color: var(--fg-mute); font-family: var(--f-mono); }
+
+  /* ---- CHART ---- */
+  .chart-wrap {
+    padding: 0 16px 16px;
+  }
+  .chart-toolbar {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--line-soft);
+    flex-wrap: wrap;
+  }
+  .toolbar-group {
+    display: flex; align-items: center; gap: 4px;
+  }
+  .check {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 11px; color: var(--fg-mute);
+    cursor: pointer;
+  }
+  .check input { display: none; }
+  .check .box {
+    width: 12px; height: 12px;
+    border: 1px solid var(--line-strong);
+    border-radius: 2px;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: var(--bg-2);
+  }
+  .check input:checked + .box {
+    background: var(--amber);
+    border-color: var(--amber);
+  }
+  .check input:checked + .box::after {
+    content: "";
+    width: 6px; height: 3px;
+    border-left: 1.5px solid var(--bg-0);
+    border-bottom: 1.5px solid var(--bg-0);
+    transform: rotate(-45deg) translate(0px, -1px);
+  }
+  .chart {
+    height: 320px;
+    position: relative;
+    margin-top: 10px;
+  }
+  .chart svg { width: 100%; height: 100%; display: block; }
+  .chart .gridline { stroke: var(--line-soft); stroke-width: 1; }
+  .chart .axis { fill: var(--fg-dim); font-family: var(--f-mono); font-size: 10px; }
+  .chart .cross { stroke: var(--fg-dim); stroke-dasharray: 2 3; stroke-width: 1; opacity: 0.6; }
+  .chart .price-line { fill: none; stroke: var(--amber); stroke-width: 1.5; }
+  .chart .sma-20 { fill: none; stroke: var(--cyan); stroke-width: 1; stroke-dasharray: 3 3; opacity: 0.85; }
+  .chart .sma-50 { fill: none; stroke: #c2a5ff; stroke-width: 1; stroke-dasharray: 5 3; opacity: 0.7; }
+  .chart .vol-bar { opacity: 0.6; }
+  .chart .marker-label { fill: var(--fg); font-family: var(--f-mono); font-size: 10px; }
+  .chart-legend {
+    display: flex; gap: 14px;
+    margin-top: 8px;
+    font-size: 11px;
+    color: var(--fg-mute);
+  }
+  .chart-legend .swatch { display: inline-block; width: 14px; height: 2px; vertical-align: middle; margin-right: 4px; }
+
+  /* range tabs row at right */
+  .range-row {
+    display: flex; align-items: center; gap: 6px;
+    margin-left: auto;
+  }
+
+  /* ---- FORECAST PANEL (right column) ---- */
+  .side {
+    background: var(--bg-1);
+    overflow-y: auto;
+    border-left: 1px solid var(--line);
+    /* the bench strip + news ribbon + tabs sit above; this just inherits flow */
+  }
+  .side-block { padding: 14px 16px; border-bottom: 1px solid var(--line); }
+  .side-block h3 {
+    font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--fg-mute); font-weight: 600;
+    margin: 0 0 10px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .side-block h3 .meta { color: var(--fg-dim); text-transform: none; letter-spacing: 0; font-weight: 500; font-size: 11px; }
+
+  .forecast-cluster {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1px;
+    background: var(--line);
+    border: 1px solid var(--line);
+    border-radius: var(--r-md);
+    overflow: hidden;
+    margin-bottom: 10px;
+  }
+  .fc-cell {
+    background: var(--bg-1);
+    padding: 9px 11px;
+  }
+  .fc-cell .k {
+    font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.08em;
+    color: var(--fg-dim); font-weight: 600;
+    margin-bottom: 3px;
+  }
+  .fc-cell .v {
+    font-family: var(--f-mono); font-size: 14px; font-weight: 600;
+    color: var(--fg);
+  }
+  .fc-cell .vsub { font-size: 10.5px; color: var(--fg-mute); margin-top: 2px; }
+
+  /* factor bars */
+  .factor {
+    display: grid;
+    grid-template-columns: 110px 1fr auto;
+    gap: 10px; align-items: center;
+    padding: 5px 0;
+    font-size: 11.5px;
+    border-bottom: 1px solid var(--line-soft);
+  }
+  .factor:last-child { border-bottom: 0; }
+  .factor .fname { color: var(--fg-mute); }
+  .factor .fbar {
+    position: relative;
+    height: 5px;
+    background: var(--bg-2);
+    border-radius: 999px;
+    overflow: hidden;
+  }
+  .factor .fbar::before {
+    content: "";
+    position: absolute; left: 50%; top: -1px; bottom: -1px; width: 1px;
+    background: var(--line-strong);
+  }
+  .factor .fbar i {
+    position: absolute; top: 0; bottom: 0;
+    background: var(--up);
+    border-radius: 999px;
+  }
+  .factor .fbar i.neg { background: var(--down); }
+  .factor .fval { font-family: var(--f-mono); color: var(--fg); font-size: 11px; min-width: 50px; text-align: right; }
+
+  /* movers list */
+  .movers {
+    display: grid;
+    gap: 1px;
+    background: var(--line);
+    border: 1px solid var(--line);
+    border-radius: var(--r-md);
+    overflow: hidden;
+  }
+  .mover {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    align-items: center;
+    gap: 8px;
+    background: var(--bg-1);
+    padding: 7px 10px;
+    font-size: 11.5px;
+    cursor: pointer;
+  }
+  .mover:hover { background: var(--bg-2); }
+  .mover .ms { display: grid; }
+  .mover .ms b { font-family: var(--f-mono); font-weight: 600; font-size: 12px; }
+  .mover .ms span { font-size: 10.5px; color: var(--fg-dim); }
+  .mover .mspark { width: 60px; height: 16px; opacity: 0.85; }
+  .mover .mchg {
+    font-family: var(--f-mono); font-size: 11.5px; font-weight: 600;
+    min-width: 56px; text-align: right;
+  }
+
+  /* heatmap */
+  .heatmap-controls {
+    display: flex; gap: 6px;
+  }
+  .heatmap-controls .seg button { padding: 0 8px; }
+  .select {
+    height: 24px; line-height: 22px;
+    background: var(--bg-2); border: 1px solid var(--line);
+    color: var(--fg); padding: 0 8px;
+    border-radius: var(--r-md); font: inherit; font-size: 11px;
+    outline: none;
+  }
+  .heatmap {
+    display: grid;
+    grid-template-columns: repeat(10, 1fr);
+    gap: 2px;
+    margin-top: 12px;
+  }
+  .heat {
+    position: relative;
+    aspect-ratio: 1.4 / 1;
+    border-radius: 2px;
+    padding: 4px 6px;
+    display: flex; flex-direction: column; justify-content: space-between;
+    font-family: var(--f-mono); font-size: 9.5px;
+    overflow: hidden;
+    cursor: pointer;
+  }
+  .heat .hs { color: rgba(255,255,255,0.95); font-weight: 600; }
+  .heat .hc { color: rgba(255,255,255,0.78); font-size: 9px; }
+  .heat:hover { outline: 1px solid var(--fg); outline-offset: -1px; }
+
+  /* heat color buckets */
+  .hp-3 { background: #15351f; }
+  .hp-2 { background: #1d4a2b; }
+  .hp-1 { background: #235a35; }
+  .hp-0 { background: #244c30; }
+  .hn-0 { background: #4a2226; }
+  .hn-1 { background: #5b262a; }
+  .hn-2 { background: #722a2e; }
+  .hn-3 { background: #8a2b30; }
+  .hz    { background: #1d212a; color: var(--fg-mute) !important; }
+
+  /* ---- STATUS BAR ---- */
+  .statusbar {
+    display: flex; align-items: center;
+    background: var(--bg-1);
+    border-top: 1px solid var(--line);
+    padding: 0 12px;
+    font-family: var(--f-mono); font-size: 10.5px;
+    color: var(--fg-mute);
+    gap: 14px;
+  }
+  .statusbar .pill {
+    border: 1px solid var(--line);
+    padding: 0 6px; line-height: 14px; border-radius: 3px;
+    color: var(--fg-mute);
+  }
+  .statusbar .pill.live { color: var(--up); border-color: rgba(46,204,113,0.3); }
+  .statusbar .right { margin-left: auto; display: flex; gap: 14px; }
+  .statusbar .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--up); margin-right: 6px; }
+
+  /* utility */
+  hr.sep { border: 0; border-top: 1px solid var(--line); margin: 12px 0; }
+
+  /* ============================================================
+     TAB PANES + tab-scoped components
+     ============================================================ */
+  .tabpane.hidden { display: none; }
+
+  /* All-metrics drawer (Overview bottom) — categorized columns */
+  .metric-drawer {
+    padding: 16px;
+    border-top: 1px solid var(--line);
+  }
+  .metric-toolbar {
+    display: flex; align-items: center; gap: 8px;
+    margin: 10px 0 14px;
+    flex-wrap: wrap;
+  }
+  .chip {
+    font-size: 10.5px;
+    color: var(--fg-mute);
+    border: 1px solid var(--line);
+    background: var(--bg-1);
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-family: var(--f-mono);
+    white-space: nowrap;
+  }
+  .chip.kv b { color: var(--fg); font-weight: 600; }
+  .chip.warn { color: var(--warn); border-color: rgba(247,201,72,0.3); background: rgba(247,201,72,0.06); }
+  .chip.ok { color: var(--up); border-color: rgba(46,204,113,0.3); background: var(--up-soft); }
+  .metric-search {
+    flex: 1; min-width: 240px;
+    display: flex; align-items: center; gap: 6px;
+    background: var(--bg-1); border: 1px solid var(--line);
+    border-radius: var(--r-md); height: 26px; padding: 0 10px;
+  }
+  .metric-search input { background: transparent; border: 0; outline: 0; color: var(--fg); flex: 1; font: inherit; font-size: 12px; }
+  .metric-search input::placeholder { color: var(--fg-dim); }
+  .metric-cols {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 1px;
+    background: var(--line);
+    border: 1px solid var(--line);
+    border-radius: var(--r-md);
+    overflow: hidden;
+  }
+  .metric-col {
+    background: var(--bg-1);
+    padding: 10px 12px;
+    min-width: 0;
+  }
+  .metric-col header {
+    margin-bottom: 8px; padding-bottom: 6px;
+    border-bottom: 1px solid var(--line-soft);
+  }
+  .metric-col header b {
+    display: block;
+    font-size: 11.5px; font-weight: 600; color: var(--fg);
+    letter-spacing: -0.005em;
+  }
+  .metric-col header small {
+    display: block;
+    font-size: 10px; color: var(--fg-dim); margin-top: 2px;
+  }
+  .metric-row {
+    padding: 5px 0;
+    border-bottom: 1px solid var(--line-soft);
+    font-size: 11.5px;
+  }
+  .metric-row:last-child { border-bottom: 0; }
+  .metric-row .kk {
+    display: flex; justify-content: space-between; gap: 6px;
+    color: var(--fg);
+  }
+  .metric-row .kk .k { color: var(--fg-mute); }
+  .metric-row .kk .v { font-family: var(--f-mono); font-weight: 500; min-width: 0; text-align: right; overflow:hidden; text-overflow:ellipsis; white-space: nowrap; }
+  .metric-row.unavailable .kk .v { color: var(--fg-dim); font-weight: 400; }
+  .metric-row.unavailable .kk .v::after { content: "—"; }
+  .metric-row.unavailable .kk .v { content: ""; }
+  .metric-row .src {
+    font-size: 9.5px;
+    color: var(--fg-dim);
+    font-family: var(--f-mono);
+    margin-top: 1px;
+  }
+
+  /* Range watch block (Overview bottom-right) */
+  .rangewatch-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 1px;
+    background: var(--line);
+    border: 1px solid var(--line);
+    border-radius: var(--r-md);
+    overflow: hidden;
+  }
+  .rangewatch-cell {
+    background: var(--bg-1);
+    padding: 10px 12px;
+  }
+  .rangewatch-cell .k {
+    font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.08em;
+    color: var(--fg-dim); font-weight: 600; margin-bottom: 4px;
+  }
+  .rangewatch-cell .v {
+    font-family: var(--f-mono); font-size: 18px; font-weight: 700; color: var(--fg);
+    letter-spacing: -0.02em;
+  }
+  .rangewatch-cell .vsub {
+    font-size: 10.5px; color: var(--fg-mute); margin-top: 4px;
+  }
+
+  /* Source / influence nodes */
+  .influence-list {
+    display: grid; gap: 1px;
+    background: var(--line);
+    border: 1px solid var(--line);
+    border-radius: var(--r-md);
+    overflow: hidden;
+  }
+  .influence {
+    background: var(--bg-1);
+    padding: 10px 12px;
+    display: grid;
+    grid-template-columns: 80px 1fr auto;
+    gap: 14px;
+    align-items: start;
+    font-size: 11.5px;
+  }
+  .influence .infl-tag {
+    font-size: 9.5px; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--amber); font-weight: 600;
+  }
+  .influence .infl-title { color: var(--fg); font-weight: 500; line-height: 1.4; }
+  .influence .infl-meta { color: var(--fg-mute); font-size: 10.5px; margin-top: 2px; }
+  .influence .infl-conf {
+    font-size: 10px; font-family: var(--f-mono);
+    border: 1px solid var(--line); padding: 1px 6px; border-radius: 3px;
+    color: var(--fg-mute);
+    align-self: start;
+  }
+  .influence .infl-conf.high { color: var(--up); border-color: rgba(46,204,113,0.3); background: var(--up-soft); }
+  .influence .infl-conf.med  { color: var(--warn); border-color: rgba(247,201,72,0.3); background: rgba(247,201,72,0.06); }
+  .influence .infl-conf.low  { color: var(--fg-dim); }
+
+  /* ============================================================
+     BONDS TAB
+     ============================================================ */
+  .bonds-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 1px;
+    background: var(--line);
+  }
+  .bonds-grid > * { min-width: 0; background: var(--bg-0); padding: 14px 16px; }
+
+  /* Yield curve summary cards */
+  .yield-summary {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1px;
+    background: var(--line);
+    border: 1px solid var(--line);
+    border-radius: var(--r-md);
+    overflow: hidden;
+    margin-bottom: 14px;
+  }
+  .yield-cell {
+    background: var(--bg-1);
+    padding: 10px 14px;
+  }
+  .yield-cell .k {
+    font-size: 9.5px; letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--fg-dim); font-weight: 600; margin-bottom: 6px;
+  }
+  .yield-cell .v {
+    font-family: var(--f-mono); font-size: 22px; font-weight: 700; color: var(--fg);
+    letter-spacing: -0.02em; line-height: 1;
+  }
+  .yield-cell .vsub {
+    font-size: 11px; color: var(--fg-mute); margin-top: 4px;
+  }
+  .yield-cell .vsub .b { font-family: var(--f-mono); font-weight: 500; }
+
+  /* Yield curve visual */
+  .curve-card {
+    background: var(--bg-1);
+    border: 1px solid var(--line);
+    border-radius: var(--r-md);
+    padding: 14px 16px;
+  }
+  .curve-card-head {
+    display: flex; align-items: baseline; justify-content: space-between;
+    margin-bottom: 10px;
+  }
+  .curve-card-head h4 {
+    margin: 0; font-size: 12px; font-weight: 600; color: var(--fg);
+  }
+  .curve-card-head .source-pill {
+    font-size: 10px; color: var(--fg-mute); font-family: var(--f-mono);
+    padding: 1px 6px; border: 1px solid var(--line); border-radius: 3px;
+  }
+  .curve-chart svg { width: 100%; height: 170px; display: block; }
+  .curve-chart .axis { fill: var(--fg-dim); font-family: var(--f-mono); font-size: 10px; }
+  .curve-chart .gridline { stroke: var(--line-soft); stroke-width: 1; }
+  .curve-line { fill: none; stroke: var(--amber); stroke-width: 1.8; }
+  .curve-area { fill: url(#curveFill); opacity: 0.35; }
+  .curve-dot { fill: var(--amber); stroke: var(--bg-1); stroke-width: 2; }
+  .curve-dot-label { fill: var(--fg); font-family: var(--f-mono); font-size: 10px; }
+
+  /* Tenor row below the curve */
+  .tenor-row {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 1px;
+    background: var(--line);
+    margin-top: 12px;
+    border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+  }
+  .tenor {
+    background: var(--bg-1);
+    padding: 8px 12px;
+    text-align: left;
+  }
+  .tenor .tname { font-size: 10px; color: var(--fg-dim); font-weight: 600; letter-spacing: 0.08em; }
+  .tenor .tval { font-family: var(--f-mono); font-size: 16px; font-weight: 700; color: var(--fg); margin: 2px 0; line-height: 1; }
+  .tenor .tdelta { font-family: var(--f-mono); font-size: 10.5px; }
+
+  /* Rates interpretation cards (right column) */
+  .rate-card {
+    background: var(--bg-1);
+    border: 1px solid var(--line);
+    border-radius: var(--r-md);
+    padding: 11px 13px;
+    margin-bottom: 8px;
+  }
+  .rate-card-head {
+    display: flex; align-items: center; gap: 8px;
+    margin-bottom: 6px;
+  }
+  .rate-card-head .tag {
+    font-size: 9.5px; letter-spacing: 0.08em; font-weight: 700;
+    padding: 1px 6px; border-radius: 3px;
+    font-family: var(--f-mono);
+  }
+  .rate-card-head .tag.fact   { color: var(--cyan); border: 1px solid rgba(84,185,209,0.4); background: rgba(84,185,209,0.08); }
+  .rate-card-head .tag.interp { color: var(--amber); border: 1px solid rgba(245,165,36,0.4); background: rgba(245,165,36,0.08); }
+  .rate-card-head .tag.impl   { color: var(--cyan); border: 1px solid rgba(84,185,209,0.4); background: rgba(84,185,209,0.08); }
+  .rate-card-head .tag.proto  { color: var(--warn); border: 1px solid rgba(247,201,72,0.4); background: rgba(247,201,72,0.08); }
+  .rate-card-head .tag.vhi    { color: var(--up); border: 1px solid rgba(46,204,113,0.4); background: var(--up-soft); }
+  .rate-card-head .tag.note   { color: var(--fg-mute); border: 1px solid var(--line); background: var(--bg-2); }
+  .rate-card-head h4 {
+    margin: 0; font-size: 12.5px; font-weight: 600; color: var(--fg);
+    letter-spacing: -0.005em;
+    white-space: nowrap;
+  }
+  .rate-card p {
+    margin: 0;
+    font-size: 11.5px; color: var(--fg-mute); line-height: 1.5;
+  }
+  .rate-card .src {
+    font-size: 10px; color: var(--fg-dim); font-family: var(--f-mono);
+    margin-top: 6px;
+  }
+
+  /* ============================================================
+     IMPLICATIONS TAB
+     ============================================================ */
+  .imp-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 320px;
+    gap: 1px;
+    background: var(--line);
+  }
+  .imp-grid > * { background: var(--bg-0); min-width: 0; }
+  .imp-graph-wrap {
+    padding: 14px 16px;
+  }
+  .imp-toolbar {
+    display: flex; align-items: center; gap: 6px;
+    margin-bottom: 10px;
+    flex-wrap: wrap;
+  }
+  .ghost {
+    font-family: inherit; font-size: 11px; font-weight: 500;
+    background: var(--bg-2); border: 1px solid var(--line);
+    color: var(--fg-mute);
+    height: 24px; padding: 0 10px;
+    border-radius: var(--r-md);
+    cursor: pointer;
+  }
+  .ghost:hover { color: var(--fg); background: var(--bg-3); }
+  .imp-meta {
+    margin-left: auto;
+    font-size: 11px; color: var(--fg-dim); font-family: var(--f-mono);
+  }
+  .imp-canvas {
+    height: 500px;
+    background:
+      radial-gradient(circle at 50% 50%, rgba(245,165,36,0.03) 0%, transparent 60%),
+      var(--bg-1);
+    border: 1px solid var(--line);
+    border-radius: var(--r-md);
+    position: relative;
+    overflow: hidden;
+  }
+  .imp-canvas svg { width: 100%; height: 100%; display: block; }
+  .imp-node {
+    cursor: pointer;
+  }
+  .imp-node rect, .imp-node polygon {
+    stroke-width: 1.2;
+  }
+  .imp-node text {
+    font-family: var(--f-ui);
+    font-size: 10.5px;
+    fill: var(--fg);
+    font-weight: 500;
+    text-anchor: middle;
+    dominant-baseline: middle;
+  }
+  .imp-node.macro polygon { fill: rgba(245,165,36,0.12); stroke: var(--amber); }
+  .imp-node.macro text { fill: var(--amber); }
+  .imp-node.market polygon { fill: rgba(84,185,209,0.12); stroke: var(--cyan); }
+  .imp-node.market text { fill: var(--cyan); }
+  .imp-node.stock polygon { fill: rgba(46,204,113,0.10); stroke: var(--up); }
+  .imp-node.stock text { fill: var(--up); }
+  .imp-node.project rect { fill: rgba(245,165,36,0.08); stroke: rgba(245,165,36,0.55); }
+  .imp-node.entity rect  { fill: var(--bg-2); stroke: var(--line-strong); }
+  .imp-node.entity text  { fill: var(--fg); }
+  .imp-edge {
+    stroke-width: 1.2; fill: none;
+  }
+  .imp-edge.flow { stroke: var(--amber); opacity: 0.55; }
+  .imp-edge.proj { stroke: var(--up); opacity: 0.55; }
+  .imp-edge.risk { stroke: var(--down); opacity: 0.55; }
+
+  .imp-side {
+    padding: 14px 16px;
+    border-left: 1px solid var(--line);
+  }
+  .imp-detail {
+    background: var(--bg-1);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--r-md);
+    padding: 12px;
+  }
+  .imp-detail .k {
+    font-size: 9.5px; color: var(--fg-dim); letter-spacing: 0.08em; text-transform: uppercase; font-weight: 600;
+  }
+  .imp-detail .ktype {
+    margin-top: 2px;
+    color: var(--amber); font-size: 11px; font-family: var(--f-mono); letter-spacing: 0.04em;
+  }
+  .imp-detail h4 {
+    margin: 6px 0 6px; font-size: 14px; font-weight: 700; color: var(--fg);
+    letter-spacing: -0.01em;
+  }
+  .imp-detail p {
+    margin: 0; font-size: 11.5px; color: var(--fg-mute); line-height: 1.5;
+  }
+  .legend-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 6px;
+    margin-top: 14px;
+  }
+  .legend-chip {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 11px;
+    padding: 5px 8px;
+    background: var(--bg-2);
+    border: 1px solid var(--line);
+    border-radius: var(--r-md);
+  }
+  .legend-chip i {
+    width: 10px; height: 10px; border-radius: 2px;
+    flex-shrink: 0;
+  }
+
+  /* Implication cards row */
+  .imp-cards {
+    border-top: 1px solid var(--line);
+    padding: 14px 16px;
+  }
+  .imp-card-grid {
+    display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+  }
+  .imp-card {
+    background: var(--bg-1);
+    border: 1px solid var(--line);
+    border-radius: var(--r-md);
+    padding: 12px;
+  }
+  .imp-card-head {
+    display: flex; align-items: baseline; justify-content: space-between;
+    margin-bottom: 8px;
+  }
+  .imp-card-head .sym {
+    font-family: var(--f-mono); font-weight: 700; font-size: 12px; color: var(--fg);
+    letter-spacing: -0.005em;
+  }
+  .imp-card-head .conf {
+    font-size: 10px; letter-spacing: 0.06em;
+    border: 1px solid var(--line);
+    padding: 1px 6px; border-radius: 3px;
+    color: var(--warn); border-color: rgba(247,201,72,0.3); background: rgba(247,201,72,0.06);
+  }
+  .imp-card .row {
+    display: grid;
+    grid-template-columns: 60px 1fr;
+    gap: 8px;
+    padding: 4px 0;
+    font-size: 11.5px;
+    border-bottom: 1px solid var(--line-soft);
+  }
+  .imp-card .row:last-child { border-bottom: 0; }
+  .imp-card .row .lbl {
+    font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--fg-dim); font-weight: 600;
+  }
+  .imp-card .row .txt { color: var(--fg-mute); line-height: 1.5; }
+  .imp-card .row .txt b { color: var(--fg); font-weight: 500; }
+
+  /* flags (simple CSS) */
+  .flag-in { background: linear-gradient(180deg, #f60 0 33%, #fff 33% 66%, #093 66%); }
+  .flag-jp { background: #fff; position: relative; }
+  .flag-jp::after { content: ""; position: absolute; inset: 0; background: radial-gradient(circle at 50% 50%, #bc002d 0 2.5px, transparent 2.5px); }
+  .flag-au { background: linear-gradient(135deg, #012169 0 50%, #c8102e 50%); }
+  .flag-hk { background: #de2910; }
+  .flag-uk { background:
+      linear-gradient(45deg, transparent 45%, #fff 45% 55%, transparent 55%),
+      linear-gradient(135deg, transparent 45%, #fff 45% 55%, transparent 55%),
+      #012169; }
+  .flag-us {
+    background:
+      repeating-linear-gradient(0deg, #b22234 0 1.5px, #fff 1.5px 3px);
+  }
+  .flag-us::after {
+    content: ""; position: absolute; width: 6px; height: 5px;
+    background: #3c3b6e; left: 0; top: 0;
+  }
+</style>
+</head>
+<body>
+
+<div class="shell">
+
+  <!-- ================== TOP BAR ================== -->
+  <div class="topbar">
+    <div class="brand">
+      <div class="brand-mark"></div>
+      <div class="brand-name">Financial<b>·</b>Board</div>
+    </div>
+    <nav class="topnav">
+      <a href="#" class="active" data-tab="overview">Overview</a>
+      <a href="#" data-tab="bonds">Bonds</a>
+      <a href="#" data-tab="inflation">Inflation</a>
+      <a href="#" data-tab="equity">Equity</a>
+      <a href="#" data-tab="events">Events</a>
+      <a href="#" data-tab="method">Method</a>
+      <a href="#" data-tab="implications">Implications</a>
+      <a href="#" data-tab="compare">Compare</a>
+    </nav>
+    <div class="top-tools">
+      <div class="search-box">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 14 14"/></svg>
+        <input placeholder="Search ticker, news, sector…" />
+        <span class="kbd">⌘K</span>
+      </div>
+      <div class="seg" role="tablist" aria-label="Region">
+        <button class="active">IN</button>
+        <button>US</button>
+        <button>Global</button>
+      </div>
+      <button class="icon-btn" title="Alerts" aria-label="Alerts">
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M3 11h10l-1.2-1.5V7a3.8 3.8 0 1 0-7.6 0v2.5L3 11Z"/><path d="M6.5 13a1.5 1.5 0 0 0 3 0"/></svg>
+      </button>
+      <button class="icon-btn" title="Settings" aria-label="Settings">
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="2"/><path d="M8 1.5v2M8 12.5v2M14.5 8h-2M3.5 8h-2M12.6 3.4l-1.4 1.4M4.8 11.2l-1.4 1.4M12.6 12.6l-1.4-1.4M4.8 4.8 3.4 3.4"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- ================== TICKER TAPE (FX / Commodities / Rates / Crypto only — indices live in the benchmarks row) ================== -->
+  <div class="tape">
+    <div class="tape-track">
+      <span class="tape-row"><span class="sym">USD/INR</span><span class="val">83.42</span><span class="delta up">+0.12 (+0.14%)</span></span>
+      <span class="dot"></span>
+      <span class="tape-row"><span class="sym">EUR/USD</span><span class="val">1.0824</span><span class="delta down">−0.0011 (−0.10%)</span></span>
+      <span class="dot"></span>
+      <span class="tape-row"><span class="sym">USD/JPY</span><span class="val">155.62</span><span class="delta up">+0.18 (+0.12%)</span></span>
+      <span class="dot"></span>
+      <span class="tape-row"><span class="sym">DXY</span><span class="val">104.12</span><span class="delta down">−0.18 (−0.17%)</span></span>
+      <span class="dot"></span>
+      <span class="tape-row"><span class="sym">10Y G-SEC</span><span class="val">7.18%</span><span class="delta down">−2 bps</span></span>
+      <span class="dot"></span>
+      <span class="tape-row"><span class="sym">US 10Y</span><span class="val">4.19%</span><span class="delta up">+3 bps</span></span>
+      <span class="dot"></span>
+      <span class="tape-row"><span class="sym">US 2Y</span><span class="val">4.62%</span><span class="delta up">+1 bp</span></span>
+      <span class="dot"></span>
+      <span class="tape-row"><span class="sym">WTI</span><span class="val">82.40</span><span class="delta up">+0.61 (+0.74%)</span></span>
+      <span class="dot"></span>
+      <span class="tape-row"><span class="sym">BRENT</span><span class="val">85.18</span><span class="delta up">+0.55 (+0.65%)</span></span>
+      <span class="dot"></span>
+      <span class="tape-row"><span class="sym">GOLD</span><span class="val">2,238.10</span><span class="delta up">+12.20 (+0.55%)</span></span>
+      <span class="dot"></span>
+      <span class="tape-row"><span class="sym">SILVER</span><span class="val">26.85</span><span class="delta up">+0.42 (+1.59%)</span></span>
+      <span class="dot"></span>
+      <span class="tape-row"><span class="sym">BTC</span><span class="val">68,420</span><span class="delta up">+842 (+1.24%)</span></span>
+      <span class="dot"></span>
+      <span class="tape-row"><span class="sym">ETH</span><span class="val">3,128</span><span class="delta up">+41 (+1.33%)</span></span>
+      <span class="dot"></span>
+      <!-- duplicate set for seamless loop -->
+      <span class="tape-row"><span class="sym">USD/INR</span><span class="val">83.42</span><span class="delta up">+0.12 (+0.14%)</span></span>
+      <span class="dot"></span>
+      <span class="tape-row"><span class="sym">EUR/USD</span><span class="val">1.0824</span><span class="delta down">−0.0011 (−0.10%)</span></span>
+      <span class="dot"></span>
+      <span class="tape-row"><span class="sym">USD/JPY</span><span class="val">155.62</span><span class="delta up">+0.18 (+0.12%)</span></span>
+      <span class="dot"></span>
+      <span class="tape-row"><span class="sym">DXY</span><span class="val">104.12</span><span class="delta down">−0.18 (−0.17%)</span></span>
+      <span class="dot"></span>
+      <span class="tape-row"><span class="sym">10Y G-SEC</span><span class="val">7.18%</span><span class="delta down">−2 bps</span></span>
+      <span class="dot"></span>
+      <span class="tape-row"><span class="sym">US 10Y</span><span class="val">4.19%</span><span class="delta up">+3 bps</span></span>
+      <span class="dot"></span>
+      <span class="tape-row"><span class="sym">US 2Y</span><span class="val">4.62%</span><span class="delta up">+1 bp</span></span>
+      <span class="dot"></span>
+      <span class="tape-row"><span class="sym">WTI</span><span class="val">82.40</span><span class="delta up">+0.61 (+0.74%)</span></span>
+      <span class="dot"></span>
+      <span class="tape-row"><span class="sym">BRENT</span><span class="val">85.18</span><span class="delta up">+0.55 (+0.65%)</span></span>
+      <span class="dot"></span>
+      <span class="tape-row"><span class="sym">GOLD</span><span class="val">2,238.10</span><span class="delta up">+12.20 (+0.55%)</span></span>
+      <span class="dot"></span>
+      <span class="tape-row"><span class="sym">SILVER</span><span class="val">26.85</span><span class="delta up">+0.42 (+1.59%)</span></span>
+      <span class="dot"></span>
+      <span class="tape-row"><span class="sym">BTC</span><span class="val">68,420</span><span class="delta up">+842 (+1.24%)</span></span>
+      <span class="dot"></span>
+      <span class="tape-row"><span class="sym">ETH</span><span class="val">3,128</span><span class="delta up">+41 (+1.33%)</span></span>
+    </div>
+  </div>
+
+  <!-- ================== BODY ================== -->
+  <div class="body">
+
+    <!-- ============= SIDEBAR ============= -->
+    <aside class="sidebar">
+
+      <div class="sb-section">
+        <div class="sb-head">
+          <span class="title">Watchlist</span>
+          <span class="count">11</span>
+        </div>
+        <div class="watchlist">
+
+          <div class="watch-row">
+            <div>
+              <div class="sym">^BSESN</div>
+              <div class="name">SENSEX · BSE</div>
+            </div>
+            <div>
+              <div class="px">75,237.99</div>
+              <div class="chg down">−0.46%</div>
+            </div>
+          </div>
+
+          <div class="watch-row">
+            <div>
+              <div class="sym">VBL.NS</div>
+              <div class="name">Varun Beverages</div>
+            </div>
+            <div>
+              <div class="px">503.80</div>
+              <div class="chg down">−0.36%</div>
+            </div>
+          </div>
+
+          <div class="watch-row active">
+            <div>
+              <div class="sym">BHARTIARTL.NS</div>
+              <div class="name">Bharti Airtel</div>
+            </div>
+            <div>
+              <div class="px">1,905.40</div>
+              <div class="chg up">+0.12%</div>
+            </div>
+            <svg class="spark" viewBox="0 0 100 14" preserveAspectRatio="none">
+              <polyline points="0,9 8,8 15,10 22,7 30,8 38,6 46,7 54,5 62,6 70,4 78,5 86,3 94,4 100,2" fill="none" stroke="#2ecc71" stroke-width="1.2"/>
+            </svg>
+          </div>
+
+          <div class="watch-row">
+            <div>
+              <div class="sym">RELIANCE.NS</div>
+              <div class="name">Reliance Industries</div>
+            </div>
+            <div>
+              <div class="px">1,336.40</div>
+              <div class="chg up">+0.03%</div>
+            </div>
+          </div>
+
+          <div class="watch-row">
+            <div>
+              <div class="sym">HDFCBANK.NS</div>
+              <div class="name">HDFC Bank</div>
+            </div>
+            <div>
+              <div class="px">1,612.55</div>
+              <div class="chg down">−1.65%</div>
+            </div>
+          </div>
+
+          <div class="watch-row">
+            <div>
+              <div class="sym">TCS.NS</div>
+              <div class="name">Tata Consultancy Services</div>
+            </div>
+            <div>
+              <div class="px">3,886.20</div>
+              <div class="chg down">−0.82%</div>
+            </div>
+          </div>
+
+          <div class="watch-row">
+            <div>
+              <div class="sym">INFY.NS</div>
+              <div class="name">Infosys</div>
+            </div>
+            <div>
+              <div class="px">1,431.05</div>
+              <div class="chg down">−1.10%</div>
+            </div>
+          </div>
+
+          <div class="watch-row">
+            <div>
+              <div class="sym">ICICIBANK.NS</div>
+              <div class="name">ICICI Bank</div>
+            </div>
+            <div>
+              <div class="px">1,088.40</div>
+              <div class="chg up">+0.23%</div>
+            </div>
+          </div>
+
+          <div class="watch-row">
+            <div>
+              <div class="sym">SBIN.NS</div>
+              <div class="name">State Bank of India</div>
+            </div>
+            <div>
+              <div class="px">752.30</div>
+              <div class="chg down">−0.91%</div>
+            </div>
+          </div>
+
+          <div class="watch-row">
+            <div>
+              <div class="sym">DELHIVERY.NS</div>
+              <div class="name">Delhivery</div>
+            </div>
+            <div>
+              <div class="px">348.55</div>
+              <div class="chg up">+2.18%</div>
+            </div>
+          </div>
+
+          <div class="watch-row">
+            <div>
+              <div class="sym">VODA-IDEA.NS</div>
+              <div class="name">Vodafone Idea</div>
+            </div>
+            <div>
+              <div class="px">8.42</div>
+              <div class="chg up">+3.04%</div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <div class="sb-section">
+        <div class="sb-head">
+          <span class="title">Market Presets</span>
+          <span class="add" title="Manage">+</span>
+        </div>
+        <div class="preset">
+          <span class="pn">NIFTY 50 Core</span>
+          <span class="pc">50 sym</span>
+        </div>
+        <div class="preset">
+          <span class="pn">NASDAQ 100</span>
+          <span class="pc">100 sym</span>
+        </div>
+        <div class="preset">
+          <span class="pn">S&amp;P 500 Leaders</span>
+          <span class="pc">8 sym</span>
+        </div>
+        <div class="preset">
+          <span class="pn">Bank Nifty</span>
+          <span class="pc">12 sym</span>
+        </div>
+        <div class="preset">
+          <span class="pn">Global Risk Proxies</span>
+          <span class="pc">9 sym</span>
+        </div>
+      </div>
+
+      <div class="sb-section">
+        <div class="sb-head">
+          <span class="title">Saved Lists</span>
+          <span class="add">+</span>
+        </div>
+        <div class="preset"><span class="pn">My Tech</span><span class="pc">14 sym</span></div>
+        <div class="preset"><span class="pn">India Banks</span><span class="pc">9 sym</span></div>
+      </div>
+
+      <div class="sb-section" style="margin-top: auto; flex: 0;">
+        <div class="sb-head">
+          <span class="title">Backend</span>
+          <span class="count" style="color: var(--up); border-color: rgba(46,204,113,0.3);">yahoo</span>
+        </div>
+        <button class="preset" style="width: 100%; justify-content: center; cursor: pointer;">
+          <span class="pn">Open settings</span>
+          <span class="pc">⚙</span>
+        </button>
+      </div>
+    </aside>
+
+    <!-- ============= MAIN (center) ============= -->
+    <main class="main">
+
+      <!-- benchmarks strip -->
+      <div class="bench">
+
+        <div class="bench-cell">
+          <div class="b-head">
+            <span class="b-flag flag-in"></span>
+            <span class="b-country">India</span>
+            <span class="b-status closed">CLSD</span>
+          </div>
+          <div class="b-time">06:46 IST · opens 09:15</div>
+          <div class="b-indices">
+            <div class="b-idx"><span class="idx-name">NIFTY 50</span><span class="idx-val">22,431.65</span><span class="idx-chg up">+0.08%</span></div>
+            <div class="b-idx"><span class="idx-name">SENSEX</span><span class="idx-val">75,237.99</span><span class="idx-chg down">−0.46%</span></div>
+          </div>
+        </div>
+
+        <div class="bench-cell">
+          <div class="b-head">
+            <span class="b-flag flag-jp"></span>
+            <span class="b-country">Japan</span>
+            <span class="b-status closed">CLSD</span>
+          </div>
+          <div class="b-time">10:16 JST · Mon 09:00</div>
+          <div class="b-indices">
+            <div class="b-idx"><span class="idx-name">Nikkei</span><span class="idx-val">38,405.12</span><span class="idx-chg up">+0.31%</span></div>
+            <div class="b-idx"><span class="idx-name">TOPIX</span><span class="idx-val">2,721.45</span><span class="idx-chg up">+0.18%</span></div>
+          </div>
+        </div>
+
+        <div class="bench-cell">
+          <div class="b-head">
+            <span class="b-flag flag-au"></span>
+            <span class="b-country">Australia</span>
+            <span class="b-status closed">CLSD</span>
+          </div>
+          <div class="b-time">11:16 AEDT · Mon 10:00</div>
+          <div class="b-indices">
+            <div class="b-idx"><span class="idx-name">ASX 200</span><span class="idx-val">7,774.80</span><span class="idx-chg down">−0.04%</span></div>
+            <div class="b-idx"><span class="idx-name">All Ord</span><span class="idx-val">8,014.37</span><span class="idx-chg down">−0.06%</span></div>
+          </div>
+        </div>
+
+        <div class="bench-cell">
+          <div class="b-head">
+            <span class="b-flag flag-hk"></span>
+            <span class="b-country">Hong Kong</span>
+            <span class="b-status closed">CLSD</span>
+          </div>
+          <div class="b-time">09:16 HKT · Mon 09:30</div>
+          <div class="b-indices">
+            <div class="b-idx"><span class="idx-name">Hang Seng</span><span class="idx-val">17,763.18</span><span class="idx-chg up">+0.45%</span></div>
+            <div class="b-idx"><span class="idx-name">HS Tech</span><span class="idx-val">3,651.72</span><span class="idx-chg up">+0.78%</span></div>
+          </div>
+        </div>
+
+        <div class="bench-cell">
+          <div class="b-head">
+            <span class="b-flag flag-uk"></span>
+            <span class="b-country">London</span>
+            <span class="b-status closed">CLSD</span>
+          </div>
+          <div class="b-time">02:16 UK · Mon 08:00</div>
+          <div class="b-indices">
+            <div class="b-idx"><span class="idx-name">FTSE 100</span><span class="idx-val">8,144.13</span><span class="idx-chg up">+0.12%</span></div>
+            <div class="b-idx"><span class="idx-name">FTSE 250</span><span class="idx-val">19,986.41</span><span class="idx-chg up">+0.21%</span></div>
+          </div>
+        </div>
+
+        <div class="bench-cell">
+          <div class="b-head">
+            <span class="b-flag flag-us"></span>
+            <span class="b-country">United States</span>
+            <span class="b-status closed">CLSD</span>
+          </div>
+          <div class="b-time">21:16 ET · Mon 09:30</div>
+          <div class="b-indices">
+            <div class="b-idx"><span class="idx-name">S&amp;P 500</span><span class="idx-val">5,148.22</span><span class="idx-chg down">−0.12%</span></div>
+            <div class="b-idx"><span class="idx-name">NASDAQ</span><span class="idx-val">16,162.37</span><span class="idx-chg up">+0.14%</span></div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- news ribbon -->
+      <div class="news-ribbon">
+        <span class="badge">LIVE</span>
+        <div class="news-list">
+          <span class="item"><b>Vodafone Idea</b> Q4: Co swings to black, profit ₹51,970 cr on one-time gain; revenue +3% YoY</span>
+          <span class="item"><b>Delhivery</b> Q4: Net profit flat at ₹72.4 cr, revenue +30% YoY</span>
+          <span class="item"><b>Berkshire Hathaway</b> Greg Abel buys add'l Berkshire shares</span>
+          <span class="item">Treasury yields and oil prices pressure trigger risk-off sentiment in pre-open</span>
+        </div>
+        <span class="risk">Risk-off</span>
+      </div>
+
+      <!-- tabs -->
+      <div class="tabs">
+        <button class="active" data-tab="overview">Overview</button>
+        <button data-tab="bonds">Bonds</button>
+        <button data-tab="inflation">Inflation</button>
+        <button data-tab="equity">Equity</button>
+        <button data-tab="events">Events</button>
+        <button data-tab="method">Method</button>
+        <button data-tab="implications">Implications</button>
+        <button data-tab="compare">Compare</button>
+        <div class="tabs-right">
+          <div class="seg">
+            <button>Simple</button>
+            <button class="active">Detailed</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ========== TABPANE: OVERVIEW ========== -->
+      <section class="tabpane" id="t-overview" data-tab="overview">
+
+      <!-- content grid: main / right -->
+      <div class="content">
+
+        <!-- ===== STOCK DETAIL ===== -->
+        <div>
+          <div class="stock-head">
+            <div>
+              <div class="meta">
+                <span style="color: var(--amber); font-weight: 700; letter-spacing: 0.04em;">BHARTIARTL.NS</span>
+                <span class="dot"></span>
+                <span>NSE · INR · Communication Services / Telecom</span>
+                <span class="dot"></span>
+                <span class="pill closed">CLOSED · opens in 26m</span>
+              </div>
+              <h1>Bharti Airtel</h1>
+
+              <div class="stock-price">
+                <div>
+                  <div class="px">1,905.40</div>
+                </div>
+                <span class="ccy">INR</span>
+                <span class="chg up">
+                  +0.12%
+                  <span class="abs">+2.28 vs prev</span>
+                </span>
+              </div>
+
+              <div class="stock-aux">
+                <div class="kv"><span class="k">Open</span><span class="v">1,902.00</span></div>
+                <div class="kv"><span class="k">Prev</span><span class="v">1,903.12</span></div>
+                <div class="kv"><span class="k">Day range</span><span class="v">1,898.20 – 1,912.55</span></div>
+                <div class="kv"><span class="k">52W range</span><span class="v">1,098 – 1,950</span></div>
+                <div class="kv"><span class="k">Volume</span><span class="v">7.41M</span></div>
+                <div class="kv"><span class="k">Avg vol</span><span class="v">9.82M</span></div>
+                <div class="kv"><span class="k">Mkt cap</span><span class="v">₹10.7 T</span></div>
+                <div class="kv"><span class="k">P/E (TTM)</span><span class="v">82.4×</span></div>
+                <div class="kv"><span class="k">Backtest hit</span><span class="v" style="color: var(--up);">54.7%</span></div>
+              </div>
+            </div>
+
+            <div class="stock-head-right">
+              <div class="seg">
+                <button>Bid</button>
+                <button>Ask</button>
+                <button class="active">Mid</button>
+              </div>
+              <div style="display:flex; gap:6px;">
+                <button class="icon-btn" title="Add alert">△</button>
+                <button class="icon-btn" title="Add to watchlist">☆</button>
+                <button class="icon-btn" title="More">⋯</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- chart -->
+          <div class="chart-wrap">
+            <div class="chart-toolbar">
+              <div class="toolbar-group seg">
+                <button>Line</button>
+                <button>Area</button>
+                <button class="active">Candles</button>
+                <button>Bars</button>
+              </div>
+              <div class="toolbar-group" style="gap: 12px;">
+                <label class="check"><input type="checkbox" checked /><span class="box"></span><span>SMA 20</span></label>
+                <label class="check"><input type="checkbox" checked /><span class="box"></span><span>SMA 50</span></label>
+                <label class="check"><input type="checkbox" /><span class="box"></span><span>Bollinger Bands</span></label>
+                <label class="check"><input type="checkbox" /><span class="box"></span><span>Volume</span></label>
+              </div>
+              <div class="range-row">
+                <div class="seg">
+                  <button class="active">1D</button>
+                  <button>3D</button>
+                  <button>5D</button>
+                  <button>1M</button>
+                  <button>1Y</button>
+                  <button>2Y</button>
+                  <button>5Y</button>
+                  <button>Max</button>
+                </div>
+                <button class="icon-btn" title="Compare">⇄</button>
+                <button class="icon-btn" title="Indicators">ƒ</button>
+                <button class="icon-btn" title="Expand">⤢</button>
+              </div>
+            </div>
+
+            <div class="chart">
+              <svg viewBox="0 0 840 320" preserveAspectRatio="none">
+                <!-- grid -->
+                <g class="gridline">
+                  <line x1="0"  y1="40"  x2="790" y2="40"/>
+                  <line x1="0"  y1="100" x2="790" y2="100"/>
+                  <line x1="0"  y1="160" x2="790" y2="160"/>
+                  <line x1="0"  y1="220" x2="790" y2="220"/>
+                  <line x1="0"  y1="280" x2="790" y2="280"/>
+                </g>
+                <!-- y axis labels -->
+                <g class="axis">
+                  <text x="796" y="44">1,920</text>
+                  <text x="796" y="104">1,914</text>
+                  <text x="796" y="164">1,908</text>
+                  <text x="796" y="224">1,902</text>
+                  <text x="796" y="284">1,896</text>
+                </g>
+                <!-- candles (~60) -->
+                <g id="candles"></g>
+                <!-- moving averages -->
+                <polyline class="sma-20" points=""/>
+                <polyline class="sma-50" points=""/>
+                <!-- last price marker -->
+                <g>
+                  <line class="cross" x1="0" y1="186" x2="790" y2="186"/>
+                  <rect x="790" y="178" width="44" height="16" fill="#f5a524"/>
+                  <text x="812" y="190" text-anchor="middle" font-family="JetBrains Mono" font-size="11" font-weight="600" fill="#0a0d12">1,905</text>
+                </g>
+              </svg>
+            </div>
+
+            <div class="chart-legend">
+              <span><span class="swatch" style="background: var(--amber);"></span> Price</span>
+              <span><span class="swatch" style="background: var(--cyan); border-top: 1px dashed; height:0;"></span> SMA 20 · 1,904.30 <span class="down">below</span></span>
+              <span><span class="swatch" style="background: #c2a5ff; border-top: 1px dashed; height:0;"></span> SMA 50 · 1,905.43 <span class="down">below</span></span>
+              <span class="dim">· 10D quantile fan · Chronos/Moirai</span>
+            </div>
+          </div>
+
+          <!-- 10-day quantile range fan — the four headline numbers (entry / upside / stop / params)
+               live in the right-rail Forecast block to avoid duplication. -->
+          <div class="panel">
+            <div class="panel-head">
+              <div class="left">
+                <h2>10-day price range</h2>
+                <span class="sub">Quantile fan · fair value <b class="num" style="color: var(--fg);">₹1,901.15</b> · MAE <b class="num" style="color: var(--fg);">0.4%</b></span>
+              </div>
+              <span class="label">Scenario support only — not buy/sell advice</span>
+            </div>
+
+            <!-- range bars -->
+            <div style="display: grid; gap: 6px; font-size: 11px; font-family: var(--f-mono);">
+              <div style="display: grid; grid-template-columns: 32px 1fr 60px 60px; gap: 10px; align-items: center;">
+                <span class="dim">95%</span>
+                <div style="position: relative; height: 6px; background: var(--bg-2); border-radius: 999px;">
+                  <i style="position:absolute; left: 20%; right: 8%; top:0;bottom:0; background:#f5a52430; border-radius: 999px;"></i>
+                  <i style="position:absolute; left: 52%; top:-1px; bottom:-1px; width: 1px; background: var(--amber);"></i>
+                </div>
+                <span style="text-align:right;">1,920.73</span>
+                <span style="text-align:right;">1,931.17</span>
+              </div>
+              <div style="display: grid; grid-template-columns: 32px 1fr 60px 60px; gap: 10px; align-items: center;">
+                <span class="dim">80%</span>
+                <div style="position: relative; height: 6px; background: var(--bg-2); border-radius: 999px;">
+                  <i style="position:absolute; left: 28%; right: 14%; top:0;bottom:0; background:#f5a52450; border-radius: 999px;"></i>
+                  <i style="position:absolute; left: 52%; top:-1px; bottom:-1px; width: 1px; background: var(--amber);"></i>
+                </div>
+                <span style="text-align:right;">1,922.54</span>
+                <span style="text-align:right;">1,929.36</span>
+              </div>
+              <div style="display: grid; grid-template-columns: 32px 1fr 60px 60px; gap: 10px; align-items: center;">
+                <span class="dim">50%</span>
+                <div style="position: relative; height: 6px; background: var(--bg-2); border-radius: 999px;">
+                  <i style="position:absolute; left: 36%; right: 22%; top:0;bottom:0; background:#f5a52480; border-radius: 999px;"></i>
+                  <i style="position:absolute; left: 52%; top:-1px; bottom:-1px; width: 1px; background: var(--amber);"></i>
+                </div>
+                <span style="text-align:right;">1,924.16</span>
+                <span style="text-align:right;">1,927.73</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- unusual movers row -->
+          <div class="panel">
+            <div class="panel-head">
+              <div class="left">
+                <h2>Unusual movers</h2>
+                <span class="sub">Two-day price acceleration vs cohort · medium confidence</span>
+              </div>
+              <button class="icon-btn" title="more">⋯</button>
+            </div>
+            <div class="movers" style="grid-template-columns: repeat(5, 1fr); display: grid;">
+              <div class="mover">
+                <div class="ms"><b>BHARTIARTL</b><span>2-day acc · medium</span></div>
+                <svg class="mspark" viewBox="0 0 100 16" preserveAspectRatio="none"><polyline points="0,12 10,11 20,9 30,10 40,8 50,7 60,5 70,4 80,5 90,3 100,2" fill="none" stroke="#2ecc71" stroke-width="1.4"/></svg>
+                <div class="mchg up">+6.49%</div>
+              </div>
+              <div class="mover">
+                <div class="ms"><b>VBL</b><span>2-day acc · medium</span></div>
+                <svg class="mspark" viewBox="0 0 100 16" preserveAspectRatio="none"><polyline points="0,8 10,9 20,7 30,8 40,6 50,7 60,5 70,4 80,5 90,3 100,3" fill="none" stroke="#2ecc71" stroke-width="1.4"/></svg>
+                <div class="mchg up">+2.99%</div>
+              </div>
+              <div class="mover">
+                <div class="ms"><b>HDFCBANK</b><span>2-day acc · medium</span></div>
+                <svg class="mspark" viewBox="0 0 100 16" preserveAspectRatio="none"><polyline points="0,8 10,9 20,8 30,10 40,9 50,11 60,12 70,13 80,12 90,14 100,13" fill="none" stroke="#ef4d4d" stroke-width="1.4"/></svg>
+                <div class="mchg down">−1.65%</div>
+              </div>
+              <div class="mover">
+                <div class="ms"><b>RELIANCE</b><span>watchlist · low</span></div>
+                <svg class="mspark" viewBox="0 0 100 16" preserveAspectRatio="none"><polyline points="0,10 10,9 20,10 30,11 40,10 50,11 60,10 70,9 80,10 90,9 100,9" fill="none" stroke="#8a93a4" stroke-width="1.4"/></svg>
+                <div class="mchg up">+0.72%</div>
+              </div>
+              <div class="mover">
+                <div class="ms"><b>ICICIBANK</b><span>watchlist · low</span></div>
+                <svg class="mspark" viewBox="0 0 100 16" preserveAspectRatio="none"><polyline points="0,12 10,10 20,11 30,9 40,10 50,8 60,9 70,7 80,8 90,6 100,5" fill="none" stroke="#2ecc71" stroke-width="1.4"/></svg>
+                <div class="mchg up">+0.23%</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- heatmap -->
+          <div class="panel">
+            <div class="panel-head">
+              <div class="left">
+                <h2>Market heatmap</h2>
+                <span class="sub">India · grouped by sector · 1D · top 100 · sized by market cap</span>
+              </div>
+              <div class="heatmap-controls">
+                <select class="select"><option>India</option></select>
+                <select class="select"><option>By sector</option></select>
+                <select class="select"><option>All sectors</option></select>
+                <div class="seg">
+                  <button class="active">1D</button>
+                  <button>5D</button>
+                  <button>1M</button>
+                </div>
+                <button class="icon-btn" title="Expand">⤢</button>
+              </div>
+            </div>
+
+            <div class="heatmap">
+              <!-- Row 1 -->
+              <div class="heat hp-2"><div class="hs">RELIANCE</div><div class="hc">+1.84%</div></div>
+              <div class="heat hp-1"><div class="hs">TCS</div><div class="hc">+0.61%</div></div>
+              <div class="heat hp-3"><div class="hs">BHARTIARTL</div><div class="hc">+2.42%</div></div>
+              <div class="heat hp-0"><div class="hs">HDFCBANK</div><div class="hc">+0.18%</div></div>
+              <div class="heat hn-1"><div class="hs">ICICIBANK</div><div class="hc">−0.74%</div></div>
+              <div class="heat hp-1"><div class="hs">INFY</div><div class="hc">+0.45%</div></div>
+              <div class="heat hn-2"><div class="hs">SBIN</div><div class="hc">−1.31%</div></div>
+              <div class="heat hp-0"><div class="hs">LT</div><div class="hc">+0.08%</div></div>
+              <div class="heat hn-1"><div class="hs">AXISBANK</div><div class="hc">−0.62%</div></div>
+              <div class="heat hp-2"><div class="hs">ITC</div><div class="hc">+1.42%</div></div>
+              <!-- Row 2 -->
+              <div class="heat hp-1"><div class="hs">HCLTECH</div><div class="hc">+0.71%</div></div>
+              <div class="heat hp-0"><div class="hs">KOTAKBANK</div><div class="hc">+0.05%</div></div>
+              <div class="heat hn-2"><div class="hs">M&amp;M</div><div class="hc">−1.18%</div></div>
+              <div class="heat hp-3"><div class="hs">SUNPHARMA</div><div class="hc">+2.89%</div></div>
+              <div class="heat hn-0"><div class="hs">MARUTI</div><div class="hc">−0.32%</div></div>
+              <div class="heat hp-1"><div class="hs">TITAN</div><div class="hc">+0.92%</div></div>
+              <div class="heat hp-2"><div class="hs">NESTLEIND</div><div class="hc">+1.65%</div></div>
+              <div class="heat hn-1"><div class="hs">BAJFINANCE</div><div class="hc">−0.55%</div></div>
+              <div class="heat hp-0"><div class="hs">ADANIENT</div><div class="hc">+0.21%</div></div>
+              <div class="heat hp-2"><div class="hs">POWERGRID</div><div class="hc">+1.92%</div></div>
+              <!-- Row 3 -->
+              <div class="heat hn-3"><div class="hs">ASIANPAINT</div><div class="hc">−2.81%</div></div>
+              <div class="heat hp-1"><div class="hs">WIPRO</div><div class="hc">+0.41%</div></div>
+              <div class="heat hp-0"><div class="hs">JSWSTEEL</div><div class="hc">+0.12%</div></div>
+              <div class="heat hp-2"><div class="hs">ULTRACEMCO</div><div class="hc">+1.48%</div></div>
+              <div class="heat hn-1"><div class="hs">ONGC</div><div class="hc">−0.91%</div></div>
+              <div class="heat hp-1"><div class="hs">NTPC</div><div class="hc">+0.54%</div></div>
+              <div class="heat hn-2"><div class="hs">COALINDIA</div><div class="hc">−1.42%</div></div>
+              <div class="heat hp-3"><div class="hs">TATAMOTORS</div><div class="hc">+3.18%</div></div>
+              <div class="heat hp-0"><div class="hs">BAJAJFINSV</div><div class="hc">+0.19%</div></div>
+              <div class="heat hz"><div class="hs">BRITANNIA</div><div class="hc">±0.00%</div></div>
+              <!-- Row 4 -->
+              <div class="heat hp-1"><div class="hs">CIPLA</div><div class="hc">+0.78%</div></div>
+              <div class="heat hn-1"><div class="hs">DRREDDY</div><div class="hc">−0.61%</div></div>
+              <div class="heat hp-2"><div class="hs">DIVISLAB</div><div class="hc">+1.62%</div></div>
+              <div class="heat hp-0"><div class="hs">HEROMOTOCO</div><div class="hc">+0.26%</div></div>
+              <div class="heat hn-2"><div class="hs">BAJAJ-AUTO</div><div class="hc">−1.45%</div></div>
+              <div class="heat hp-1"><div class="hs">TATACONSUM</div><div class="hc">+0.83%</div></div>
+              <div class="heat hp-3"><div class="hs">EICHERMOT</div><div class="hc">+2.94%</div></div>
+              <div class="heat hn-0"><div class="hs">SHRIRAMFIN</div><div class="hc">−0.18%</div></div>
+              <div class="heat hp-0"><div class="hs">BPCL</div><div class="hc">+0.06%</div></div>
+              <div class="heat hn-1"><div class="hs">HINDALCO</div><div class="hc">−0.52%</div></div>
+            </div>
+
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 12px; font-size: 11px; color: var(--fg-mute);">
+              <span>40 stocks · −0.02% avg · sized by market cap</span>
+              <div style="display: flex; gap: 10px; align-items: center; font-family: var(--f-mono); font-size: 10px;">
+                <span>−3%</span>
+                <span style="display:inline-block;width:18px;height:8px;background:#8a2b30;"></span>
+                <span style="display:inline-block;width:18px;height:8px;background:#5b262a;"></span>
+                <span style="display:inline-block;width:18px;height:8px;background:#1d212a;"></span>
+                <span style="display:inline-block;width:18px;height:8px;background:#235a35;"></span>
+                <span style="display:inline-block;width:18px;height:8px;background:#15351f;"></span>
+                <span>+3%</span>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- ============= RIGHT RAIL ============= -->
+        <aside class="side">
+
+          <div class="side-block">
+            <h3>
+              Forecast
+              <span class="meta">Bharti Airtel · 10D</span>
+            </h3>
+            <div class="forecast-cluster">
+              <div class="fc-cell" style="grid-column: 1 / -1;">
+                <div class="k">Confidence</div>
+                <div style="display:flex; align-items: baseline; gap: 10px; margin-top: 2px;">
+                  <span style="font-family: var(--f-mono); font-size: 28px; font-weight: 700; letter-spacing: -0.02em;">71</span>
+                  <span class="dim" style="font-size: 12px;">/ 100</span>
+                  <span style="margin-left:auto; font-weight: 600; font-size: 12px; color: var(--fg-mute); letter-spacing: 0.04em;">NEUTRAL</span>
+                </div>
+                <div style="margin-top: 8px; height: 5px; background: var(--bg-2); border-radius: 999px; overflow: hidden;">
+                  <div style="height: 100%; width: 71%; background: linear-gradient(90deg, var(--down), var(--warn), var(--up)); border-radius: 999px;"></div>
+                </div>
+              </div>
+              <div class="fc-cell">
+                <div class="k">10D return</div>
+                <div class="v up">+1.08%</div>
+              </div>
+              <div class="fc-cell">
+                <div class="k">Risk/reward</div>
+                <div class="v">0.93×</div>
+              </div>
+              <div class="fc-cell">
+                <div class="k">Entry watch</div>
+                <div class="v" style="font-size: 12px;">₹1,893.94</div>
+                <div class="vsub">Support zone</div>
+              </div>
+              <div class="fc-cell">
+                <div class="k">Stop-out</div>
+                <div class="v" style="font-size: 12px; color: var(--down);">₹1,881.84</div>
+                <div class="vsub">−1.24% buffer</div>
+              </div>
+            </div>
+
+            <div style="font-size: 11px; color: var(--fg-mute); margin-top: 8px;">
+              Classic & modern overlays both lean bearish. Aligned <b class="num" style="color: var(--fg);">0/100</b>.
+            </div>
+          </div>
+
+          <div class="side-block">
+            <h3>Factor contributions <span class="meta">vs. neutral</span></h3>
+            <div class="factor">
+              <span class="fname">Momentum 5D</span>
+              <div class="fbar"><i style="left:50%; width:1.5%;"></i></div>
+              <span class="fval up">+0.01%</span>
+            </div>
+            <div class="factor">
+              <span class="fname">Momentum 21D</span>
+              <div class="fbar"><i style="left:50%; width:8%;"></i></div>
+              <span class="fval up">+0.42%</span>
+            </div>
+            <div class="factor">
+              <span class="fname">Mean reversion</span>
+              <div class="fbar"><i class="neg" style="right:50%; width:6%;"></i></div>
+              <span class="fval down">−0.31%</span>
+            </div>
+            <div class="factor">
+              <span class="fname">Volatility regime</span>
+              <div class="fbar"><i style="left:50%; width:4%;"></i></div>
+              <span class="fval up">+0.18%</span>
+            </div>
+            <div class="factor">
+              <span class="fname">Sector beta</span>
+              <div class="fbar"><i class="neg" style="right:50%; width:11%;"></i></div>
+              <span class="fval down">−0.54%</span>
+            </div>
+            <div class="factor">
+              <span class="fname">News tone (24h)</span>
+              <div class="fbar"><i style="left:50%; width:14%;"></i></div>
+              <span class="fval up">+0.71%</span>
+            </div>
+            <div class="factor">
+              <span class="fname">FII flow</span>
+              <div class="fbar"><i class="neg" style="right:50%; width:9%;"></i></div>
+              <span class="fval down">−0.45%</span>
+            </div>
+          </div>
+
+          <div class="side-block">
+            <h3>Peers <span class="meta">Telecom · India</span></h3>
+            <div style="font-size: 11.5px;">
+              <div style="display: grid; grid-template-columns: 1fr 60px 60px 60px; gap: 8px; padding: 4px 0; color: var(--fg-dim); font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; border-bottom: 1px solid var(--line-soft);">
+                <span>Peer</span><span style="text-align:right;">Mcap</span><span style="text-align:right;">P/E</span><span style="text-align:right;">1Y</span>
+              </div>
+              <div style="display: grid; grid-template-columns: 1fr 60px 60px 60px; gap: 8px; padding: 6px 0; font-family: var(--f-mono); border-bottom: 1px solid var(--line-soft);">
+                <span style="font-weight: 600;">BHARTIARTL</span><span style="text-align:right;">10.7T</span><span style="text-align:right;">82.4×</span><span style="text-align:right;" class="up">+71.2%</span>
+              </div>
+              <div style="display: grid; grid-template-columns: 1fr 60px 60px 60px; gap: 8px; padding: 6px 0; font-family: var(--f-mono); border-bottom: 1px solid var(--line-soft);">
+                <span style="color: var(--fg);">RELIANCE</span><span style="text-align:right;">18.1T</span><span style="text-align:right;">28.3×</span><span style="text-align:right;" class="up">+12.4%</span>
+              </div>
+              <div style="display: grid; grid-template-columns: 1fr 60px 60px 60px; gap: 8px; padding: 6px 0; font-family: var(--f-mono); border-bottom: 1px solid var(--line-soft);">
+                <span style="color: var(--fg);">IDEA</span><span style="text-align:right;">589B</span><span style="text-align:right;">—</span><span style="text-align:right;" class="up">+22.8%</span>
+              </div>
+              <div style="display: grid; grid-template-columns: 1fr 60px 60px 60px; gap: 8px; padding: 6px 0; font-family: var(--f-mono);">
+                <span style="color: var(--fg);">TATACOMM</span><span style="text-align:right;">498B</span><span style="text-align:right;">42.1×</span><span style="text-align:right;" class="down">−4.2%</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="side-block">
+            <h3>Today's catalysts</h3>
+            <div style="display: grid; gap: 10px; font-size: 11.5px;">
+              <div style="display: grid; grid-template-columns: 50px 1fr; gap: 10px; align-items: start;">
+                <span class="num" style="color: var(--amber); font-weight: 600;">14:00</span>
+                <div>
+                  <div style="color: var(--fg);">FOMC Minutes</div>
+                  <div class="dim">Higher impact · USD, rates, gold</div>
+                </div>
+              </div>
+              <div style="display: grid; grid-template-columns: 50px 1fr; gap: 10px; align-items: start;">
+                <span class="num" style="color: var(--fg-mute); font-weight: 600;">16:30</span>
+                <div>
+                  <div style="color: var(--fg);">India CPI · April</div>
+                  <div class="dim">Cons. 4.92% · prev 4.85%</div>
+                </div>
+              </div>
+              <div style="display: grid; grid-template-columns: 50px 1fr; gap: 10px; align-items: start;">
+                <span class="num" style="color: var(--fg-mute); font-weight: 600;">Tue</span>
+                <div>
+                  <div style="color: var(--fg);">RBI MPC commentary</div>
+                  <div class="dim">Repo 6.50% · restrictive</div>
+                </div>
+              </div>
+              <div style="display: grid; grid-template-columns: 50px 1fr; gap: 10px; align-items: start;">
+                <span class="num" style="color: var(--fg-mute); font-weight: 600;">Wed</span>
+                <div>
+                  <div style="color: var(--fg);">US CPI · April</div>
+                  <div class="dim">Cons. 3.4% · prev 3.5%</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="side-block">
+            <h3>Sources</h3>
+            <div style="display: grid; gap: 6px; font-size: 11.5px;">
+              <a href="#" style="color: var(--fg); text-decoration: none; display: flex; align-items: center; gap: 8px;">
+                <span style="width:14px; height:14px; background: var(--bg-2); border:1px solid var(--line); border-radius: 3px; display: inline-grid; place-items:center; font-size: 8px;">Y</span>
+                Yahoo Finance quote — Bharti Airtel
+              </a>
+              <a href="#" style="color: var(--fg); text-decoration: none; display: flex; align-items: center; gap: 8px;">
+                <span style="width:14px; height:14px; background: var(--bg-2); border:1px solid var(--line); border-radius: 3px; display: inline-grid; place-items:center; font-size: 8px;">G</span>
+                Google Finance page
+              </a>
+              <a href="#" style="color: var(--fg); text-decoration: none; display: flex; align-items: center; gap: 8px;">
+                <span style="width:14px; height:14px; background: var(--bg-2); border:1px solid var(--line); border-radius: 3px; display: inline-grid; place-items:center; font-size: 8px;">N</span>
+                NSE India · BHARTIARTL
+              </a>
+              <a href="#" style="color: var(--fg); text-decoration: none; display: flex; align-items: center; gap: 8px;">
+                <span style="width:14px; height:14px; background: var(--bg-2); border:1px solid var(--line); border-radius: 3px; display: inline-grid; place-items:center; font-size: 8px;">F</span>
+                FRED · India rates &amp; inflation
+              </a>
+            </div>
+          </div>
+
+        </aside>
+      </div>
+
+      <!-- ========== Overview bottom — All metrics drawer · Range watch · Sources ========== -->
+      <div class="content" style="grid-template-columns: minmax(0, 1fr) 320px;">
+
+        <!-- All metrics drawer -->
+        <div>
+          <div class="metric-drawer" style="border-top: 0;">
+            <div class="panel-head">
+              <div class="left">
+                <h2>All metrics</h2>
+                <span class="sub">Searchable, source-backed facts · 13 available · 16 unavailable</span>
+              </div>
+            </div>
+
+            <div class="metric-toolbar">
+              <div class="metric-search">
+                <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" style="color: var(--fg-dim);"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 14 14"/></svg>
+                <input placeholder="Filter metrics — ROE, SMA 50, volume…" />
+              </div>
+              <span class="chip kv">Price <b>₹1,905.40</b></span>
+              <span class="chip kv">Prev close <b>₹1,883.50</b></span>
+              <span class="chip kv">Session <b>REGULAR</b></span>
+              <span class="chip ok">13 available</span>
+              <span class="chip warn">16 unavailable</span>
+            </div>
+
+            <div class="metric-cols">
+
+              <div class="metric-col">
+                <header><b>Quote</b><small>Google Finance</small></header>
+                <div class="metric-row"><div class="kk"><span class="k">Price</span><span class="v">₹1,905.40</span></div></div>
+                <div class="metric-row unavailable"><div class="kk"><span class="k">Open</span><span class="v"></span></div></div>
+                <div class="metric-row"><div class="kk"><span class="k">Prev</span><span class="v">₹1,883.50</span></div></div>
+                <div class="metric-row"><div class="kk"><span class="k">Session</span><span class="v">REGULAR</span></div></div>
+                <div class="metric-row"><div class="kk"><span class="k">Currency</span><span class="v">INR</span></div></div>
+              </div>
+
+              <div class="metric-col">
+                <header><b>Range</b><small>Google Finance</small></header>
+                <div class="metric-row unavailable"><div class="kk"><span class="k">Day low</span><span class="v"></span></div></div>
+                <div class="metric-row unavailable"><div class="kk"><span class="k">Day high</span><span class="v"></span></div></div>
+                <div class="metric-row unavailable"><div class="kk"><span class="k">52W low</span><span class="v"></span></div></div>
+                <div class="metric-row unavailable"><div class="kk"><span class="k">52W high</span><span class="v"></span></div></div>
+                <div class="metric-row"><div class="kk"><span class="k">Breakout</span><span class="v">Range watch</span></div></div>
+              </div>
+
+              <div class="metric-col">
+                <header><b>Volume</b><small>Google Finance</small></header>
+                <div class="metric-row"><div class="kk"><span class="k">Volume</span><span class="v">0</span></div></div>
+                <div class="metric-row unavailable"><div class="kk"><span class="k">Avg volume</span><span class="v"></span></div></div>
+                <div class="metric-row unavailable"><div class="kk"><span class="k">Vol ratio</span><span class="v"></span></div></div>
+              </div>
+
+              <div class="metric-col">
+                <header><b>Fundamentals</b><small>Yahoo summary</small></header>
+                <div class="metric-row unavailable"><div class="kk"><span class="k">EPS</span><span class="v"></span></div></div>
+                <div class="metric-row unavailable"><div class="kk"><span class="k">Revenue</span><span class="v"></span></div></div>
+                <div class="metric-row unavailable"><div class="kk"><span class="k">Net income</span><span class="v"></span></div></div>
+                <div class="metric-row unavailable"><div class="kk"><span class="k">ROE</span><span class="v"></span></div></div>
+                <div class="metric-row unavailable"><div class="kk"><span class="k">Sales growth</span><span class="v"></span></div></div>
+                <div class="metric-row unavailable"><div class="kk"><span class="k">Debt/equity</span><span class="v"></span></div></div>
+              </div>
+
+              <div class="metric-col">
+                <header><b>Trend</b><small>Local cache</small></header>
+                <div class="metric-row"><div class="kk"><span class="k">SMA 5</span><span class="v">₹1,818.94</span></div><div class="src"><span class="up">Above</span></div></div>
+                <div class="metric-row"><div class="kk"><span class="k">SMA 20</span><span class="v">₹1,834.73</span></div><div class="src"><span class="up">Above</span></div></div>
+                <div class="metric-row unavailable"><div class="kk"><span class="k">SMA 25</span><span class="v"></span></div></div>
+                <div class="metric-row unavailable"><div class="kk"><span class="k">SMA 50</span><span class="v"></span></div></div>
+                <div class="metric-row unavailable"><div class="kk"><span class="k">SMA 200</span><span class="v"></span></div></div>
+              </div>
+
+              <div class="metric-col">
+                <header><b>Benchmark</b><small>Local cache</small></header>
+                <div class="metric-row"><div class="kk"><span class="k">BHARTIARTL</span><span class="v up">+6.49%</span></div></div>
+                <div class="metric-row"><div class="kk"><span class="k">NIFTY 50</span><span class="v flat">+0.00%</span></div></div>
+                <div class="metric-row"><div class="kk"><span class="k">SENSEX</span><span class="v down">−4.15%</span></div></div>
+              </div>
+
+              <div class="metric-col">
+                <header><b>Provenance</b><small>Source labels</small></header>
+                <div class="metric-row"><div class="kk" style="display:block;"><span class="k">Google Finance</span></div><div class="src">price · day snapshot</div></div>
+                <div class="metric-row"><div class="kk" style="display:block;"><span class="k">Local cache</span></div><div class="src">SMAs · normalisation</div></div>
+                <div class="metric-row"><div class="kk" style="display:block;"><span class="k">Yahoo summary</span></div><div class="src">fundamentals · consensus</div></div>
+              </div>
+
+            </div>
+          </div>
+
+          <!-- Sources / Influence nodes -->
+          <div class="panel" style="border-top: 1px solid var(--line);">
+            <div class="panel-head">
+              <div class="left">
+                <h2>Sources &amp; influence</h2>
+                <span class="sub">4 influence nodes · 3 sourced notes · public cited only</span>
+              </div>
+            </div>
+
+            <div class="influence-list">
+              <div class="influence">
+                <span class="infl-tag">Project</span>
+                <div>
+                  <div class="infl-title">4G/5G RAN modernization</div>
+                  <div class="infl-meta">Bharti Airtel Annual Report FY25 · shown as context only</div>
+                </div>
+                <span class="infl-conf med">Medium</span>
+              </div>
+              <div class="influence">
+                <span class="infl-tag">Project</span>
+                <div>
+                  <div class="infl-title">Starlink distribution &amp; network extension</div>
+                  <div class="infl-meta">Bharti Airtel Annual Report FY25 · shown as context only</div>
+                </div>
+                <span class="infl-conf med">Medium</span>
+              </div>
+              <div class="influence">
+                <span class="infl-tag">Project</span>
+                <div>
+                  <div class="infl-title">Airtel Africa reach, coverage &amp; capacity program</div>
+                  <div class="infl-meta">Bharti Airtel Annual Report FY25 · shown as context only</div>
+                </div>
+                <span class="infl-conf med">Medium</span>
+              </div>
+              <div class="influence">
+                <span class="infl-tag">Note</span>
+                <div>
+                  <div class="infl-title">External analyst consensus only — not dashboard advice</div>
+                  <div class="infl-meta">Curated web results · expert outlook links unavailable</div>
+                </div>
+                <span class="infl-conf low">Context</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right column: Range Watch -->
+        <aside class="side">
+          <div class="side-block">
+            <h3>Range watch <span class="meta">2D · gap · volume · breakout</span></h3>
+            <div class="rangewatch-grid">
+              <div class="rangewatch-cell">
+                <div class="k">2D Move</div>
+                <div class="v up">+6.49%</div>
+                <div class="vsub">Available · medium confidence</div>
+              </div>
+              <div class="rangewatch-cell">
+                <div class="k">Gap</div>
+                <div class="v up">+1.16%</div>
+                <div class="vsub">Available</div>
+              </div>
+              <div class="rangewatch-cell">
+                <div class="k">Volume</div>
+                <div class="v" style="color: var(--fg-dim); font-size: 14px;">Unavailable</div>
+                <div class="vsub">Avg volume missing or zero</div>
+              </div>
+              <div class="rangewatch-cell">
+                <div class="k">Breakout</div>
+                <div class="v" style="font-size: 14px;">Range watch</div>
+                <div class="vsub">52W high unavailable — using range watch</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="side-block">
+            <h3>Quality &amp; risk</h3>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 11.5px;">
+              <div class="rangewatch-cell" style="border: 1px solid var(--line); border-radius: var(--r-md);">
+                <div class="k">Valuation</div>
+                <div class="v" style="font-size: 18px;">46.8</div>
+                <div class="vsub">Out of 100</div>
+              </div>
+              <div class="rangewatch-cell" style="border: 1px solid var(--line); border-radius: var(--r-md);">
+                <div class="k">Risk</div>
+                <div class="v" style="font-size: 18px; color: var(--warn);">69.7</div>
+                <div class="vsub">Elevated</div>
+              </div>
+              <div class="rangewatch-cell" style="border: 1px solid var(--line); border-radius: var(--r-md);">
+                <div class="k">EPS</div>
+                <div class="v" style="font-size: 14px; color: var(--fg-dim);">Unavail.</div>
+              </div>
+              <div class="rangewatch-cell" style="border: 1px solid var(--line); border-radius: var(--r-md);">
+                <div class="k">ROE</div>
+                <div class="v" style="font-size: 14px; color: var(--fg-dim);">Unavail.</div>
+              </div>
+            </div>
+          </div>
+        </aside>
+      </div>
+
+      </section>
+      <!-- /tabpane overview -->
+
+      <!-- ========================================================
+           TABPANE: BONDS
+           ======================================================== -->
+      <section class="tabpane hidden" id="t-bonds" data-tab="bonds">
+        <div class="bonds-grid">
+
+          <!-- LEFT: Yield Curve -->
+          <div>
+            <div class="panel-head" style="margin-bottom: 12px;">
+              <div class="left">
+                <h2>Yield curve</h2>
+                <span class="sub">Bond market first · India</span>
+              </div>
+              <span class="chip">Curated fallback · 17 May, 11:47</span>
+            </div>
+
+            <div class="yield-summary">
+              <div class="yield-cell">
+                <div class="k">10Y</div>
+                <div class="v">7.09%</div>
+                <div class="vsub"><span class="b up">+2.0 bp</span> today</div>
+              </div>
+              <div class="yield-cell">
+                <div class="k">2s10s</div>
+                <div class="v">0.17%</div>
+                <div class="vsub">Flat curve</div>
+              </div>
+              <div class="yield-cell">
+                <div class="k">Real yield</div>
+                <div class="v">1.99%</div>
+                <div class="vsub">Rates anchor</div>
+              </div>
+            </div>
+
+            <div class="curve-card">
+              <div class="curve-card-head">
+                <h4>Government bond curve</h4>
+                <span class="source-pill">FRED · local bond cache · intraday</span>
+              </div>
+              <div class="curve-chart">
+                <svg viewBox="0 0 600 170" preserveAspectRatio="none">
+                  <defs>
+                    <linearGradient id="curveFill" x1="0" x2="0" y1="0" y2="1">
+                      <stop offset="0%" stop-color="#f5a524" stop-opacity="0.45"/>
+                      <stop offset="100%" stop-color="#f5a524" stop-opacity="0"/>
+                    </linearGradient>
+                  </defs>
+                  <!-- grid -->
+                  <g class="gridline">
+                    <line x1="0"  y1="20"  x2="560" y2="20"/>
+                    <line x1="0"  y1="55"  x2="560" y2="55"/>
+                    <line x1="0"  y1="90"  x2="560" y2="90"/>
+                    <line x1="0"  y1="125" x2="560" y2="125"/>
+                    <line x1="0"  y1="160" x2="560" y2="160"/>
+                  </g>
+                  <!-- Y axis labels -->
+                  <g class="axis">
+                    <text x="566" y="24">7.30</text>
+                    <text x="566" y="59">7.15</text>
+                    <text x="566" y="94">7.00</text>
+                    <text x="566" y="129">6.85</text>
+                    <text x="566" y="164">6.70</text>
+                  </g>
+                  <!-- X axis tenor labels -->
+                  <g class="axis">
+                    <text x="40"  y="172" text-anchor="middle">3M</text>
+                    <text x="130" y="172" text-anchor="middle">1Y</text>
+                    <text x="220" y="172" text-anchor="middle">2Y</text>
+                    <text x="310" y="172" text-anchor="middle">5Y</text>
+                    <text x="400" y="172" text-anchor="middle">10Y</text>
+                    <text x="490" y="172" text-anchor="middle">20Y</text>
+                    <text x="555" y="172" text-anchor="middle">30Y</text>
+                  </g>
+                  <!-- Curve area + line. Y mapping: rate 6.70→160, 7.30→20 (span 140 over 0.60%) -->
+                  <!-- Points: 3M 6.78 → y=20+((7.30-6.78)/0.60)*140 = 20+121 = 141
+                       1Y 6.85 → y=20+((7.30-6.85)/0.60)*140 = 20+105 = 125
+                       2Y 6.92 → y=20+((7.30-6.92)/0.60)*140 = 20+89 = 109
+                       5Y 7.01 → y=20+((7.30-7.01)/0.60)*140 = 20+68 = 88
+                       10Y 7.09 → y=20+((7.30-7.09)/0.60)*140 = 20+49 = 69
+                       20Y 7.18 → y=20+((7.30-7.18)/0.60)*140 = 20+28 = 48
+                       30Y 7.23 → y=20+((7.30-7.23)/0.60)*140 = 20+16 = 36
+                   -->
+                  <path class="curve-area" d="M 40 141 L 130 125 L 220 109 L 310 88 L 400 69 L 490 48 L 555 36 L 555 160 L 40 160 Z"/>
+                  <polyline class="curve-line" points="40,141 130,125 220,109 310,88 400,69 490,48 555,36"/>
+                  <!-- dots -->
+                  <circle class="curve-dot" cx="220" cy="109" r="3.5"/>
+                  <circle class="curve-dot" cx="310" cy="88" r="3.5"/>
+                  <circle class="curve-dot" cx="400" cy="69" r="3.5"/>
+                  <circle class="curve-dot" cx="555" cy="36" r="3.5"/>
+                  <!-- labels -->
+                  <text class="curve-dot-label" x="220" y="100" text-anchor="middle">6.92</text>
+                  <text class="curve-dot-label" x="310" y="79"  text-anchor="middle">7.01</text>
+                  <text class="curve-dot-label" x="400" y="60"  text-anchor="middle">7.09</text>
+                  <text class="curve-dot-label" x="540" y="28"  text-anchor="end">7.23</text>
+                </svg>
+              </div>
+
+              <div class="tenor-row">
+                <div class="tenor">
+                  <div class="tname">2Y</div>
+                  <div class="tval">6.92%</div>
+                  <div class="tdelta down">−1.0 bp</div>
+                </div>
+                <div class="tenor">
+                  <div class="tname">5Y</div>
+                  <div class="tval">7.01%</div>
+                  <div class="tdelta up">+1.0 bp</div>
+                </div>
+                <div class="tenor">
+                  <div class="tname">10Y</div>
+                  <div class="tval">7.09%</div>
+                  <div class="tdelta up">+2.0 bp</div>
+                </div>
+                <div class="tenor">
+                  <div class="tname">30Y</div>
+                  <div class="tval">7.23%</div>
+                  <div class="tdelta up">+2.0 bp</div>
+                </div>
+              </div>
+
+              <div style="margin-top: 12px; font-size: 11px; color: var(--fg-mute);">
+                India bond market is seeing higher yields with flat curve signals.
+                Track 2Y, 5Y, 10Y, 30Y levels and 2s10s / 5s30s slope before drawing any equity conclusion.
+              </div>
+            </div>
+          </div>
+
+          <!-- RIGHT: Rates Interpretation -->
+          <div>
+            <div class="panel-head" style="margin-bottom: 12px;">
+              <div class="left">
+                <h2>Rates interpretation</h2>
+                <span class="sub">Facts · interpretation · watch next</span>
+              </div>
+            </div>
+
+            <div class="rate-card">
+              <div class="rate-card-head">
+                <span class="tag fact">FACT</span>
+                <h4>What changed?</h4>
+              </div>
+              <p>India bond market is seeing higher yields with flat curve signals — 2Y 6.92% (−1bp), 10Y 7.09% (+2bp), 30Y 7.23% (+2bp).</p>
+            </div>
+
+            <div class="rate-card">
+              <div class="rate-card-head">
+                <span class="tag interp">INTERPRETATION</span>
+                <h4>Why it changed</h4>
+              </div>
+              <p>The dominant read is inflation expectations, reinforced by inflation-driven Reserve Bank of India expectations. The curve is bear-flattening — long-end leading.</p>
+            </div>
+
+            <div class="rate-card">
+              <div class="rate-card-head">
+                <span class="tag impl">IMPLICATION</span>
+                <h4>What it implies</h4>
+              </div>
+              <p>Banks, domestic cyclicals and pricing-power names lead the equity read-through. RBI stance is restrictive — watching food inflation, liquidity and crude pass-through. Flat curves matter most for banks and duration-heavy sectors.</p>
+            </div>
+
+            <div class="rate-card">
+              <div class="rate-card-head">
+                <span class="tag proto">PROTOCOL</span>
+                <h4>Research protocol</h4>
+              </div>
+              <p>Anchor on a flat curve · inflation-driven read · explicit policy / event transmission. Layer interpretation only after facts, cadence and provenance are established.</p>
+            </div>
+
+            <div class="rate-card">
+              <div class="rate-card-head">
+                <span class="tag vhi">VERY HIGH</span>
+                <h4>Government bond curve</h4>
+              </div>
+              <p>Track 2Y, 5Y, 10Y, 30Y levels and 2s10s / 5s30s slope before drawing any equity conclusion. <span class="src" style="display:inline; margin: 0;">intraday · FRED / local bond cache</span></p>
+            </div>
+
+            <div class="rate-card">
+              <div class="rate-card-head">
+                <span class="tag vhi">VERY HIGH</span>
+                <h4>Inflation expectations</h4>
+              </div>
+              <p>Track CPI, core CPI, breakevens and real policy gap together. <span class="src" style="display:inline; margin: 0;">daily / release days · BLS / CPI references / local cache</span></p>
+            </div>
+
+            <div class="rate-card">
+              <div class="rate-card-head">
+                <span class="tag vhi">VERY HIGH</span>
+                <h4>Central bank policy path</h4>
+              </div>
+              <p>Use central-bank calendar, current policy rate and bias language before inferring a regime shift. <span class="src" style="display:inline; margin: 0;">event-driven · Fed / RBI calendar</span></p>
+            </div>
+
+            <div class="rate-card">
+              <div class="rate-card-head">
+                <span class="tag note">NOTE</span>
+                <h4>Regime note</h4>
+              </div>
+              <p>Rising front-end yields usually signal tighter policy expectations or stickier inflation. Bull steepening often points to easing expectations or recession concern. Bear steepening usually points to higher term premium, supply or stronger growth/inflation repricing.</p>
+            </div>
+
+          </div>
+        </div>
+      </section>
+      <!-- /tabpane bonds -->
+
+      <!-- ========================================================
+           TABPANE: IMPLICATIONS
+           ======================================================== -->
+      <section class="tabpane hidden" id="t-implications" data-tab="implications">
+        <div class="imp-grid">
+
+          <!-- LEFT: Dependency Workspace -->
+          <div class="imp-graph-wrap">
+            <div class="panel-head" style="margin-bottom: 4px;">
+              <div class="left">
+                <h2>Dependency workspace</h2>
+                <span class="sub">Bond · inflation · project · supplier · partner transmission</span>
+              </div>
+            </div>
+
+            <div class="imp-toolbar">
+              <button class="ghost">Fit all</button>
+              <button class="ghost">Detail +</button>
+              <button class="ghost">Detail −</button>
+              <button class="ghost">Reset layout</button>
+              <span class="imp-meta">23 nodes · 25 links · 17/05/2026 11:47</span>
+            </div>
+
+            <div class="imp-canvas">
+              <svg viewBox="0 0 900 500" preserveAspectRatio="xMidYMid meet">
+                <!-- EDGES (drawn first so they sit under nodes) -->
+                <g>
+                  <!-- Bond yields → BSESN, BHARTIARTL, INFY, RELIANCE, TCS, VBL, Equities -->
+                  <path class="imp-edge flow" d="M 175 230 C 280 200, 360 130, 460 130"/>
+                  <path class="imp-edge flow" d="M 175 230 C 280 230, 360 230, 460 230"/>
+                  <path class="imp-edge flow" d="M 175 230 C 280 270, 360 310, 460 310"/>
+                  <path class="imp-edge flow" d="M 175 230 C 280 290, 360 360, 460 380"/>
+                  <path class="imp-edge flow" d="M 175 230 C 280 300, 360 400, 460 440"/>
+                  <path class="imp-edge risk" d="M 175 230 C 250 230, 320 200, 380 195"/>
+                  <!-- Inflation → Equities -->
+                  <path class="imp-edge flow" d="M 175 320 C 250 305, 320 250, 380 220"/>
+                  <!-- Policy → BHARTIARTL/RELIANCE -->
+                  <path class="imp-edge risk" d="M 175 410 C 280 380, 360 270, 460 230"/>
+                  <path class="imp-edge risk" d="M 175 410 C 280 400, 360 360, 460 310"/>
+                  <!-- BHARTIARTL → projects -->
+                  <path class="imp-edge proj" d="M 535 230 C 590 215, 640 200, 690 195"/>
+                  <path class="imp-edge proj" d="M 535 230 C 590 240, 640 280, 690 295"/>
+                  <path class="imp-edge proj" d="M 535 230 C 590 245, 640 330, 690 385"/>
+                  <!-- 4G/5G RAN → 5G capex, Fiber backbone, MediaTek -->
+                  <path class="imp-edge proj" d="M 765 195 C 800 180, 820 130, 830 105"/>
+                  <path class="imp-edge proj" d="M 765 195 C 810 220, 825 250, 830 275"/>
+                  <path class="imp-edge proj" d="M 765 195 C 805 200, 820 195, 830 195"/>
+                  <!-- Airtel Africa → Subscriber growth, Reliance Jio -->
+                  <path class="imp-edge proj" d="M 765 295 C 800 320, 815 360, 830 385"/>
+                  <path class="imp-edge proj" d="M 765 295 C 800 320, 815 360, 830 360"/>
+                  <!-- Starlink → Reliance Jio -->
+                  <path class="imp-edge proj" d="M 765 385 C 800 370, 815 365, 830 360"/>
+                </g>
+
+                <!-- NODES -->
+                <!-- Macro (left column, hex shapes via polygon, ~80×30) -->
+                <g class="imp-node macro">
+                  <polygon points="110,215 165,215 175,230 165,245 110,245 100,230"/>
+                  <text x="137" y="230">Bond yields</text>
+                </g>
+                <g class="imp-node macro">
+                  <polygon points="110,305 165,305 175,320 165,335 110,335 100,320"/>
+                  <text x="137" y="320">Inflation</text>
+                </g>
+                <g class="imp-node macro">
+                  <polygon points="110,395 165,395 175,410 165,425 110,425 100,410"/>
+                  <text x="137" y="410">Policy</text>
+                </g>
+
+                <!-- Market (middle) -->
+                <g class="imp-node market">
+                  <polygon points="395,180 450,180 460,195 450,210 395,210 385,195"/>
+                  <text x="422" y="195">Equities</text>
+                </g>
+
+                <!-- Stocks (right of equities, vertical stack) -->
+                <g class="imp-node stock">
+                  <polygon points="475,115 530,115 540,130 530,145 475,145 465,130"/>
+                  <text x="502" y="130">^BSESN</text>
+                </g>
+                <g class="imp-node stock">
+                  <polygon points="468,215 537,215 547,230 537,245 468,245 458,230"/>
+                  <text x="502" y="230">BHARTIARTL.NS</text>
+                </g>
+                <g class="imp-node stock">
+                  <polygon points="475,295 530,295 540,310 530,325 475,325 465,310"/>
+                  <text x="502" y="310">INFY.NS</text>
+                </g>
+                <g class="imp-node stock">
+                  <polygon points="468,365 537,365 547,380 537,395 468,395 458,380"/>
+                  <text x="502" y="380">RELIANCE.NS</text>
+                </g>
+                <g class="imp-node stock">
+                  <polygon points="475,425 530,425 540,440 530,455 475,455 465,440"/>
+                  <text x="502" y="440">TCS.NS</text>
+                </g>
+
+                <!-- Projects (rectangles, rounded) -->
+                <g class="imp-node project">
+                  <rect x="685" y="178" width="80" height="34" rx="4"/>
+                  <text x="725" y="195">4G/5G RAN</text>
+                </g>
+                <g class="imp-node project">
+                  <rect x="680" y="278" width="90" height="34" rx="4"/>
+                  <text x="725" y="295">Airtel Africa</text>
+                </g>
+                <g class="imp-node project">
+                  <rect x="680" y="368" width="90" height="34" rx="4"/>
+                  <text x="725" y="385">Starlink dist.</text>
+                </g>
+
+                <!-- Entities (right column) -->
+                <g class="imp-node entity">
+                  <rect x="820" y="80"  width="75" height="30" rx="4"/>
+                  <text x="858" y="95">5G capex</text>
+                </g>
+                <g class="imp-node entity">
+                  <rect x="820" y="180" width="75" height="30" rx="4"/>
+                  <text x="858" y="195">MediaTek</text>
+                </g>
+                <g class="imp-node entity">
+                  <rect x="820" y="265" width="75" height="30" rx="4"/>
+                  <text x="858" y="280">Fiber backbone</text>
+                </g>
+                <g class="imp-node entity">
+                  <rect x="820" y="345" width="75" height="30" rx="4"/>
+                  <text x="858" y="360">Reliance Jio</text>
+                </g>
+                <g class="imp-node entity">
+                  <rect x="820" y="410" width="75" height="30" rx="4"/>
+                  <text x="858" y="425">Subscribers</text>
+                </g>
+
+              </svg>
+            </div>
+          </div>
+
+          <!-- RIGHT: Selected node + legend -->
+          <aside class="imp-side">
+            <div class="imp-detail">
+              <div class="k">Selected node</div>
+              <div class="ktype">MACRO</div>
+              <h4>Bond yields</h4>
+              <p>India bond market is the anchor for the region-level read. Curve shape <b style="color:var(--fg);">flat</b> · real yield <b style="color:var(--fg);">1.99%</b>.</p>
+              <hr class="sep" />
+              <div class="k">Links</div>
+              <div style="font-size: 11.5px; color: var(--fg-mute); margin-top: 6px;">
+                <div style="display: grid; grid-template-columns: 1fr auto; gap: 4px 8px; font-family: var(--f-mono);">
+                  <span>→ Equities</span><span class="up">+0.42</span>
+                  <span>→ BHARTIARTL.NS</span><span class="up">+0.18</span>
+                  <span>→ INFY.NS</span><span class="down">−0.21</span>
+                  <span>→ RELIANCE.NS</span><span class="down">−0.31</span>
+                  <span>→ ^BSESN</span><span class="down">−0.45</span>
+                </div>
+              </div>
+            </div>
+
+            <div style="margin-top: 16px;">
+              <h3 style="font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--fg-mute); font-weight: 600; margin: 0 0 8px;">How to read</h3>
+              <div class="legend-grid">
+                <div class="legend-chip"><i style="background: rgba(245,165,36,0.5); border:1px solid var(--amber);"></i> Macro</div>
+                <div class="legend-chip"><i style="background: rgba(84,185,209,0.5); border:1px solid var(--cyan);"></i> Market</div>
+                <div class="legend-chip"><i style="background: rgba(46,204,113,0.5); border:1px solid var(--up);"></i> Stock</div>
+                <div class="legend-chip"><i style="background: rgba(245,165,36,0.3); border:1px solid rgba(245,165,36,0.55);"></i> Project</div>
+                <div class="legend-chip" style="grid-column: 1 / -1;"><i style="background: var(--bg-2); border:1px solid var(--line-strong);"></i> Entity / supplier / partner</div>
+              </div>
+              <div style="margin-top: 12px; font-size: 11px; color: var(--fg-mute); display: grid; gap: 4px;">
+                <div style="display:flex; align-items:center; gap:6px;"><span style="display:inline-block; width:18px; height:1.5px; background: var(--amber);"></span> Flow / transmission</div>
+                <div style="display:flex; align-items:center; gap:6px;"><span style="display:inline-block; width:18px; height:1.5px; background: var(--up);"></span> Project exposure</div>
+                <div style="display:flex; align-items:center; gap:6px;"><span style="display:inline-block; width:18px; height:1.5px; background: var(--down);"></span> Risk / inverse</div>
+              </div>
+            </div>
+          </aside>
+
+        </div>
+
+        <!-- Stock Watchlist Implications -->
+        <div class="imp-cards">
+          <div class="panel-head" style="margin-bottom: 10px;">
+            <div class="left">
+              <h2>Stock watchlist implications</h2>
+              <span class="sub">Scenario · risk · confidence · unknowns</span>
+            </div>
+          </div>
+          <div class="imp-card-grid">
+
+            <div class="imp-card">
+              <div class="imp-card-head">
+                <span class="sym">^BSESN</span>
+                <span class="conf">Medium</span>
+              </div>
+              <div class="row"><span class="lbl">Scenario</span><span class="txt">Wait for clearer macro confirmation</span></div>
+              <div class="row"><span class="lbl">Impact</span><span class="txt">Mixed macro transmission</span></div>
+              <div class="row"><span class="lbl">Why</span><span class="txt">Financials focus on curve shape, funding costs, credit demand and regulation. <b>Telecom</b> and IT cross-currents add noise.</span></div>
+            </div>
+
+            <div class="imp-card">
+              <div class="imp-card-head">
+                <span class="sym">VBL.NS</span>
+                <span class="conf">Medium</span>
+              </div>
+              <div class="row"><span class="lbl">Scenario</span><span class="txt">Wait for clearer macro confirmation</span></div>
+              <div class="row"><span class="lbl">Impact</span><span class="txt">Mixed macro transmission</span></div>
+              <div class="row"><span class="lbl">Why</span><span class="txt">Consumer staples react to inflation and rural demand recovery — <b>watching</b> CPI prints and crude pass-through.</span></div>
+            </div>
+
+            <div class="imp-card">
+              <div class="imp-card-head">
+                <span class="sym">BHARTIARTL.NS</span>
+                <span class="conf">Medium</span>
+              </div>
+              <div class="row"><span class="lbl">Scenario</span><span class="txt">Wait for clearer macro confirmation</span></div>
+              <div class="row"><span class="lbl">Impact</span><span class="txt">Mixed macro transmission</span></div>
+              <div class="row"><span class="lbl">Why</span><span class="txt">Bharti Airtel is more <b>domestic-demand</b> and pricing-power sensitive than pure export names — capex cycle exposed.</span></div>
+            </div>
+
+          </div>
+        </div>
+
+      </section>
+      <!-- /tabpane implications -->
+
+    </main>
+
+  </div>
+
+  <!-- ================== STATUS BAR (system state only — quotes live in the tape + bench row) ================== -->
+  <div class="statusbar">
+    <span><span class="dot"></span>Backend <span class="pill live">yahoo · live</span></span>
+    <span>History cache <span class="pill">running 100%</span></span>
+    <span>Last sync <span class="pill">2s ago</span></span>
+    <span>11 symbols · 5 presets · 2 saved lists</span>
+    <span class="right">
+      <span>v3.4.1</span>
+      <span>17 May 2026 · 06:46 IST</span>
+    </span>
+  </div>
+
+</div>
+
+<script>
+  // Tab switching: wire both the main .tabs strip and the .topnav to the .tabpane sections.
+  (function wireTabs() {
+    const allBtns = document.querySelectorAll('[data-tab]');
+    const panes = document.querySelectorAll('.tabpane');
+    function activate(tabName) {
+      panes.forEach(p => p.classList.toggle('hidden', p.dataset.tab !== tabName));
+      allBtns.forEach(b => {
+        const on = b.dataset.tab === tabName;
+        if (b.tagName === 'BUTTON') b.classList.toggle('active', on);
+        if (b.tagName === 'A')      b.classList.toggle('active', on);
+      });
+      // Scroll the main pane back to the top so the user always lands at the section header.
+      const main = document.querySelector('.main');
+      if (main) main.scrollTop = 0;
+    }
+    allBtns.forEach(b => {
+      b.addEventListener('click', e => {
+        e.preventDefault();
+        activate(b.dataset.tab);
+      });
+    });
+  })();
+</script>
+
+<script>
+  // Build the candle chart programmatically — keeps the markup short and lets prices vary cleanly.
+  (function buildCandles() {
+    const g = document.getElementById('candles');
+    if (!g) return;
+    const N = 60;
+    const W = 840, H = 320;
+    const left = 6, right = 786;
+    const slot = (right - left) / N;
+    const ww = Math.max(3, slot * 0.65);
+    // Generate a believable OHLC walk that ends near the marker level (~186 px)
+    let p = 1908;
+    const target = 1905;
+    const candles = [];
+    for (let i = 0; i < N; i++) {
+      const pull = (target - p) * 0.04;
+      const drift = (Math.sin(i * 0.32) + Math.sin(i * 0.11) * 0.4) * 1.2;
+      const noise = (Math.random() - 0.5) * 2.6;
+      const o = p;
+      const c = p + pull + drift + noise;
+      const h = Math.max(o, c) + Math.random() * 1.4;
+      const l = Math.min(o, c) - Math.random() * 1.4;
+      candles.push({ o, h, l, c });
+      p = c;
+    }
+    // y-scale: price 1896 → 280, 1920 → 40
+    const yMin = 1896, yMax = 1920;
+    const y = (v) => 280 - ((v - yMin) / (yMax - yMin)) * 240;
+
+    const sma20 = [], sma50 = [];
+    for (let i = 0; i < N; i++) {
+      const start20 = Math.max(0, i - 19);
+      const arr20 = candles.slice(start20, i + 1);
+      const v20 = arr20.reduce((a, b) => a + b.c, 0) / arr20.length;
+      sma20.push([i, v20]);
+      const start50 = Math.max(0, i - 49);
+      const arr50 = candles.slice(start50, i + 1);
+      const v50 = arr50.reduce((a, b) => a + b.c, 0) / arr50.length;
+      sma50.push([i, v50]);
+    }
+
+    const svgNs = 'http://www.w3.org/2000/svg';
+    candles.forEach((c, i) => {
+      const x = left + i * slot;
+      const up = c.c >= c.o;
+      const color = up ? '#2ecc71' : '#ef4d4d';
+      // wick
+      const wick = document.createElementNS(svgNs, 'line');
+      wick.setAttribute('x1', x + ww / 2);
+      wick.setAttribute('x2', x + ww / 2);
+      wick.setAttribute('y1', y(c.h));
+      wick.setAttribute('y2', y(c.l));
+      wick.setAttribute('stroke', color);
+      wick.setAttribute('stroke-width', '1');
+      g.appendChild(wick);
+      // body
+      const yo = y(c.o), yc = y(c.c);
+      const body = document.createElementNS(svgNs, 'rect');
+      body.setAttribute('x', x);
+      body.setAttribute('y', Math.min(yo, yc));
+      body.setAttribute('width', ww);
+      body.setAttribute('height', Math.max(1, Math.abs(yc - yo)));
+      body.setAttribute('fill', up ? color : color);
+      body.setAttribute('opacity', up ? 0.95 : 0.95);
+      g.appendChild(body);
+    });
+
+    // SMA polylines
+    const sma20El = document.querySelector('.sma-20');
+    const sma50El = document.querySelector('.sma-50');
+    if (sma20El) sma20El.setAttribute('points', sma20.map(([i, v]) => `${left + i * slot + ww / 2},${y(v).toFixed(1)}`).join(' '));
+    if (sma50El) sma50El.setAttribute('points', sma50.map(([i, v]) => `${left + i * slot + ww / 2},${y(v).toFixed(1)}`).join(' '));
+  })();
+</script>
+
+</body>
+</html>

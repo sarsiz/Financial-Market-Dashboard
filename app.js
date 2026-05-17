@@ -17,6 +17,7 @@ const STORAGE_KEYS = {
 };
 
 const REFRESH_INTERVALS = {
+  quotes: 7_000,
   overview: 20_000,
   globalMarkets: 15_000,
   dashboard: 600_000,
@@ -221,6 +222,8 @@ const state = {
   eventRequestId: 0,
   eventTimer: null,
   overviewTimer: null,
+  quotesTimer: null,
+  quotesRequestId: 0,
   globalMarketTimer: null,
   sectorMatrixTimer: null,
   dashboardTimer: null,
@@ -980,6 +983,93 @@ function renderMarketDiscovery(discoveryItems, sourceLabel) {
   `;
 }
 
+function dossierRailCell(label, value, { className = "", sub = "", liveKey = "" } = {}) {
+  const numeric = Number(String(value).replace(/[^\d.+-]/g, ""));
+  const liveClass = liveKey ? liveValueClass(liveKey, numeric) : "";
+  const classes = ["v", "live-number", className, liveClass].filter(Boolean).join(" ");
+  return `
+    <div class="rail-cell">
+      <div class="k">${escapeHtml(label)}</div>
+      <div class="${classes}">${escapeHtml(value || "Unavailable")}</div>
+      ${sub ? `<div class="vsub">${sub}</div>` : ""}
+    </div>
+  `;
+}
+
+function renderDossierRail(active = {}) {
+  const node = document.getElementById("dossier-rail-summary");
+  const status = document.getElementById("dossier-rail-status");
+  if (!node) return;
+  const dossier = active.stockDossier || {};
+  const day = dossier.daySnapshot || {};
+  const fundamentals = dossier.fundamentals || {};
+  const consensus = dossier.expertConsensus || {};
+  const freshness = quoteFreshnessForDisplay(active);
+  const freshnessMarkup = freshnessBadgeMarkup(freshness);
+  const sourceLabel = formatSourceLabel(day.source || active.dataSource || "Quote provider");
+  const scores = fundamentals.scores || {};
+  const roeLabel = fundamentals.roe === null || fundamentals.roe === undefined || fundamentals.roe === ""
+    ? "Unavailable"
+    : dossierMetric(Number(fundamentals.roe) * 100, "percent");
+  const benchmarks = (dossier.benchmarkComparison || []).slice(0, 3);
+  const peers = (dossier.peerComparison || []).slice(0, 3);
+  const movingAverages = (dossier.movingAverages || []).filter((item) => item.value !== null && item.value !== undefined).slice(0, 2);
+  const consensusLabel = consensus.rating || "External tone unavailable";
+  const statusText = freshness.label || (freshness.isStale ? "Stale" : "Live");
+  setHTMLIfChanged(status, `<span class="rail-live-dot ${freshness.isStale ? "is-stale" : ""}"></span>${escapeHtml(statusText)}`);
+
+  setTextIfChanged(document.getElementById("rail-2d-move"), active.changePercent === null || active.changePercent === undefined ? "Live" : formatPercent(active.changePercent));
+  setClassIfChanged(document.getElementById("rail-2d-move"), `v live-number ${Number(active.changePercent || 0) >= 0 ? "up positive" : "down negative"} ${liveValueClass(`rail:${active.symbol}:move`, active.changePercent)}`);
+  const gap = Number(day.open) && Number(day.previousClose)
+    ? ((Number(day.open) - Number(day.previousClose)) / Number(day.previousClose)) * 100
+    : null;
+  setTextIfChanged(document.getElementById("rail-gap"), Number.isFinite(gap) ? formatPercent(gap) : "Unavailable");
+  setClassIfChanged(document.getElementById("rail-gap"), `v live-number ${Number(gap || 0) >= 0 ? "up positive" : "down negative"} ${liveValueClass(`rail:${active.symbol}:gap`, gap)}`);
+  setTextIfChanged(document.getElementById("rail-volume"), dossierMetric(day.volume, "large"));
+  setClassIfChanged(document.getElementById("rail-volume"), `v live-number ${liveValueClass(`rail:${active.symbol}:volume`, day.volume)}`);
+  setTextIfChanged(document.getElementById("rail-breakout"), dossier.unusualActivity?.breakout || dossier.unusualActivity?.metrics?.breakout?.label || "Range watch");
+
+  setHTMLIfChanged(node, `
+    <div class="rail-source-row">
+      <span>${freshnessMarkup}</span>
+      <span>${escapeHtml(sourceLabel)}</span>
+    </div>
+    <div class="rail-grid">
+      ${dossierRailCell("Valuation", dossierMetric(scores.valuation), { liveKey: `rail:${active.symbol}:valuation` })}
+      ${dossierRailCell("Risk", dossierMetric(scores.risk), { className: "warn", liveKey: `rail:${active.symbol}:risk` })}
+      ${dossierRailCell("ROE", roeLabel)}
+      ${dossierRailCell("EPS", dossierMetric(fundamentals.eps), { liveKey: `rail:${active.symbol}:eps` })}
+    </div>
+    <div class="rail-list">
+      <div class="rail-list-head"><span>Benchmarks</span><em>Moved from dossier</em></div>
+      ${benchmarks.length ? benchmarks.map((item) => `
+        <div class="rail-row">
+          <strong>${escapeHtml(item.label || "Benchmark")}</strong>
+          <span class="live-number ${Number(item.returnPercent || 0) >= 0 ? "up positive" : "down negative"} ${liveValueClass(`rail:${active.symbol}:bench:${item.label}`, item.returnPercent)}">${formatPercent(item.returnPercent || 0)}</span>
+        </div>
+      `).join("") : `<div class="rail-empty">Benchmark history warming from local cache.</div>`}
+    </div>
+    <div class="rail-list">
+      <div class="rail-list-head"><span>Peers</span><em>Compact</em></div>
+      ${peers.length ? peers.map((peer) => `
+        <div class="rail-row">
+          <strong>${escapeHtml(peer.symbol || "Peer")}</strong>
+          <span>${escapeHtml(peer.oneYearReturn || peer.pe || "Unavailable")}</span>
+        </div>
+      `).join("") : `<div class="rail-empty">Peer comparison unavailable.</div>`}
+    </div>
+    <div class="rail-list">
+      <div class="rail-list-head"><span>Trend</span><em>${escapeHtml(consensusLabel)}</em></div>
+      ${movingAverages.length ? movingAverages.map((item) => `
+        <div class="rail-row">
+          <strong>${escapeHtml(item.label || "SMA")}</strong>
+          <span>${escapeHtml(item.state || "Unavailable")}${item.distancePercent !== null && item.distancePercent !== undefined ? ` · ${formatPercent(item.distancePercent)}` : ""}</span>
+        </div>
+      `).join("") : `<div class="rail-empty">Moving averages unavailable.</div>`}
+    </div>
+  `);
+}
+
 function setupDossierControls(container) {
   container.querySelectorAll("[data-metric-filter]").forEach((input) => {
     input.addEventListener("input", () => {
@@ -1104,6 +1194,7 @@ function renderStockDossier(active) {
   if (!dossier.daySnapshot) {
     setHTMLIfChanged(node, `<div class="dossier-empty">Stock dossier is loading.</div>`);
     setHTMLIfChanged(discoveryNode, "");
+    renderDossierRail(active);
     return;
   }
   const day = dossier.daySnapshot || {};
@@ -1118,28 +1209,31 @@ function renderStockDossier(active) {
     ? movingAverages
     : movingAverages.filter((item) => item.value !== null && item.value !== undefined).slice(0, 4);
   const simpleDossierKeys = ["day", "ma", "fundamentals", "activity", "benchmarks"];
-  const visibleDossierKeys = state.detailMode ? DEFAULT_DOSSIER_ORDER : simpleDossierKeys;
+  const compactDossierKeys = ["day", "ma", "activity"];
+  const visibleDossierKeys = state.detailMode ? DEFAULT_DOSSIER_ORDER : compactDossierKeys;
   setTextIfChanged(
     panel.querySelector(".section-heading span"),
-    state.detailMode ? "Peers, fundamentals, benchmarks, consensus, and sourced links" : "Essentials only: quote, trend, benchmark, and range",
+    state.detailMode ? "Peers, fundamentals, benchmarks, consensus, and sourced links" : "Essentials only: quote, trend, and range; quality and benchmarks sit in the right rail",
   );
   const roeLabel = fundamentals.roe === null || fundamentals.roe === undefined || fundamentals.roe === ""
     ? "Unavailable"
     : dossierMetric(Number(fundamentals.roe) * 100, "percent");
   const navChanged = setHTMLIfChanged(nav, `
     <div class="dossier-nav-scroll">
-      ${[
+      ${(state.detailMode ? [
         ["Snapshot", "dossier-day"],
         ["Averages", "dossier-ma"],
         ["Quality", "dossier-fundamentals"],
         ["Range", "dossier-activity"],
         ["Benchmarks", "dossier-benchmarks"],
-        ...(state.detailMode ? [
-          ["Peers", "dossier-peers"],
-          ["Metrics", "dossier-metrics"],
-          ["Sources", "dossier-links"],
-        ] : []),
-      ].map(([label, target]) => `<button type="button" data-scroll-target="${target}">${label}</button>`).join("")}
+        ["Peers", "dossier-peers"],
+        ["Metrics", "dossier-metrics"],
+        ["Sources", "dossier-links"],
+      ] : [
+        ["Snapshot", "dossier-day"],
+        ["Averages", "dossier-ma"],
+        ["Range", "dossier-activity"],
+      ]).map(([label, target]) => `<button type="button" data-scroll-target="${target}">${label}</button>`).join("")}
       <button type="button" data-detail-toggle>${state.detailMode ? "Simple dossier" : "Full dossier"}</button>
     </div>
   `);
@@ -1300,6 +1394,7 @@ function renderStockDossier(active) {
       button.addEventListener("click", () => selectActiveTicker(button.dataset.symbol));
     });
   }
+  renderDossierRail(active);
   revealSection("stock-dossier");
   applyRevealObserver();
   renderDataFlowBar();
@@ -1626,11 +1721,16 @@ function patchHeroSurface(active, forecast, { renderPrediction = true, renderSta
   const priceSizeClass = heroPriceText.length >= 14 ? "is-compact" : heroPriceText.length >= 11 ? "is-tight" : "";
   setClassIfChanged(heroPriceNode, `hero-price ${priceSizeClass} ${liveValueClass(`hero:${active.symbol}:price`, active.price)}`.trim());
   setHTMLIfChanged(heroPriceNode, buildPriceFlipMarkup(active.price, active.currency));
+  setTextIfChanged(document.getElementById("metric-live-price"), heroPriceText);
   const changeNode = document.getElementById("hero-change");
-  setTextIfChanged(changeNode, formatPercent(active.changePercent));
+  const changeText = formatPercent(active.changePercent);
+  setTextIfChanged(changeNode, changeText);
+  setTextIfChanged(document.getElementById("metric-live-move"), changeText);
   setClassIfChanged(changeNode, `hero-change live-number ${active.changePercent >= 0 ? "positive" : "negative"} ${liveValueClass(`hero:${active.symbol}:change`, active.changePercent)}`);
   const forecastRangeNode = document.getElementById("forecast-range");
-  setTextIfChanged(forecastRangeNode, `10D projection ${formatPercent(forecast.expectedReturn)}`);
+  const forecastReturnText = formatPercent(forecast.expectedReturn);
+  setTextIfChanged(forecastRangeNode, `10D projection ${forecastReturnText}`);
+  setTextIfChanged(document.getElementById("forecast-rail-return"), forecastReturnText);
   setClassIfChanged(forecastRangeNode, `forecast-range live-number ${liveValueClass(`hero:${active.symbol}:projection`, forecast.expectedReturn)}`);
   const bsEl = document.getElementById("buy-sell-signal");
   const bsText = recommendation.signal ? recommendation.signal.replace("bias", "scenario") : "Balanced scenario";
@@ -3933,10 +4033,9 @@ function renderPresets() {
   node.innerHTML = state.presets
     .map(
       (preset) => `
-        <button class="preset-pill" type="button" data-preset="${preset.name}">
-          <strong>${preset.label}</strong>
-          <span>${preset.symbols.length} symbols</span>
-          <em>${preset.symbols.slice(0, 3).join(" · ")}</em>
+        <button class="preset preset-pill" type="button" data-preset="${preset.name}">
+          <span class="pn">${preset.label}</span>
+          <span class="pc">${preset.symbols.length} sym</span>
         </button>
       `,
     )
@@ -4031,22 +4130,19 @@ function renderWatchlist() {
         const priceClass = liveValueClass(`watch:${item.symbol}:price`, item.price);
         const changeClass = liveValueClass(`watch:${item.symbol}:change`, item.changePercent);
         return `
-        <button class="watch-item ${priceClass} ${item.symbol === state.activeTicker ? "active" : ""}" type="button" data-symbol="${escapeHtml(item.symbol)}" draggable="true">
-          <div class="watch-row">
-            <span class="watch-symbol" title="${escapeHtml(item.symbol)}">${escapeHtml(item.symbol)}</span>
-            <div class="watch-actions">
-              <span class="drag-handle" data-drag-handle="${escapeHtml(item.symbol)}">::</span>
-              <span class="watch-change live-number ${item.changePercent >= 0 ? "positive" : "negative"} ${changeClass}">${formatPercent(item.changePercent)}</span>
-              <span class="delete-chip" data-delete="${escapeHtml(item.symbol)}">Delete</span>
-            </div>
+        <button class="watch-row watch-item ${priceClass} ${item.symbol === state.activeTicker ? "active" : ""}" type="button" data-symbol="${escapeHtml(item.symbol)}" draggable="true">
+          <div>
+            <div class="sym watch-symbol" title="${escapeHtml(item.symbol)}">${escapeHtml(item.symbol)}</div>
+            <div class="name watch-name" title="${escapeHtml(item.name || item.symbol)}">${escapeHtml(item.name || item.symbol)}</div>
           </div>
-          <div class="watch-row">
-            <span class="watch-name" title="${escapeHtml(item.name || item.symbol)}">${escapeHtml(item.name || item.symbol)}</span>
-            <span class="watch-price live-number ${priceClass}">${formatCurrency(item.price, item.currency)}</span>
+          <div>
+            <div class="px watch-price live-number ${priceClass}">${formatCurrency(item.price, item.currency)}</div>
+            <div class="chg watch-change live-number ${item.changePercent >= 0 ? "up positive" : "down negative"} ${changeClass}">${formatPercent(item.changePercent)}</div>
           </div>
-          <div class="watch-row watch-meta-row">
-            <span>${escapeHtml(item.exchange)} · ${escapeHtml(item.currency)}</span>
-            <span>Vol ${formatCompactNumber(item.volume)}</span>
+          <div class="watch-meta-row">
+            <span>${escapeHtml(item.exchange)} · ${escapeHtml(item.currency)} · Vol ${formatCompactNumber(item.volume)}</span>
+            <span class="drag-handle" data-drag-handle="${escapeHtml(item.symbol)}">::</span>
+            <span class="delete-chip" data-delete="${escapeHtml(item.symbol)}">Delete</span>
           </div>
         </button>
       `;
@@ -4992,14 +5088,14 @@ function renderGlobalMarketOverview() {
     node.classList.remove("collapsed");
     const emptySignature = `empty:${sectorStripMarkup()}`;
     const emptyMarkup = `
-      <div class="overview-header-row">
-        <button class="global-market-overview-head" type="button" disabled>
-          <strong>Global Benchmarks</strong>
-          <span class="global-market-head-right global-market-head-actions">
-            ${liveStatusClusterMarkup()}
-          </span>
-        </button>
-        <div id="sector-overview-strip" class="sector-overview-strip" aria-label="Sector performance"></div>
+      <div class="bench-cell">
+        <div class="b-head">
+          <span class="b-country">Global Benchmarks</span>
+          <span class="b-status closed">LOAD</span>
+        </div>
+        <div class="b-time">Markets loading</div>
+        <div id="sector-overview-strip" class="sector-overview-strip" aria-label="Sector performance" hidden></div>
+        <span class="global-market-head-actions" hidden>${liveStatusClusterMarkup()}</span>
       </div>
     `;
     if (node.dataset.benchmarkSignature !== emptySignature) {
@@ -5009,8 +5105,7 @@ function renderGlobalMarketOverview() {
     setHTMLIfChanged(node.querySelector("#sector-overview-strip"), sectorStripMarkup());
     return;
   }
-  const benchmarksCollapsed = !state.detailMode || state.benchmarksCollapsed;
-  node.classList.toggle("collapsed", benchmarksCollapsed);
+  node.classList.remove("collapsed");
   const sectorMarkup = sectorStripMarkup();
   const signature = JSON.stringify({
     detailMode: state.detailMode,
@@ -5028,59 +5123,29 @@ function renderGlobalMarketOverview() {
       })),
     })),
   });
-  const markup = `
-    <div class="overview-header-row">
-      <button class="global-market-overview-head" type="button" aria-expanded="${benchmarksCollapsed ? "false" : "true"}" aria-controls="global-market-benchmark-grid">
-        <strong>Global Benchmarks</strong>
-        <span class="global-market-head-right global-market-head-actions">
-          ${liveStatusClusterMarkup()}
-          <i class="benchmark-chevron" aria-hidden="true"></i>
-        </span>
-      </button>
-      <div id="sector-overview-strip" class="sector-overview-strip" aria-label="Sector performance">
-        ${sectorMarkup}
+  const markup = markets.map((market, index) => `
+    <article class="bench-cell market-clock-card" data-market-timezone="${market.timezone || "UTC"}">
+      <div class="b-head market-clock-top">
+        <span class="b-flag flag-${String(market.key || market.label || "").toLowerCase().includes("india") ? "in" : String(market.key || market.label || "").toLowerCase().includes("japan") ? "jp" : String(market.key || market.label || "").toLowerCase().includes("australia") ? "au" : String(market.key || market.label || "").toLowerCase().includes("hong") ? "hk" : String(market.key || market.label || "").toLowerCase().includes("london") || String(market.key || market.label || "").toLowerCase().includes("uk") ? "uk" : "us"}"></span>
+        <span class="b-country">${market.label}</span>
+        <span class="b-status ${market.session?.isOpen ? "open" : "closed"}">${market.session?.isOpen ? "OPEN" : "CLSD"}</span>
       </div>
-    </div>
-    <div class="global-market-collapse" id="global-market-benchmark-grid">
-      <div class="global-market-grid">
-        ${markets.map((market) => `
-          <article class="market-clock-card" data-market-timezone="${market.timezone || "UTC"}">
-            <div class="market-clock-top">
-              <div>
-                <strong>${market.label}</strong>
-                <span data-market-date></span>
-              </div>
-              <div class="market-clock-status ${market.session?.isOpen ? "open" : "closed"}">
-                ${market.session?.isOpen ? "Open" : "Closed"}
-              </div>
-            </div>
-            <div class="market-clock-meta">
-              <strong data-market-time></strong>
-              <span>${market.session?.hoursLabel || market.timezone}</span>
-            </div>
-            <div class="market-clock-indices">
-              ${(market.indices || []).map((item) => `
-                <div class="market-index-row ${item.quoteFreshness?.isStale ? "is-stale" : ""}">
-                  <span>${item.label}</span>
-                  <strong>${formatIndexLevel(item.price)}</strong>
-                  <em class="${Number(item.changePercent || 0) >= 0 ? "positive" : "negative"}">${formatPercent(item.changePercent || 0)}</em>
-                  ${freshnessBadgeMarkup(item.quoteFreshness || {})}
-                </div>
-              `).join("")}
-            </div>
-          </article>
+      <div class="b-time"><span data-market-time></span> · <span data-market-date></span> · ${market.session?.hoursLabel || market.timezone || ""}</div>
+      <div class="b-indices">
+        ${(market.indices || []).slice(0, 2).map((item) => `
+          <div class="b-idx market-index-row ${item.quoteFreshness?.isStale ? "is-stale" : ""}">
+            <span class="idx-name">${item.label}</span>
+            <span class="idx-val">${formatIndexLevel(item.price)}</span>
+            <span class="idx-chg ${Number(item.changePercent || 0) >= 0 ? "up positive" : "down negative"}">${formatPercent(item.changePercent || 0)}</span>
+          </div>
         `).join("")}
       </div>
-    </div>
-  `;
+      ${index === 0 ? `<div id="sector-overview-strip" class="sector-overview-strip" aria-label="Sector performance" hidden>${sectorMarkup}</div><span class="global-market-head-actions" hidden>${liveStatusClusterMarkup()}</span>` : ""}
+    </article>
+  `).join("");
   if (node.dataset.benchmarkSignature !== signature) {
     node.innerHTML = markup;
     node.dataset.benchmarkSignature = signature;
-  }
-  const toggle = node.querySelector(".global-market-overview-head");
-  if (toggle && toggle.dataset.bound !== "1") {
-    toggle.dataset.bound = "1";
-    toggle.addEventListener("click", toggleBenchmarksCollapsed);
   }
   updateGlobalMarketClocks();
 }
@@ -5143,6 +5208,7 @@ function renderCompactMenu() {
 function activateTab(target) {
   const run = () => {
     document.querySelectorAll(".tab").forEach((node) => node.classList.toggle("active", node.dataset.tab === target));
+    document.querySelectorAll(".topnav-link").forEach((node) => node.classList.toggle("active", node.dataset.target === target));
     document.querySelectorAll(".tab-panel").forEach((panel) => panel.classList.toggle("active", panel.id === target));
     if (target === "watchlist-implications") {
       renderWatchlistImplications();
@@ -5313,11 +5379,37 @@ function startRadarRefresh() {
 function startOverviewRefresh() {
   window.clearInterval(state.overviewTimer);
   state.overviewTimer = window.setInterval(() => {
+    if (document.hidden) return;
     loadOverviewFast({ silent: true }).catch((error) => {
       logNonAbort(error);
       setStatus("Quote refresh delayed");
     });
   }, REFRESH_INTERVALS.overview);
+}
+
+// Fast price-only poll. Reuses applyLiveQuoteUpdate, which is the same path
+// the SSE stream uses, so DOM patching/event listeners stay intact.
+async function loadQuotesFast() {
+  if (!state.dashboard) return;
+  if (!Array.isArray(state.watchlist) || !state.watchlist.length) return;
+  const requestId = ++state.quotesRequestId;
+  const params = new URLSearchParams({
+    symbols: state.watchlist.join(","),
+    active: state.activeTicker || "",
+  });
+  const payload = await api(`/api/quotes?${params.toString()}`, { timeoutMs: 6000 });
+  if (requestId !== state.quotesRequestId) return;
+  applyLiveQuoteUpdate(payload);
+}
+
+function startQuotesRefresh() {
+  window.clearInterval(state.quotesTimer);
+  state.quotesTimer = window.setInterval(() => {
+    if (document.hidden) return;
+    loadQuotesFast().catch((error) => {
+      logNonAbort(error);
+    });
+  }, REFRESH_INTERVALS.quotes);
 }
 
 async function loadGlobalMarkets({ silent = true } = {}) {
@@ -6360,6 +6452,21 @@ function bindEvents() {
       activateTab(tab.dataset.tab);
     });
   });
+  document.querySelectorAll(".topnav-link").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      activateTab(button.dataset.target);
+    });
+  });
+  document.getElementById("top-ticker-form")?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const topInput = document.getElementById("top-ticker-input");
+    const sidebarInput = document.getElementById("ticker-input");
+    if (topInput && sidebarInput) {
+      sidebarInput.value = topInput.value;
+    }
+    addTickerFromInput();
+  });
   document.getElementById("toggle-detail-mode")?.addEventListener("click", () => {
     setDetailMode(!state.detailMode);
   });
@@ -6379,7 +6486,9 @@ function bindEvents() {
   }, { passive: true });
 
   const settingsDialog = document.getElementById("settings-dialog");
-  document.getElementById("open-settings").addEventListener("click", () => settingsDialog.showModal());
+  document.querySelectorAll("#open-settings, .open-settings-trigger").forEach((button) => {
+    button.addEventListener("click", () => settingsDialog.showModal());
+  });
   document.getElementById("toggle-market-board")?.addEventListener("click", () => {
     state.boardHidden = !state.boardHidden;
     persistWatchlist();
@@ -6530,6 +6639,7 @@ async function init() {
   render();
   startMarketClockTimer();
   startOverviewRefresh();
+  startQuotesRefresh();
   startGlobalMarketsRefresh();
   loadGlobalMarkets({ silent: true }).catch((error) => {
     logNonAbort(error);
@@ -6559,6 +6669,7 @@ async function init() {
   startEventRefresh();
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) return;
+    loadQuotesFast().catch(logNonAbort);
     loadOverviewFast({ silent: true }).catch(logNonAbort);
     loadGlobalMarkets({ silent: true }).catch(logNonAbort);
   });

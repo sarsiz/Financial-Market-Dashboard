@@ -8249,6 +8249,65 @@ def build_radar_payload(symbol: str | None = None) -> dict:
   }
 
 
+QUOTES_PAYLOAD_CACHE_TTL = 3  # seconds — dedupes concurrent /api/quotes clients hitting the same shape
+
+
+def build_quote_snapshot(symbols: list[str], active: str | None) -> dict:
+  """Lean quote-only payload for the /api/quotes short-poll path.
+
+  Returns the same {updatedAt, watchlist, active} shape as build_live_quotes so
+  the client can reuse applyLiveQuoteUpdate, but skips history fallback, KB
+  notes, region inference, and regime text. Server-side micro-cached for
+  QUOTES_PAYLOAD_CACHE_TTL seconds keyed by (symbols, active)."""
+  cleaned = [symbol.upper() for symbol in symbols if symbol]
+  if not cleaned:
+    cleaned = DEFAULT_WATCHLIST.copy()
+  cache_key = "quotes:" + ",".join(cleaned) + "|" + (active or "").upper()
+
+  def builder() -> dict:
+    updated_at = datetime.now(timezone.utc).isoformat()
+    quote_map = fetch_live_quotes(cleaned, fast=True)
+    items: list[dict] = []
+    active_item = None
+    for symbol in cleaned:
+      quote = quote_map.get(symbol, {})
+      price = quote.get("regularMarketPrice")
+      previous_close = quote.get("regularMarketPreviousClose")
+      if price is None or previous_close is None:
+        continue
+      fallback = fallback_meta(symbol)
+      data_source = quote.get("quoteSource") or "Live source"
+      as_of = quote_effective_as_of(quote, data_source)
+      item = {
+        "symbol": symbol,
+        "name": quote.get("shortName") or quote.get("longName") or fallback["name"],
+        "price": float(price),
+        "previousClose": float(previous_close),
+        "changePercent": float(
+          quote.get("regularMarketChangePercent")
+          or pct_change(float(price), float(previous_close))
+        ),
+        "volume": int(quote.get("regularMarketVolume") or 0),
+        "currency": quote.get("currency") or fallback["currency"],
+        "exchange": quote.get("fullExchangeName") or quote.get("exchange") or fallback["exchange"],
+        "marketState": quote_session_state(quote, data_source),
+        "dataSource": data_source,
+        "asOf": as_of,
+        "receivedAt": updated_at,
+      }
+      items.append(item)
+      if symbol == (active or cleaned[0]).upper():
+        active_item = item
+    return {
+      "updatedAt": updated_at,
+      "watchlist": items,
+      "active": active_item or (items[0] if items else None),
+      "mode": "quotes",
+    }
+
+  return memory_cached_value(cache_key, QUOTES_PAYLOAD_CACHE_TTL, builder)
+
+
 def build_live_quotes(symbols: list[str], active: str | None, allow_history_fallback: bool = True) -> dict:
   cleaned = [symbol.upper() for symbol in symbols if symbol]
   if not cleaned:
@@ -8899,6 +8958,14 @@ class FinancialBoardHandler(BaseHTTPRequestHandler):
       active = ((params.get("active") or [""])[0] or "").upper() or None
       region = ((params.get("region") or [""])[0] or "").strip().lower() or None
       return self.send_json(build_overview_payload(symbols, active, region))
+    if parsed.path == "/api/quotes":
+      # Lean short-poll endpoint: returns only what is needed to tick prices
+      # in place on the client. Server-side micro-cached so concurrent clients
+      # share the same JSON for QUOTES_PAYLOAD_CACHE_TTL seconds.
+      params = urllib.parse.parse_qs(parsed.query)
+      symbols = [item.upper() for item in ((params.get("symbols") or [""])[0].split(",")) if item]
+      active = ((params.get("active") or [""])[0] or "").upper() or None
+      return self.send_json(build_quote_snapshot(symbols, active))
     if parsed.path == "/api/history/status":
       return self.send_json(history_warmup_status())
     if parsed.path == "/api/short-horizon":

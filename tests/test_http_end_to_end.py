@@ -143,6 +143,64 @@ class HttpRouteTests(unittest.TestCase):
     self.assertEqual(overview["active"]["symbol"], "AAPL")
     self.assertEqual(overview["active"]["marketSession"]["timezone"], "America/New_York")
 
+  def test_quotes_route_returns_lean_payload_and_passes_symbols(self):
+    quotes_payload = {
+      "updatedAt": "2026-04-02T00:00:00+00:00",
+      "watchlist": [{"symbol": "AAPL", "price": 210.12, "previousClose": 209.0, "changePercent": 0.53, "currency": "USD", "exchange": "NASDAQ", "marketState": "REGULAR", "dataSource": "Yahoo Chart", "asOf": "2026-04-02T00:00:00+00:00", "receivedAt": "2026-04-02T00:00:00+00:00", "volume": 1000, "name": "Apple"}],
+      "active": {"symbol": "AAPL", "price": 210.12, "changePercent": 0.53, "currency": "USD"},
+      "mode": "quotes",
+    }
+
+    with mock.patch.object(server, "build_quote_snapshot", return_value=quotes_payload) as snap_mock:
+      payload = self.json_get("/api/quotes?symbols=AAPL,MSFT&active=AAPL")
+
+    self.assertEqual(payload["mode"], "quotes")
+    self.assertEqual(payload["watchlist"][0]["symbol"], "AAPL")
+    self.assertEqual(payload["active"]["symbol"], "AAPL")
+    # The route should pass uppercased, comma-split symbols straight through.
+    snap_mock.assert_called_once_with(["AAPL", "MSFT"], "AAPL")
+    # The lean payload must not include heavier overview fields (regime, marketSession, region).
+    self.assertNotIn("selectedRegion", payload)
+    self.assertNotIn("regime", payload["active"])
+
+  def test_quotes_route_reuses_cached_payload_within_ttl(self):
+    call_count = {"value": 0}
+
+    def fake_builder(symbols, active):
+      call_count["value"] += 1
+      return {
+        "updatedAt": "2026-04-02T00:00:00+00:00",
+        "watchlist": [{"symbol": "AAPL", "price": 210.12, "previousClose": 209.0, "changePercent": 0.53}],
+        "active": {"symbol": "AAPL", "price": 210.12, "changePercent": 0.53},
+        "mode": "quotes",
+        "_callIndex": call_count["value"],
+      }
+
+    # build_quote_snapshot wraps the lean payload in memory_cached_value with
+    # QUOTES_PAYLOAD_CACHE_TTL. Two consecutive calls with the same symbols
+    # within TTL should be served from cache (the inner builder is invoked once).
+    server._memory_payload_cache.clear()  # ensure clean cache for the test
+    with mock.patch.object(server, "fetch_live_quotes", side_effect=lambda symbols, fast=False: {
+        "AAPL": {
+          "regularMarketPrice": 210.12,
+          "regularMarketPreviousClose": 209.0,
+          "regularMarketChangePercent": 0.53,
+          "regularMarketVolume": 1000,
+          "currency": "USD",
+          "exchange": "NASDAQ",
+          "fullExchangeName": "NASDAQ",
+          "shortName": "Apple",
+          "quoteSource": "Yahoo Chart",
+        },
+      }):
+      first = self.json_get("/api/quotes?symbols=AAPL&active=AAPL")
+      second = self.json_get("/api/quotes?symbols=AAPL&active=AAPL")
+
+    # updatedAt is generated inside the builder, so equality across two calls
+    # is the strongest signal that the cache is being shared.
+    self.assertEqual(first.get("updatedAt"), second.get("updatedAt"))
+    self.assertEqual(first["watchlist"][0]["symbol"], "AAPL")
+
 
 if __name__ == "__main__":
   unittest.main()

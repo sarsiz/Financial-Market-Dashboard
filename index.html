@@ -13,7 +13,7 @@
     <link rel="dns-prefetch" href="https://finance.yahoo.com" />
     <link rel="dns-prefetch" href="https://api.stlouisfed.org" />
     <link
-      href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Sora:wght@500;600;700;800&family=Azeret+Mono:wght@400;500;600;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
     <link rel="stylesheet" href="./styles.css" />
@@ -27,18 +27,49 @@
     </div>
     <div id="alert-stack" class="alert-stack" aria-live="polite" aria-atomic="false"></div>
     <section id="data-flow-bar" class="data-flow-bar" aria-live="polite" aria-label="Backend data flow progress"></section>
-    <div class="app-shell">
-      <aside class="sidebar glass-panel">
-        <div>
-          <p class="eyebrow">Markets</p>
-          <h1>Financial Board</h1>
-          <p class="sidebar-copy">Cross-market forecasts, catalysts, and methodology.</p>
+    <div class="shell">
+      <div class="topbar" aria-label="Financial Board command bar">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true"></div>
+          <div class="brand-name">Financial<b>·</b>Board</div>
         </div>
+        <nav class="topnav" aria-label="Dashboard sections">
+          <a href="#" class="topnav-link active" data-target="overview">Overview</a>
+          <a href="#" class="topnav-link" data-target="bond-market">Bonds</a>
+          <a href="#" class="topnav-link" data-target="inflation">Inflation</a>
+          <a href="#" class="topnav-link" data-target="equity-context">Equity</a>
+          <a href="#" class="topnav-link" data-target="events-calendar">Events</a>
+          <a href="#" class="topnav-link" data-target="methodology">Method</a>
+          <a href="#" class="topnav-link" data-target="watchlist-implications">Implications</a>
+          <a href="#" class="topnav-link" data-target="comparison">Compare</a>
+        </nav>
+        <div class="top-tools">
+          <form id="top-ticker-form" class="search-box" autocomplete="off">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 14 14"/></svg>
+            <input id="top-ticker-input" placeholder="Search ticker, news, sector..." aria-label="Search ticker, news, sector" />
+            <span class="kbd">⌘K</span>
+          </form>
+          <button id="toggle-detail-mode" class="detail-mode-toggle icon-btn" type="button" aria-pressed="false" title="Detailed mode" aria-label="Detailed mode">D</button>
+          <button id="open-settings" class="icon-btn" type="button" aria-label="Open provider settings" title="Settings">
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><circle cx="8" cy="8" r="2"/><path d="M8 1.5v2M8 12.5v2M14.5 8h-2M3.5 8h-2M12.6 3.4l-1.4 1.4M4.8 11.2l-1.4 1.4M12.6 12.6l-1.4-1.4M4.8 4.8 3.4 3.4"/></svg>
+          </button>
+        </div>
+      </div>
 
-        <div class="watchlist-panel">
-          <div class="section-heading">
-            <h2>Watchlist</h2>
-            <span id="watchlist-count">0</span>
+      <section id="market-radar" class="tape">
+        <div id="headline-track" class="tape-track ticker-track"></div>
+        <div id="radar-hotspots" class="radar-hotspots" hidden></div>
+        <div id="radar-sentiment-box" class="radar-sentiment-chip">
+          <span id="radar-source-note">Live</span>
+        </div>
+      </section>
+
+      <div class="body app-shell">
+      <aside class="sidebar">
+        <div class="sb-section watchlist-panel">
+          <div class="sb-head">
+            <span class="title">Watchlist</span>
+            <span id="watchlist-count" class="count">0</span>
           </div>
           <form id="ticker-form" class="ticker-form" autocomplete="off">
             <input
@@ -59,18 +90,18 @@
           <div id="recent-tickers" class="recent-tickers"></div>
         </div>
 
-        <div class="source-panel">
-          <div class="section-heading">
-            <h2>Market Presets</h2>
-            <span>Presets</span>
+        <div class="sb-section source-panel">
+          <div class="sb-head">
+            <span class="title">Market Presets</span>
+            <span class="add" title="Manage">+</span>
           </div>
           <div id="preset-grid" class="preset-grid"></div>
         </div>
 
-        <div class="source-panel">
-          <div class="section-heading">
-            <h2>Saved Lists</h2>
-            <span>Saved</span>
+        <div class="sb-section source-panel">
+          <div class="sb-head">
+            <span class="title">Saved Lists</span>
+            <span class="add">+</span>
           </div>
           <div class="watchlist-save-grid">
             <input id="watchlist-name" type="text" placeholder="List name" />
@@ -80,30 +111,36 @@
             <select id="saved-watchlists" aria-label="Saved watchlists"></select>
             <button id="load-watchlist" type="button">Load</button>
           </div>
+          <div class="preset saved-list-preview"><span class="pn">My Tech</span><span class="pc">Saved</span></div>
+          <div class="preset saved-list-preview"><span class="pn">India Banks</span><span class="pc">Saved</span></div>
         </div>
 
-        <div class="source-panel">
-          <div class="section-heading">
-            <h2>Backend</h2>
-            <span id="provider-badge">yahoo</span>
+        <div class="sb-section source-panel" style="margin-top: auto; flex: 0;">
+          <div class="sb-head">
+            <span class="title">Backend</span>
+            <span id="provider-badge" class="count">yahoo</span>
           </div>
-          <button id="open-settings" class="ghost-button">Settings</button>
+          <p class="micro-note">Provider controls live in the command bar.</p>
+          <button class="preset open-settings-trigger" type="button">
+            <span class="pn">Open settings</span>
+            <span class="pc">Settings</span>
+          </button>
         </div>
       </aside>
 
-      <main class="dashboard">
+      <main class="main dashboard">
 
-        <section id="global-market-overview" class="global-market-overview" aria-live="polite"></section>
+        <section id="global-market-overview" class="bench global-market-overview" aria-live="polite"></section>
 
-        <section id="market-radar" class="ticker-banner-compact">
-          <div id="headline-track" class="ticker-track"></div>
-          <div id="radar-hotspots" class="radar-hotspots" hidden></div>
-          <div id="radar-sentiment-box" class="radar-sentiment-chip">
-            <span id="radar-source-note">Live</span>
+        <div class="news-ribbon">
+          <span class="badge">LIVE</span>
+          <div class="news-list">
+            <span class="item"><b>Radar</b> <span id="news-ribbon-copy">Live headlines loading from source-labeled feeds.</span></span>
           </div>
-        </section>
+          <span class="risk" id="news-ribbon-risk">Risk tone</span>
+        </div>
 
-        <nav class="tabbar">
+        <nav class="tabs tabbar">
           <button class="tab active" data-tab="overview">Overview</button>
           <button class="tab" data-tab="bond-market">Bonds</button>
           <button class="tab" data-tab="inflation">Inflation</button>
@@ -112,138 +149,398 @@
           <button class="tab" data-tab="methodology">Method</button>
           <button class="tab" data-tab="watchlist-implications">Implications</button>
           <button class="tab" data-tab="comparison">Compare</button>
-          <button id="toggle-detail-mode" class="tab detail-mode-toggle" type="button" aria-pressed="false">Detailed</button>
         </nav>
 
-        <section id="overview" class="tab-panel active">
-          <div id="overview-board" class="hero-grid">
-            <article id="overview-spotlight" class="glass-panel spotlight">
-              <div class="section-heading">
-                <h3 id="hero-ticker">AAPL</h3>
-                <span id="hero-regime" class="regime-pill">Balanced regime</span>
-              </div>
-              <div class="overview-meta" id="overview-meta"></div>
-              <div id="quote-source-note" class="micro-note">Quote source loading.</div>
-              <div id="market-session-strip" class="market-session-strip">Session status loading.</div>
-              <div class="hero-stats" id="hero-stats"></div>
-              <div class="hero-price-row">
+        <section id="overview" class="tab-panel active tabpane" data-tab-pane="overview">
+          <div id="overview-board" class="content">
+            <div>
+              <article id="overview-spotlight" class="stock-head">
                 <div>
-                  <div id="hero-price" class="hero-price">0.00</div>
-                  <div id="hero-change" class="hero-change">0.00%</div>
-                  <div id="forecast-range" class="forecast-range">10D projection pending</div>
+                  <div class="meta">
+                    <span id="hero-ticker" style="color: var(--amber); font-weight: 700; letter-spacing: 0.04em;">AAPL</span>
+                    <span class="dot"></span>
+                    <span id="quote-source-note">Quote source loading.</span>
+                    <span class="dot"></span>
+                    <span id="hero-regime" class="pill closed">Balanced regime</span>
+                  </div>
+                  <h1>Active instrument <small id="forecast-range">10D projection pending</small></h1>
+                  <div class="stock-price">
+                    <div class="px" id="hero-price">0.00</div>
+                    <span class="ccy">Live</span>
+                    <span id="hero-change" class="chg">0.00%</span>
+                  </div>
+                  <div class="stock-aux hero-stats" id="hero-stats"></div>
                 </div>
-                <div class="sparkline-card">
-                  <svg id="hero-sparkline" viewBox="0 0 320 100" preserveAspectRatio="none"></svg>
+                <div class="stock-head-right">
+                  <div id="market-session-strip" class="market-session-strip">Session status loading.</div>
+                  <div class="sparkline-card">
+                    <svg id="hero-sparkline" viewBox="0 0 320 100" preserveAspectRatio="none"></svg>
+                  </div>
                 </div>
-              </div>
-              <div id="prediction-panel" class="prediction-panel"></div>
-              <div id="short-horizon-card" class="short-horizon-card" aria-live="polite"></div>
-            </article>
+              </article>
 
-            <article class="hero-chart-card glass-panel">
-              <div class="section-heading compact">
-                <h3>Price</h3>
-                <div class="chart-range-tabs" id="chart-range-tabs">
-                  <button class="range-tab active" type="button" data-range="1D">1D</button>
-                  <button class="range-tab" type="button" data-range="3D">3D</button>
-                  <button class="range-tab" type="button" data-range="5D">5D</button>
-                  <button class="range-tab" type="button" data-range="1M">1M</button>
-                  <button class="range-tab" type="button" data-range="1Y">1Y</button>
-                  <button class="range-tab" type="button" data-range="2Y">2Y</button>
-                  <button class="range-tab" type="button" data-range="3Y">3Y</button>
-                  <button class="range-tab" type="button" data-range="5Y">5Y</button>
-                  <button class="range-tab" type="button" data-range="MAX">Max</button>
+              <article class="chart-wrap hero-chart-card">
+                <div class="chart-toolbar">
+                  <div class="toolbar-group seg chart-mode-tabs" id="chart-mode-tabs" aria-label="Chart display mode">
+                    <button class="chart-mode-tab active" type="button" data-chart-type="line">Line</button>
+                    <button class="chart-mode-tab" type="button" data-chart-type="area">Area</button>
+                    <button class="chart-mode-tab" type="button" data-chart-type="candles">Candles</button>
+                    <button class="chart-mode-tab" type="button" data-chart-type="bars">Bars</button>
+                  </div>
+                  <div class="toolbar-group chart-features" style="gap: 12px;">
+                    <label class="check check-row compact"><input id="feature-sma20" type="checkbox" checked /><span class="box"></span><span>SMA 20</span></label>
+                    <label class="check check-row compact"><input id="feature-sma50" type="checkbox" checked /><span class="box"></span><span>SMA 50</span></label>
+                    <label class="check check-row compact"><input id="feature-bands" type="checkbox" /><span class="box"></span><span>Bollinger Bands</span></label>
+                  </div>
+                  <div class="range-row chart-range-tabs" id="chart-range-tabs">
+                    <div class="seg">
+                      <button class="range-tab active" type="button" data-range="1D">1D</button>
+                      <button class="range-tab" type="button" data-range="3D">3D</button>
+                      <button class="range-tab" type="button" data-range="5D">5D</button>
+                      <button class="range-tab" type="button" data-range="1M">1M</button>
+                      <button class="range-tab" type="button" data-range="1Y">1Y</button>
+                      <button class="range-tab" type="button" data-range="2Y">2Y</button>
+                      <button class="range-tab" type="button" data-range="3Y">3Y</button>
+                      <button class="range-tab" type="button" data-range="5Y">5Y</button>
+                      <button class="range-tab" type="button" data-range="MAX">Max</button>
+                    </div>
+                  </div>
                 </div>
-              </div>
-              <div class="chart-toolbar">
-                <div class="chart-mode-tabs" id="chart-mode-tabs" aria-label="Chart display mode">
-                  <button class="chart-mode-tab active" type="button" data-chart-type="line">Line</button>
-                  <button class="chart-mode-tab" type="button" data-chart-type="area">Area</button>
-                  <button class="chart-mode-tab" type="button" data-chart-type="candles">Candles</button>
-                  <button class="chart-mode-tab" type="button" data-chart-type="bars">Bars</button>
+                <div class="chart">
+                  <svg id="hero-projection-chart" viewBox="0 0 640 220" preserveAspectRatio="none"></svg>
+                  <div id="hero-chart-hover" class="chart-hover-card" hidden></div>
                 </div>
-                <div class="chart-features">
-                  <label class="check-row compact"><input id="feature-sma20" type="checkbox" checked /> SMA 20</label>
-                  <label class="check-row compact"><input id="feature-sma50" type="checkbox" checked /> SMA 50</label>
-                  <label class="check-row compact"><input id="feature-bands" type="checkbox" /> Bands</label>
-                </div>
-                <div class="buy-sell-card">
-                  <span id="buy-sell-signal">Balanced</span>
-                  <strong id="buy-sell-breakdown">Buy 0% · Hold 100% · Sell 0%</strong>
-                </div>
-              </div>
-              <div id="model-agreement-note" class="micro-note">Model agreement loading.</div>
-              <svg id="hero-projection-chart" viewBox="0 0 640 220" preserveAspectRatio="none"></svg>
-              <div id="hero-chart-hover" class="chart-hover-card" hidden></div>
-              <div id="trade-plan-panel" class="trade-plan-panel" aria-live="polite"></div>
-            </article>
+              </article>
 
-            <aside class="overview-context-strip">
-              <div id="pulse-grid" class="pulse-strip"></div>
-              <div id="event-list" class="event-strip"></div>
+              <section class="panel">
+                <div class="panel-head">
+                  <div class="left">
+                    <h2>10-day price range</h2>
+                    <span class="sub">Quantile fan · scenario support only</span>
+                  </div>
+                </div>
+                <div id="prediction-panel" class="prediction-panel"></div>
+                <div id="short-horizon-card" class="short-horizon-card" aria-live="polite"></div>
+              </section>
+            </div>
+
+            <aside class="side overview-context-strip">
+              <div class="side-block">
+                <h3>Forecast <span class="meta">Active ticker · 10D</span></h3>
+                <div class="forecast-cluster">
+                  <div class="fc-cell" style="grid-column: 1 / -1;">
+                    <div class="k">Scenario signal</div>
+                    <div style="display:flex; align-items: baseline; gap: 10px; margin-top: 2px;">
+                      <span id="buy-sell-signal" style="font-family: var(--f-mono); font-size: 22px; font-weight: 700; letter-spacing: -0.02em;">Balanced</span>
+                      <span class="dim" style="font-size: 12px;">scenario</span>
+                    </div>
+                    <div id="buy-sell-breakdown" class="vsub">Buy 0% · Hold 100% · Sell 0%</div>
+                  </div>
+                  <div class="fc-cell">
+                    <div class="k">10D range</div>
+                    <div class="v" id="forecast-rail-return">Live</div>
+                  </div>
+                  <div class="fc-cell">
+                    <div class="k">Risk/reward</div>
+                    <div class="v">Scenario</div>
+                  </div>
+                  <div class="fc-cell">
+                    <div class="k">Entry watch</div>
+                    <div class="v" style="font-size: 12px;">Support zone</div>
+                  </div>
+                  <div class="fc-cell">
+                    <div class="k">Invalidation</div>
+                    <div class="v" style="font-size: 12px; color: var(--down);">Risk buffer</div>
+                  </div>
+                </div>
+                <div id="model-agreement-note" class="micro-note">Model agreement loading.</div>
+              </div>
+              <div class="side-block">
+                <h3>Plan frame <span class="meta">Scenario</span></h3>
+                <div id="trade-plan-panel" class="trade-plan-panel" aria-live="polite"></div>
+              </div>
+              <div class="side-block">
+                <h3>Macro pulse</h3>
+                <div id="pulse-grid" class="pulse-strip"></div>
+              </div>
+              <div class="side-block">
+                <h3>Today's catalysts</h3>
+                <div id="event-list" class="event-strip"></div>
+              </div>
             </aside>
           </div>
 
-          <section id="market-discovery" class="market-discovery glass-panel"></section>
-
-          <article id="market-heat-map-panel" class="glass-panel market-heat-map-panel">
-            <div class="section-heading market-heat-map-heading">
-              <div>
-                <h3>Market Heat Map</h3>
-                <span>Universe rank sizing, return color, source-labeled tiles</span>
-              </div>
-              <div class="market-heat-map-controls">
-                <select id="market-heat-map-region" class="sector-ctrl-select" aria-label="Heat map market">
-                  <option value="india" selected>India</option>
-                  <option value="us">US</option>
-                </select>
-                <select id="market-heat-map-group" class="sector-ctrl-select" aria-label="Group heat map by">
-                  <option value="sector" selected>By sector</option>
-                  <option value="size">By size</option>
-                  <option value="flat">No groups</option>
-                </select>
-                <select id="market-heat-map-sector" class="sector-ctrl-select" aria-label="Filter heat map sector">
-                  <option value="all" selected>All sectors</option>
-                </select>
-                <select id="market-heat-map-scope" class="sector-ctrl-select" aria-label="Heat map universe scope">
-                  <option value="top100">Top 100</option>
-                  <option value="top250" selected>Top 250</option>
-                  <option value="top750">Top 750</option>
-                  <option value="all">All listed</option>
-                </select>
-                <select id="market-heat-map-size" class="sector-ctrl-select" aria-label="Filter heat map size">
-                  <option value="all" selected>All sizes</option>
-                  <option value="mega">Top 100</option>
-                  <option value="large">101-250</option>
-                  <option value="mid">251-750</option>
-                  <option value="small">751+</option>
-                </select>
-                <select id="market-heat-map-limit" class="sector-ctrl-select" aria-label="Heat map tile count">
-                  <option value="120">120</option>
-                  <option value="240" selected>240</option>
-                  <option value="480">480</option>
-                  <option value="600">600</option>
-                </select>
-                <div class="market-heat-map-tabs" aria-label="Heat map period">
-                  <button class="market-heat-map-tab active" type="button" data-period="1D">1D</button>
-                  <button class="market-heat-map-tab" type="button" data-period="5D">5D</button>
-                  <button class="market-heat-map-tab" type="button" data-period="1M">1M</button>
+          <div class="content overview-bottom-content">
+            <div class="overview-bottom-main">
+              <section class="metric-drawer">
+                <div class="panel-head">
+                  <div class="left">
+                    <h2>All metrics</h2>
+                    <span class="sub">Searchable, source-backed facts · unavailable fields stay explicit</span>
+                  </div>
                 </div>
-                <button id="market-heat-map-expand" class="market-heat-map-tab" type="button" aria-pressed="false">Expand</button>
-              </div>
-            </div>
-            <div id="market-heat-map-grid" class="market-heat-map-grid" aria-live="polite"></div>
-            <div id="market-heat-map-footer" class="market-heat-map-footer">Heat map loading.</div>
-          </article>
+                <div class="metric-toolbar">
+                  <div class="metric-search">
+                    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 14 14"/></svg>
+                    <input placeholder="Filter metrics - ROE, SMA 50, volume..." aria-label="Filter metrics" />
+                  </div>
+                  <span class="chip kv">Session <b>REGULAR</b></span>
+                  <span class="chip ok">Live where available</span>
+                  <span class="chip warn">Fallback labeled</span>
+                </div>
+                <div class="metric-cols">
+                  <div class="metric-col">
+                    <header><b>Quote</b><small>Provider edge</small></header>
+                    <div class="metric-row"><div class="kk"><span class="k">Price</span><span class="v" id="metric-live-price">Synced above</span></div></div>
+                    <div class="metric-row"><div class="kk"><span class="k">Move</span><span class="v" id="metric-live-move">Synced above</span></div></div>
+                    <div class="metric-row"><div class="kk"><span class="k">Currency</span><span class="v">Source labeled</span></div></div>
+                  </div>
+                  <div class="metric-col">
+                    <header><b>Range</b><small>Local history</small></header>
+                    <div class="metric-row"><div class="kk"><span class="k">Day</span><span class="v">Range watch</span></div></div>
+                    <div class="metric-row"><div class="kk"><span class="k">52W</span><span class="v">If available</span></div></div>
+                    <div class="metric-row unavailable"><div class="kk"><span class="k">Breakout</span><span class="v"></span></div></div>
+                  </div>
+                  <div class="metric-col">
+                    <header><b>Trend</b><small>Cached series</small></header>
+                    <div class="metric-row"><div class="kk"><span class="k">SMA 20</span><span class="v">Chart overlay</span></div></div>
+                    <div class="metric-row"><div class="kk"><span class="k">SMA 50</span><span class="v">Chart overlay</span></div></div>
+                    <div class="metric-row"><div class="kk"><span class="k">Bands</span><span class="v">Optional</span></div></div>
+                  </div>
+                  <div class="metric-col">
+                    <header><b>Forecast</b><small>Scenario model</small></header>
+                    <div class="metric-row"><div class="kk"><span class="k">10D range</span><span class="v">Visible above</span></div></div>
+                    <div class="metric-row"><div class="kk"><span class="k">MAE</span><span class="v">Model note</span></div></div>
+                    <div class="metric-row"><div class="kk"><span class="k">Agreement</span><span class="v">Right rail</span></div></div>
+                  </div>
+                  <div class="metric-col">
+                    <header><b>Macro</b><small>Bonds-first</small></header>
+                    <div class="metric-row"><div class="kk"><span class="k">Rates</span><span class="v">Bond tab</span></div></div>
+                    <div class="metric-row"><div class="kk"><span class="k">Inflation</span><span class="v">Derived panel</span></div></div>
+                    <div class="metric-row"><div class="kk"><span class="k">Events</span><span class="v">Radar feed</span></div></div>
+                  </div>
+                  <div class="metric-col">
+                    <header><b>Quality</b><small>Unknowns</small></header>
+                    <div class="metric-row"><div class="kk"><span class="k">Freshness</span><span class="v">Visible</span></div></div>
+                    <div class="metric-row"><div class="kk"><span class="k">Source</span><span class="v">Visible</span></div></div>
+                    <div class="metric-row unavailable"><div class="kk"><span class="k">Missing</span><span class="v"></span></div></div>
+                  </div>
+                  <div class="metric-col">
+                    <header><b>Provenance</b><small>Labels</small></header>
+                    <div class="metric-row"><div class="kk" style="display:block;"><span class="k">Live edge</span></div><div class="src">Fetched provider data</div></div>
+                    <div class="metric-row"><div class="kk" style="display:block;"><span class="k">Local cache</span></div><div class="src">Older series source of truth</div></div>
+                  </div>
+                </div>
+              </section>
 
-          <article id="stock-dossier-panel" class="glass-panel stock-dossier-panel">
-            <div class="section-heading">
-              <h3>Stock Dossier</h3>
-              <span>Peers, fundamentals, benchmarks, consensus, and sourced links</span>
+              <section class="panel sources-influence-panel">
+                <div class="panel-head">
+                  <div class="left">
+                    <h2>Sources &amp; influence</h2>
+                    <span class="sub">Macro chain · source notes · public labels only</span>
+                  </div>
+                </div>
+                <div class="influence-list">
+                  <div class="influence">
+                    <span class="infl-tag">Macro</span>
+                    <div>
+                      <div class="infl-title">Bond yields anchor scenario pressure</div>
+                      <div class="infl-meta">Rates to inflation to equity context</div>
+                    </div>
+                    <span class="infl-conf med">Medium</span>
+                  </div>
+                  <div class="influence">
+                    <span class="infl-tag">Quote</span>
+                    <div>
+                      <div class="infl-title">Live provider edge feeds price, move, and session state</div>
+                      <div class="infl-meta">Fallbacks remain labeled when provider data is unavailable</div>
+                    </div>
+                    <span class="infl-conf high">Live</span>
+                  </div>
+                  <div class="influence">
+                    <span class="infl-tag">Cache</span>
+                    <div>
+                      <div class="infl-title">Older history is read from local cache before live refresh</div>
+                      <div class="infl-meta">Deterministic history and breadth warmups</div>
+                    </div>
+                    <span class="infl-conf med">Local</span>
+                  </div>
+                  <div class="influence">
+                    <span class="infl-tag">Event</span>
+                    <div>
+                      <div class="infl-title">Radar headlines can override slower factor context</div>
+                      <div class="infl-meta">Source-labeled event context; no buy or sell advice</div>
+                    </div>
+                    <span class="infl-conf low">Watch</span>
+                  </div>
+                </div>
+              </section>
+
+              <section id="market-discovery" class="market-discovery glass-panel"></section>
+
+              <article id="market-heat-map-panel" class="glass-panel market-heat-map-panel">
+                <div class="section-heading market-heat-map-heading">
+                  <div>
+                    <h3>Market Heat Map</h3>
+                    <span>Universe rank sizing, return color, source-labeled tiles</span>
+                  </div>
+                  <div class="market-heat-map-controls">
+                    <select id="market-heat-map-region" class="sector-ctrl-select" aria-label="Heat map market">
+                      <option value="india" selected>India</option>
+                      <option value="us">US</option>
+                    </select>
+                    <select id="market-heat-map-group" class="sector-ctrl-select" aria-label="Group heat map by">
+                      <option value="sector" selected>By sector</option>
+                      <option value="size">By size</option>
+                      <option value="flat">No groups</option>
+                    </select>
+                    <select id="market-heat-map-sector" class="sector-ctrl-select" aria-label="Filter heat map sector">
+                      <option value="all" selected>All sectors</option>
+                    </select>
+                    <select id="market-heat-map-scope" class="sector-ctrl-select" aria-label="Heat map universe scope">
+                      <option value="top100">Top 100</option>
+                      <option value="top250" selected>Top 250</option>
+                      <option value="top750">Top 750</option>
+                      <option value="all">All listed</option>
+                    </select>
+                    <select id="market-heat-map-size" class="sector-ctrl-select" aria-label="Filter heat map size">
+                      <option value="all" selected>All sizes</option>
+                      <option value="mega">Top 100</option>
+                      <option value="large">101-250</option>
+                      <option value="mid">251-750</option>
+                      <option value="small">751+</option>
+                    </select>
+                    <select id="market-heat-map-limit" class="sector-ctrl-select" aria-label="Heat map tile count">
+                      <option value="120">120</option>
+                      <option value="240" selected>240</option>
+                      <option value="480">480</option>
+                      <option value="600">600</option>
+                    </select>
+                    <div class="market-heat-map-tabs" aria-label="Heat map period">
+                      <button class="market-heat-map-tab active" type="button" data-period="1D">1D</button>
+                      <button class="market-heat-map-tab" type="button" data-period="5D">5D</button>
+                      <button class="market-heat-map-tab" type="button" data-period="1M">1M</button>
+                    </div>
+                    <button id="market-heat-map-expand" class="market-heat-map-tab" type="button" aria-pressed="false">Expand</button>
+                  </div>
+                </div>
+                <div id="market-heat-map-grid" class="market-heat-map-grid" aria-live="polite"></div>
+                <div id="market-heat-map-footer" class="market-heat-map-footer">Heat map loading.</div>
+              </article>
+
+              <article id="stock-dossier-panel" class="glass-panel stock-dossier-panel">
+                <div class="section-heading">
+                  <h3>Stock Dossier</h3>
+                  <span>Peers, fundamentals, benchmarks, consensus, and sourced links</span>
+                </div>
+                <div id="stock-dossier-nav" class="dossier-nav"></div>
+                <div id="stock-dossier" class="stock-dossier"></div>
+              </article>
             </div>
-            <div id="stock-dossier-nav" class="dossier-nav"></div>
-            <div id="stock-dossier" class="stock-dossier"></div>
-          </article>
+
+            <aside class="side overview-bottom-side">
+              <div class="side-block">
+                <h3>Range watch <span class="meta">2D · gap · breakout</span></h3>
+                <div class="rangewatch-grid">
+                  <div class="rangewatch-cell">
+                    <div class="k">2D Move</div>
+                    <div id="rail-2d-move" class="v up live-number">Live</div>
+                    <div class="vsub"><span class="rail-live-dot"></span> Updated from active quote context</div>
+                  </div>
+                  <div class="rangewatch-cell">
+                    <div class="k">Gap</div>
+                    <div id="rail-gap" class="v live-number">Session</div>
+                    <div class="vsub">Visible only when provider supplies open data</div>
+                  </div>
+                  <div class="rangewatch-cell">
+                    <div class="k">Volume</div>
+                    <div id="rail-volume" class="v live-number" style="font-size: 14px;">Label</div>
+                    <div class="vsub">Unavailable fields stay explicit</div>
+                  </div>
+                  <div class="rangewatch-cell">
+                    <div class="k">Breakout</div>
+                    <div id="rail-breakout" class="v" style="font-size: 14px;">Range watch</div>
+                    <div class="vsub">No advice; scenario monitor only</div>
+                  </div>
+                </div>
+              </div>
+              <div class="side-block dossier-rail-block">
+                <h3>Dossier quick read <span id="dossier-rail-status" class="meta"><span class="rail-live-dot"></span>Live</span></h3>
+                <div id="dossier-rail-summary" class="dossier-rail-summary"></div>
+              </div>
+              <div class="side-block">
+                <h3>Discovery <span class="meta">Market scan</span></h3>
+                <p class="micro-note">Candidate names and heatmap tiles stay source-labeled. Missing live data remains visibly marked as fallback or proxy.</p>
+              </div>
+              <div class="side-block">
+                <h3>Source discipline</h3>
+                <div class="source-mini-list">
+                  <span>Live edge: provider quote endpoints</span>
+                  <span>Older history: local cache</span>
+                  <span>Events: source-labeled radar feed</span>
+                  <span>Implications: bonds-first macro chain</span>
+                </div>
+              </div>
+              <div class="side-block">
+                <h3>Unknowns</h3>
+                <p class="micro-note">Thin volume, delayed provider prints, stale market sessions, and missing fundamentals are shown as uncertainty rather than filled with invented live claims.</p>
+              </div>
+              <div class="side-block">
+                <h3>Influence nodes</h3>
+                <div class="influence-list">
+                  <div class="influence">
+                    <span class="infl-tag">Macro</span>
+                    <div>
+                      <div class="infl-title">Bond yields anchor scenario pressure</div>
+                      <div class="infl-meta">Rates to inflation to equity context</div>
+                    </div>
+                    <span class="infl-conf med">Med</span>
+                  </div>
+                  <div class="influence">
+                    <span class="infl-tag">Event</span>
+                    <div>
+                      <div class="infl-title">Radar headlines override slow factors</div>
+                      <div class="infl-meta">Source-labeled, not advice</div>
+                    </div>
+                    <span class="infl-conf low">Watch</span>
+                  </div>
+                </div>
+              </div>
+              <div class="side-block">
+                <h3>Backend &amp; cache <span class="meta">Deterministic</span></h3>
+                <div class="source-mini-list">
+                  <span>Visible slices warm daily/history data automatically.</span>
+                  <span>NSE breadth reads the maintained local universe manifest.</span>
+                  <span>Provider misses fall back to documented cached or mock labels.</span>
+                </div>
+              </div>
+              <div class="side-block">
+                <h3>Watch next <span class="meta">Scenario queue</span></h3>
+                <div class="rangewatch-grid">
+                  <div class="rangewatch-cell">
+                    <div class="k">Rates</div>
+                    <div class="v" style="font-size: 14px;">Bond tab</div>
+                    <div class="vsub">Macro anchor</div>
+                  </div>
+                  <div class="rangewatch-cell">
+                    <div class="k">Events</div>
+                    <div class="v" style="font-size: 14px;">Radar</div>
+                    <div class="vsub">Headline risk</div>
+                  </div>
+                  <div class="rangewatch-cell">
+                    <div class="k">Breadth</div>
+                    <div class="v" style="font-size: 14px;">Heatmap</div>
+                    <div class="vsub">Sector spread</div>
+                  </div>
+                  <div class="rangewatch-cell">
+                    <div class="k">Peers</div>
+                    <div class="v" style="font-size: 14px;">Dossier</div>
+                    <div class="vsub">Relative context</div>
+                  </div>
+                </div>
+              </div>
+            </aside>
+          </div>
 
         </section>
 
@@ -486,6 +783,14 @@
           </div>
         </section>
       </main>
+      </div>
+      <div class="statusbar" aria-live="polite">
+        <span><i class="status-dot" aria-hidden="true"></i>Backend stream</span>
+        <span class="pill live">Live edge + local cache</span>
+        <span class="pill">Bonds anchor</span>
+        <span class="statusbar-spacer"></span>
+        <span>Scenario support only</span>
+      </div>
     </div>
 
     <dialog id="settings-dialog" class="settings-dialog">
