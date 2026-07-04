@@ -11,6 +11,7 @@ class HtmlContractTests(unittest.TestCase):
   def setUpClass(cls):
     cls.index_html = (ROOT / "index.html").read_text()
     cls.app_js = (ROOT / "app.js").read_text()
+    cls.styles_css = (ROOT / "styles.css").read_text()
     cls.readme = (ROOT / "README.md").read_text()
     cls.authenticity = (ROOT / "DESIGN_AUTHENTICITY.md").read_text()
 
@@ -71,13 +72,19 @@ class HtmlContractTests(unittest.TestCase):
     self.assertEqual(self.index_html.count('role="tab"'), len(tabs))
     self.assertEqual(self.index_html.count('role="tabpanel"'), len(tabs))
 
-  def test_market_discovery_sits_before_heatmap_and_dossier(self):
+  def test_market_discovery_leads_dossier_and_heatmap_research_flow(self):
     discovery_index = self.index_html.index('id="market-discovery"')
     heatmap_index = self.index_html.index('id="market-heat-map-panel"')
     dossier_index = self.index_html.index('id="stock-dossier-panel"')
 
-    self.assertLess(discovery_index, heatmap_index)
-    self.assertLess(heatmap_index, dossier_index)
+    self.assertLess(discovery_index, dossier_index)
+    self.assertLess(dossier_index, heatmap_index)
+
+  def test_market_discovery_uses_full_width_without_stretched_dead_space(self):
+    self.assertIn(".overview-bottom-main > #market-discovery {", self.styles_css)
+    self.assertIn("grid-column: 1 / -1;", self.styles_css)
+    self.assertIn("align-self: start;", self.styles_css)
+    self.assertIn("grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));", self.styles_css)
 
   def test_topbar_macro_title_and_live_market_header_removed(self):
     self.assertNotIn("Live Markets", self.index_html)

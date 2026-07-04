@@ -10255,19 +10255,42 @@ body.app-ready .pulse-card {
   min-width: 0;
 }
 .overview-bottom-main > #market-discovery {
-  grid-column: span 5;
+  grid-column: 1 / -1;
   grid-row: 3;
+  align-self: start;
 }
 .overview-bottom-main > #stock-dossier-panel {
-  grid-column: 6 / -1;
-  grid-row: 3;
-}
-.overview-bottom-main > #market-heat-map-panel {
   grid-column: 1 / -1;
   grid-row: 4;
 }
+.overview-bottom-main > #market-heat-map-panel {
+  grid-column: 1 / -1;
+  grid-row: 5;
+}
 .overview-bottom-side { align-self: start; }
 .market-discovery, .market-heat-map-panel, .stock-dossier-panel { padding: 14px 16px; border-top: 1px solid var(--line); background: var(--bg-0); }
+.overview-bottom-main > .market-discovery {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+}
+.overview-bottom-main > .market-discovery .discovery-compact-head {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 12px;
+}
+.overview-bottom-main > .market-discovery .discovery-compact-head small {
+  flex: 0 0 auto;
+  text-align: right;
+}
+.overview-bottom-main > .market-discovery .discovery-chip-stack {
+  grid-auto-flow: row;
+  grid-auto-columns: unset;
+  grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
+  overflow: visible;
+  scrollbar-gutter: auto;
+}
 .market-heat-map-controls, .sector-matrix-controls, .event-control-row { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
 .sector-ctrl-select, .market-heat-map-tab, .sector-period-tab, .event-chip { height: 24px; min-height: 24px; padding: 0 8px; border-radius: var(--r-md); font-size: 11px; }
 .market-heat-map-grid, .stock-dossier { display: grid; gap: 6px; }
