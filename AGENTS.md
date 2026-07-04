@@ -17,3 +17,6 @@
 - Surface conflicts instead of blending contradictory patterns or sources. Keep source labels, fallback labels, timestamps, confidence, and unknowns visible.
 - Treat time, token, and network budgets as real constraints. Checkpoint after meaningful steps and state anything skipped or unverified.
 - Tests should verify the user-facing intent. Never claim tests pass, data is live, or a component works unless it was actually verified.
+- Follow `DESIGN_AUTHENTICITY.md` for every visible UI change. Financial Board should read as a deliberate market workstation, not a generic generated SaaS dashboard.
+- Never use decorative or color-only live dots. Express freshness with text or timestamps, keep green/red for semantic market direction, and pair color with a sign or label.
+- Avoid generic gradients, neon glows, rounded-card nesting, decorative pill badges, repeated eyebrow copy, canned marketing language, and motion without a state purpose.

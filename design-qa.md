@@ -2,7 +2,7 @@
 
 **Source visual truth**
 
-- `/Users/sarsiz/.codex/generated_images/019f2c1a-8bf5-7bb2-95a5-1ca19a0a9423/call_GlJJUhHqxaSObhJx2RTEx4Bn.png`
+- `assets/financial-board-mark.png`
 
 **Implementation evidence**
 

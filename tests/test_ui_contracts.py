@@ -12,6 +12,7 @@ class HtmlContractTests(unittest.TestCase):
     cls.index_html = (ROOT / "index.html").read_text()
     cls.app_js = (ROOT / "app.js").read_text()
     cls.readme = (ROOT / "README.md").read_text()
+    cls.authenticity = (ROOT / "DESIGN_AUTHENTICITY.md").read_text()
 
   def test_index_contains_core_dashboard_targets(self):
     required_ids = [
@@ -267,6 +268,28 @@ class HtmlContractTests(unittest.TestCase):
     self.assertIn("min-height: 49px", styles)
     self.assertIn("grid-template-columns: repeat(3, minmax(0, 1fr))", styles)
     self.assertNotIn(".brand-mark::after", styles)
+
+  def test_design_authenticity_contract_avoids_generated_ui_tells(self):
+    styles = (ROOT / "styles.css").read_text()
+
+    self.assertIn("IBM+Plex+Sans", self.index_html)
+    self.assertIn('"IBM Plex Sans"', styles)
+    self.assertIn('"IBM Plex Mono"', styles)
+    self.assertIn("Bond-led context · 5/25-day trend signals", self.index_html)
+    self.assertIn("Financial Board Design Authenticity Standard", self.authenticity)
+    self.assertIn("Do not use a green dot", self.authenticity)
+    for tell in [
+      "live-indicator-dot",
+      "live-badge-inline",
+      "rail-live-dot",
+      "status-dot",
+      "sb-dot",
+      "brand-intro-arrive",
+      '<span class="badge">LIVE</span>',
+    ]:
+      self.assertNotIn(tell, self.index_html)
+      self.assertNotIn(tell, self.app_js)
+      self.assertNotIn(tell, styles)
 
   def test_external_research_and_event_content_uses_safe_render_helpers(self):
     self.assertIn("const url = safeExternalUrl(item.url)", self.app_js)

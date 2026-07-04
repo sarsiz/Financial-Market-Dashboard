@@ -5377,23 +5377,19 @@ svg {
   color: #ffe3af;
 }
 
-.live-badge-inline {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+.live-state-inline {
   margin-left: 6px;
-  width: 8px;
-  height: 8px;
-  border-radius: 999px;
-  background: radial-gradient(circle at 35% 35%, #d7ffe7, #67d88f 55%, #2d8d54 100%);
-  box-shadow: 0 0 0 1px rgba(77, 216, 137, 0.14), 0 0 12px rgba(77, 216, 137, 0.22);
-  vertical-align: middle;
-  flex: 0 0 auto;
+  color: var(--fg-mute);
+  font-family: var(--f-mono);
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0;
+  white-space: nowrap;
 }
 
-.pulse-card span .live-badge-inline,
-.recent-pill strong .live-badge-inline,
-.overview-meta-pill .live-badge-inline {
+.pulse-card span .live-state-inline,
+.recent-pill strong .live-state-inline,
+.overview-meta-pill .live-state-inline {
   transform: translateY(-1px);
 }
 
@@ -6329,7 +6325,7 @@ body.app-ready .pulse-card {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   CLAUDE DESIGN SYSTEM — Financial Board polish layer
+   FINANCIAL BOARD TERMINAL — interface polish layer
    Applied on top of the base theme. Minimal, surgical, quant-grade.
    ═══════════════════════════════════════════════════════════════════════════ */
 
@@ -7853,27 +7849,13 @@ body:not(.detail-mode) .dossier-nav-scroll {
 .live-indicator {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
   font-size: 0.65rem;
-  color: rgba(90, 242, 197, 0.9);
+  color: var(--fg-mute);
   white-space: nowrap;
 }
-.live-indicator-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: rgba(90, 242, 197, 0.9);
-  box-shadow: 0 0 4px rgba(90, 242, 197, 0.6);
-  animation: live-pulse 2.4s ease-in-out infinite;
-}
 .live-indicator-label {
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  font-weight: 600;
-}
-@keyframes live-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.4; }
+  letter-spacing: 0;
+  font-weight: 500;
 }
 
 /* Compact radar: single-line ticker */
@@ -8486,7 +8468,7 @@ body.app-ready .pulse-card {
   transform: none;
 }
 
-/* Claude terminal dashboard layout */
+/* Financial Board terminal dashboard layout */
 :root {
     /* surfaces */
     --bg-0:        #0a0d12;       /* app background */
@@ -8510,20 +8492,21 @@ body.app-ready .pulse-card {
     --up-soft:   #2ecc7115;
     --down:      #ef4d4d;          /* loss */
     --down-soft: #ef4d4d15;
-    --cyan:      #54b9d1;          /* informational only */
+    --cyan:      #7f9fbd;          /* informational steel blue */
     --warn:      #f7c948;
 
     /* type */
-    --f-ui:   "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-    --f-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    --f-ui:   "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    --f-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 
     /* radii */
-    --r-sm: 4px;
-    --r-md: 6px;
-    --r-lg: 8px;
+    --r-sm: 2px;
+    --r-md: 3px;
+    --r-lg: 4px;
   }
 
   * { box-sizing: border-box; }
+  ::selection { background: var(--amber); color: var(--bg-0); }
   html, body {
     margin: 0; padding: 0;
     background: var(--bg-0);
@@ -8874,13 +8857,6 @@ body.app-ready .pulse-card {
     gap: 10px;
     overflow: hidden;
   }
-  .news-ribbon .badge {
-    font-size: 10px; letter-spacing: 0.1em;
-    color: var(--down); font-weight: 700;
-    border: 1px solid var(--down);
-    padding: 1px 6px; border-radius: 3px;
-    background: var(--down-soft);
-  }
   .news-ribbon .news-list {
     display: flex; gap: 22px; font-size: 12px;
     white-space: nowrap;
@@ -8994,7 +8970,6 @@ body.app-ready .pulse-card {
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .stock-head .meta > .dot { display: none; }
   .stock-head .meta .pill {
     border: 1px solid var(--line); padding: 1px 6px; border-radius: 3px;
     font-family: var(--f-mono); font-size: 10px;
@@ -9003,9 +8978,6 @@ body.app-ready .pulse-card {
   }
   .stock-head .meta .pill.live { color: var(--up); border-color: rgba(46,204,113,0.3); background: var(--up-soft); }
   .stock-head .meta .pill.closed { color: var(--fg-mute); }
-  .stock-head .meta .dot {
-    width: 4px; height: 4px; background: var(--fg-faint); border-radius: 50%;
-  }
   .stock-head h1 {
     display: flex;
     align-items: baseline;
@@ -9295,13 +9267,13 @@ body.app-ready .pulse-card {
     gap: 14px;
   }
   .statusbar .pill {
-    border: 1px solid var(--line);
-    padding: 0 6px; line-height: 14px; border-radius: 3px;
+    border: 0;
+    padding: 0;
+    line-height: inherit;
     color: var(--fg-mute);
   }
-  .statusbar .pill.live { color: var(--up); border-color: rgba(46,204,113,0.3); }
+  .statusbar .pill.live { color: var(--fg-mute); }
   .statusbar .right { margin-left: auto; display: flex; gap: 14px; }
-  .statusbar .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--up); margin-right: 6px; }
 
   /* utility */
   hr.sep { border: 0; border-top: 1px solid var(--line); margin: 12px 0; }
@@ -9746,7 +9718,7 @@ body.app-ready .pulse-card {
     background: #3c3b6e; left: 0; top: 0;
   }
 
-/* Live app compatibility on top of Claude's generated layout.
+/* Live app compatibility layer.
  * Re-points every legacy token (from the first `:root` block at the top of
  * this file) to a template token so old rules pick up the new palette and
  * fonts. Add a new alias here whenever a legacy variable shows up in a diff.
@@ -9918,12 +9890,14 @@ body.app-ready .pulse-card {
 }
 
 #provider-badge {
-  color: var(--up);
-  border-color: rgba(46, 204, 113, 0.3);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--fg-mute);
 }
 
 /*
- * Sidebar presets — template-matched stacked rows.
+ * Sidebar presets — compact stacked rows.
  * Template: 7px 9px padding, 12px font, 4px gap between rows. The earlier
  * 36px min-height left too much vertical whitespace per row; the natural
  * line-box (~26px tall) now lets ~3 more presets fit before scrolling.
@@ -9963,28 +9937,6 @@ body.app-ready .pulse-card {
 .watchlist-save-grid { display: grid; grid-template-columns: 1fr auto; gap: 6px; margin-bottom: 8px; }
 .watchlist-save-grid input, .watchlist-save-grid select, .watchlist-save-grid button { height: 26px; min-height: 26px; padding: 0 8px; border-radius: var(--r-md); font-size: 11px; }
 .recent-pill { min-height: 0; height: auto; padding: 7px 9px; border-radius: var(--r-md); background: var(--bg-2); border: 1px solid var(--line); color: var(--fg); text-align: left; }
-
-.rail-live-dot {
-  display: inline-block;
-  width: 6px;
-  height: 6px;
-  margin-right: 6px;
-  border-radius: 50%;
-  background: var(--up);
-  box-shadow: 0 0 0 0 rgba(46, 204, 113, 0.42);
-  animation: rail-live-pulse 1.8s ease-in-out infinite;
-  vertical-align: 1px;
-}
-
-.rail-live-dot.is-stale {
-  background: var(--warn);
-  box-shadow: 0 0 0 0 rgba(247, 201, 72, 0.36);
-}
-
-@keyframes rail-live-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(46, 204, 113, 0.36); }
-  50% { box-shadow: 0 0 0 4px rgba(46, 204, 113, 0); }
-}
 
 .dossier-rail-summary {
   display: grid;
@@ -10243,12 +10195,11 @@ body.app-ready .pulse-card {
   gap: 12px;
   padding: 32px;
   text-align: center;
-  transform: translateY(8px);
   opacity: 0;
 }
 
 .brand-intro.is-visible .brand-intro-lockup {
-  animation: brand-intro-arrive 720ms cubic-bezier(0.2, 0.82, 0.2, 1) forwards;
+  animation: brand-intro-reveal 260ms ease-out forwards;
 }
 
 .brand-intro-lockup img {
@@ -10276,9 +10227,9 @@ body.app-ready .pulse-card {
   letter-spacing: 0.02em;
 }
 
-@keyframes brand-intro-arrive {
-  0% { opacity: 0; transform: translateY(8px) scale(0.96); }
-  100% { opacity: 1; transform: translateY(0) scale(1); }
+@keyframes brand-intro-reveal {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -10478,7 +10429,7 @@ body.app-ready .pulse-card {
 .methodology-panel-wide, .sector-matrix-panel, .impact-workspace-panel { grid-column: 1 / -1; }
 
 .statusbar-spacer { margin-left: auto; }
-.status-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--up); margin-right: 6px; }
+.statusbar-label { color: var(--fg-mute); }
 
 /* ── Notification bell + dropdown ─────────────────────────────────────────
  * Replaces the floating bottom-right `.data-flow-bar` and the top-right
@@ -10633,13 +10584,6 @@ body.app-ready .pulse-card {
 }
 .status-banner.is-error { border-color: var(--down); }
 .status-banner.is-info { border-color: var(--line-strong); }
-.status-banner .sb-dot {
-  width: 6px; height: 6px; border-radius: 50%;
-  background: var(--warn);
-  flex-shrink: 0;
-}
-.status-banner.is-error .sb-dot { background: var(--down); }
-.status-banner.is-info .sb-dot { background: var(--fg-mute); }
 .status-banner strong { font-weight: 600; color: var(--fg); }
 .status-banner span { color: var(--fg-mute); }
 

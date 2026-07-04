@@ -501,7 +501,7 @@ function movingAverage(values, period) {
 }
 
 function liveBadgeMarkup(label = "Live update") {
-  return `<span class="live-badge-inline" aria-label="${label}" title="${label}"></span>`;
+  return `<span class="live-state-inline" title="${escapeHtml(label)}">${escapeHtml(label)}</span>`;
 }
 
 function setTextIfChanged(node, value) {
@@ -1039,7 +1039,7 @@ function renderDossierRail(active = {}) {
   const movingAverages = (dossier.movingAverages || []).filter((item) => item.value !== null && item.value !== undefined).slice(0, 2);
   const consensusLabel = consensus.rating || "External tone unavailable";
   const statusText = freshness.label || (freshness.isStale ? "Stale" : "Live");
-  setHTMLIfChanged(status, `<span class="rail-live-dot ${freshness.isStale ? "is-stale" : ""}"></span>${escapeHtml(statusText)}`);
+  setTextIfChanged(status, statusText);
 
   setTextIfChanged(document.getElementById("rail-2d-move"), active.changePercent === null || active.changePercent === undefined ? "Live" : formatPercent(active.changePercent));
   setClassIfChanged(document.getElementById("rail-2d-move"), `v live-number ${Number(active.changePercent || 0) >= 0 ? "up positive" : "down negative"} ${liveValueClass(`rail:${active.symbol}:move`, active.changePercent)}`);
@@ -2325,13 +2325,6 @@ function setStatus(message) {
   indicators.forEach((el) => {
     setTextIfChanged(el, isLoading ? "Updating" : "Live");
   });
-  const dots = document.querySelectorAll(".live-indicator-dot");
-  const background = isLoading ? "rgba(255, 176, 0, 0.9)" : "rgba(90, 242, 197, 0.9)";
-  const boxShadow = isLoading ? "0 0 4px rgba(255, 176, 0, 0.6)" : "0 0 4px rgba(90, 242, 197, 0.6)";
-  dots.forEach((el) => {
-    if (el.style.background !== background) el.style.background = background;
-    if (el.style.boxShadow !== boxShadow) el.style.boxShadow = boxShadow;
-  });
 }
 
 function markDashboardInteractive(message = "Live quote loaded") {
@@ -2986,7 +2979,7 @@ function showStatusBanner(message, { kind = "warn", duration = 4500, key = "" } 
   if (existingTimer) window.clearTimeout(existingTimer);
   banner.classList.remove("is-error", "is-warn", "is-info");
   banner.classList.add(`is-${kind}`);
-  banner.innerHTML = `<span class="sb-dot" aria-hidden="true"></span><strong>${escapeHtml(message)}</strong>`;
+  banner.innerHTML = `<strong>${escapeHtml(message)}</strong>`;
   banner.hidden = false;
   // Force reflow so the transform animates from off-screen
   void banner.offsetHeight;
@@ -5449,7 +5442,6 @@ function setDetailMode(enabled) {
 function liveStatusClusterMarkup() {
   return `
     <span class="live-indicator" aria-label="Dashboard live status">
-      <span class="live-indicator-dot"></span>
       <span class="live-indicator-label">Live</span>
     </span>
   `;

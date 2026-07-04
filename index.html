@@ -13,7 +13,7 @@
     <link rel="dns-prefetch" href="https://finance.yahoo.com" />
     <link rel="dns-prefetch" href="https://api.stlouisfed.org" />
     <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
     <link rel="stylesheet" href="./styles.css" />
@@ -23,7 +23,7 @@
       <div class="brand-intro-lockup">
         <img src="./assets/financial-board-mark.png" alt="" width="132" height="132" />
         <div class="brand-intro-wordmark">Financial<b>·</b>Board</div>
-        <div class="brand-intro-kicker">Evidence first. Scenarios, clearly framed.</div>
+        <div class="brand-intro-kicker">Bond-led context · 5/25-day trend signals</div>
       </div>
     </div>
     <div id="starfield" class="starfield" aria-hidden="true">
@@ -161,8 +161,7 @@
 
         <section id="global-market-overview" class="bench global-market-overview" aria-live="polite"></section>
 
-        <div class="news-ribbon">
-          <span class="badge">LIVE</span>
+        <div class="news-ribbon" aria-label="Market headlines">
           <div class="news-list">
             <span class="item"><b>Radar</b> Live headlines loading…</span>
           </div>
@@ -176,9 +175,7 @@
                 <div>
                   <div class="meta">
                     <span id="hero-ticker" style="color: var(--amber); font-weight: 700; letter-spacing: 0.04em;">AAPL</span>
-                    <span class="dot"></span>
                     <span id="quote-source-note">Quote source loading.</span>
-                    <span class="dot"></span>
                     <span id="hero-regime" class="pill closed">Balanced regime</span>
                   </div>
                   <h1>Active instrument <small id="forecast-range">10D projection pending</small></h1>
@@ -463,7 +460,7 @@
                   <div class="rangewatch-cell">
                     <div class="k">2D Move</div>
                     <div id="rail-2d-move" class="v up live-number">Live</div>
-                    <div class="vsub"><span class="rail-live-dot"></span> Updated from active quote context</div>
+                    <div class="vsub">Updated from active quote context</div>
                   </div>
                   <div class="rangewatch-cell">
                     <div class="k">Gap</div>
@@ -483,7 +480,7 @@
                 </div>
               </div>
               <div class="side-block dossier-rail-block">
-                <h3>Dossier quick read <span id="dossier-rail-status" class="meta"><span class="rail-live-dot"></span>Live</span></h3>
+                <h3>Dossier quick read <span id="dossier-rail-status" class="meta">Live</span></h3>
                 <div id="dossier-rail-summary" class="dossier-rail-summary"></div>
               </div>
               <div class="side-block">
@@ -823,9 +820,9 @@
       </main>
       </div>
       <div class="statusbar" aria-live="polite">
-        <span><i class="status-dot" aria-hidden="true"></i>Backend stream</span>
-        <span class="pill live">Live edge + local cache</span>
-        <span class="pill">Bonds anchor</span>
+        <span>Backend stream</span>
+        <span class="statusbar-label">Provider + local history</span>
+        <span class="statusbar-label">Bonds anchor</span>
         <span class="statusbar-spacer"></span>
         <span>Scenario support only</span>
       </div>

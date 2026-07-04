@@ -6508,8 +6508,8 @@ def build_forecast(symbol: str, quote: dict, summary: dict, history: list[float]
 
 def build_short_horizon_forecast(history: list[float], horizon: int = 5) -> dict:
   """JSON-safe wrapper around scripts/short_horizon_model.predict. Runs the
-  hand-crafted short-horizon directional model (see CLAUDE.md + the methodology
-  report) and computes a quick walk-forward skill score versus a flat baseline.
+  short-horizon directional model described in the methodology report and
+  computes a quick walk-forward skill score versus a flat baseline.
 
   Returns a dict suitable for direct inclusion in the forecast payload. All keys
   are namespaced under shortHorizon so this is purely additive — no existing
