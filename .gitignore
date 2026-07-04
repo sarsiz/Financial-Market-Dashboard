@@ -9,6 +9,7 @@ config.json
 
 .env
 .env.*
+!.env.example
 
 .pytest_cache/
 .mypy_cache/
@@ -39,6 +40,17 @@ signal_override.json
 *.playbook.json
 *.private.json
 *.secret.json
+*.credentials.json
+*.session.json
+
+# Zerodha Kite / broker authentication and downloaded instrument state
+.kite/
+kite_*.json
+kite_*.env
+kite_instruments*.csv
+zerodha_*.json
+broker_session*.json
+auth_callback*.json
 
 # Python / Node local build artifacts
 node_modules/.cache/

@@ -1,0 +1,13 @@
+#!/bin/sh
+set -eu
+
+ROOT="$(git rev-parse --show-toplevel)"
+ZERO_SHA="0000000000000000000000000000000000000000"
+
+while read -r local_ref local_sha remote_ref remote_sha
+do
+  if [ "$local_sha" = "$ZERO_SHA" ]; then
+    continue
+  fi
+  python3 "$ROOT/scripts/check_repo_safety.py" --local "$local_sha" --remote "$remote_sha"
+done

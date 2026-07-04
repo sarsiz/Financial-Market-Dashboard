@@ -975,8 +975,17 @@ def resolve_local_llm_model(config: dict | None = None) -> str:
   return DEFAULT_CONFIG["localLlmModel"]
 
 
+def ensure_private_file_permissions(path: Path) -> None:
+  try:
+    if path.exists() and path.is_file():
+      os.chmod(path, 0o600)
+  except OSError:
+    pass
+
+
 def load_config() -> dict:
   if CONFIG_PATH.exists():
+    ensure_private_file_permissions(CONFIG_PATH)
     try:
       payload = {**DEFAULT_CONFIG, **json.loads(CONFIG_PATH.read_text())}
       payload["localLlmModel"] = resolve_local_llm_model(payload)
@@ -1002,9 +1011,9 @@ def write_private_json(path: Path, payload: dict) -> None:
   temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
   temporary.write_text(json.dumps(payload, indent=2))
   try:
-    os.chmod(temporary, 0o600)
+    ensure_private_file_permissions(temporary)
     temporary.replace(path)
-    os.chmod(path, 0o600)
+    ensure_private_file_permissions(path)
   finally:
     if temporary.exists():
       temporary.unlink()
@@ -1144,6 +1153,12 @@ def init_db() -> None:
         connection.commit()
       finally:
         connection.close()
+      for private_path in (
+        current_path,
+        Path(f"{current_path}-shm"),
+        Path(f"{current_path}-wal"),
+      ):
+        ensure_private_file_permissions(private_path)
     _DB_INITIALIZED = True
     _DB_INITIALIZED_PATH = current_path
 

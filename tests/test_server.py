@@ -60,6 +60,9 @@ class TempDatabaseTestCase(unittest.TestCase):
 
 
 class HistoryCacheTests(TempDatabaseTestCase):
+  def test_local_database_is_private(self):
+    self.assertEqual(self.db_path.stat().st_mode & 0o777, 0o600)
+
   def test_save_config_pins_local_llm_model_to_bonsai_1bit(self):
     saved = server.save_config(
       {

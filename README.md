@@ -139,6 +139,19 @@ You can also choose a port with `python3 server.py --port 8001` or `FINANCIAL_BO
 Routine local maintenance is available from the dashboard's **Operations** tab. It exposes only fixed, allowlisted workflows for refreshing data foundations and events, preparing the market graph, and rebuilding the local knowledge base. Development-only evaluation and smoke-test scripts remain command-line tools.
 
 The prioritized follow-on roadmap is documented in [DASHBOARD_IMPROVEMENT_PLAN.md](DASHBOARD_IMPROVEMENT_PLAN.md).
+The proposed read-only Zerodha integration and setup checklist are documented in [KITE_CONNECT_INTEGRATION_PLAN.md](KITE_CONNECT_INTEGRATION_PLAN.md).
+
+Before pushing, install the repository's local safety hook once:
+
+```bash
+git config core.hooksPath .githooks
+python3 scripts/check_repo_safety.py
+```
+
+The check rejects tracked credentials, broker sessions, databases, watchlists,
+caches, and local research paths. If a real credential is ever committed,
+removing the file is not enough: revoke or rotate the credential immediately
+and remove it from Git history before pushing again.
 
 ## Test
 

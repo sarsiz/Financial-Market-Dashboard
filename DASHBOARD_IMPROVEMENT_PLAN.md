@@ -94,6 +94,13 @@ Targets:
 - Backtests are reproducible from local cached inputs.
 - Region additions require config and adapters, not duplicated route logic.
 
+### India market-data provider
+
+Add Kite Connect as a read-only provider through the shared India adapter.
+Follow [KITE_CONNECT_INTEGRATION_PLAN.md](KITE_CONNECT_INTEGRATION_PLAN.md).
+Kite quotes and historical candles may feed the prediction engine; order
+execution must remain isolated and disabled.
+
 ## Phase 4: Professional UI and accessibility
 
 Priority: medium.
