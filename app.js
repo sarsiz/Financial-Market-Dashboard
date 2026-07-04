@@ -14,7 +14,7 @@ const STORAGE_KEYS = {
   sectorMatrix: "financial-board-sector-matrix",
   marketHeatMap: "financial-board-market-heat-map",
   dashboardCache: "financial-board-dashboard-cache-v2",
-  brandIntroSeen: "financial-board-brand-intro-v1",
+  brandIntroSeen: "financial-board-brand-intro-v2",
 };
 
 const REFRESH_INTERVALS = {
