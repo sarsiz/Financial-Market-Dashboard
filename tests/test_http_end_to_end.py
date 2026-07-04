@@ -46,6 +46,14 @@ class HttpRouteTests(unittest.TestCase):
     self.assertIn("javascript", response.headers.get("Content-Type", ""))
     self.assertTrue(body)
 
+  def test_brand_mark_asset_is_served_as_png(self):
+    with urllib.request.urlopen(self.url("/assets/financial-board-mark.png"), timeout=5) as response:
+      body = response.read(8)
+
+    self.assertEqual(response.status, 200)
+    self.assertEqual(response.headers.get("Content-Type"), "image/png")
+    self.assertEqual(body, b"\x89PNG\r\n\x1a\n")
+
   def test_config_route_redacts_secrets_and_omits_wildcard_cors(self):
     with mock.patch.object(
       server,

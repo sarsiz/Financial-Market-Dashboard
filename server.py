@@ -9192,7 +9192,7 @@ def build_overview_payload(symbols: list[str], active: str | None, region_key: s
   payload["active"] = {
     **active_item,
     "marketSession": active_item.get("marketSession") or build_market_session(exchange, exchange, market_state, active_item.get("asOf")),
-    "regime": "Refreshing active view",
+    "regime": "Refreshing",
   }
   payload["selectedRegion"] = region_config(region_key or infer_region_key(active_item.get("symbol"), exchange, active_item.get("currency")))["key"]
   return payload
@@ -9281,7 +9281,15 @@ class FinancialBoardHandler(BaseHTTPRequestHandler):
     if not self.request_is_local():
       return self.send_error(HTTPStatus.FORBIDDEN, "Local requests only")
     parsed = urllib.parse.urlparse(self.path)
-    if parsed.path in {"/", "/index.html", "/app.js", "/styles.css", "/vendor/cytoscape.min.js", "/api/health"}:
+    if parsed.path in {
+      "/",
+      "/index.html",
+      "/app.js",
+      "/styles.css",
+      "/assets/financial-board-mark.png",
+      "/vendor/cytoscape.min.js",
+      "/api/health",
+    }:
       self.send_response(HTTPStatus.OK)
       self.write_security_headers()
       self.end_headers()
@@ -9305,6 +9313,8 @@ class FinancialBoardHandler(BaseHTTPRequestHandler):
       return self.serve_file("styles.css", "text/css; charset=utf-8")
     if parsed.path == "/app.js":
       return self.serve_file("app.js", "application/javascript; charset=utf-8")
+    if parsed.path == "/assets/financial-board-mark.png":
+      return self.serve_file("assets/financial-board-mark.png", "image/png")
     if parsed.path == "/vendor/cytoscape.min.js":
       return self.serve_file("vendor/cytoscape.min.js", "application/javascript; charset=utf-8")
     if parsed.path == "/api/health":

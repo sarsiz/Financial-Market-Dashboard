@@ -14,6 +14,7 @@ const STORAGE_KEYS = {
   sectorMatrix: "financial-board-sector-matrix",
   marketHeatMap: "financial-board-market-heat-map",
   dashboardCache: "financial-board-dashboard-cache-v2",
+  brandIntroSeen: "financial-board-brand-intro-v1",
 };
 
 const REFRESH_INTERVALS = {
@@ -2281,7 +2282,7 @@ function buildPendingActive(symbol) {
     ...watchItem,
     symbol,
     name: nextName,
-    regime: "Refreshing active view",
+    regime: "Refreshing",
     history: watchItem?.symbol === previous.symbol ? previous.history || [] : [],
     historySeries: watchItem?.symbol === previous.symbol
       ? previous.historySeries || []
@@ -4367,6 +4368,9 @@ function renderWatchlist() {
   const node = document.getElementById("watchlist");
   const count = document.getElementById("watchlist-count");
   const entries = state.dashboard?.watchlist || [];
+  const sidebar = node?.closest(".sidebar");
+  const sidebarScrollTop = sidebar?.scrollTop || 0;
+  const focusedSymbol = document.activeElement?.closest?.(".watch-item")?.dataset?.symbol || "";
   setTextIfChanged(count, String(entries.length));
 
   const markup = entries
@@ -4396,6 +4400,10 @@ function renderWatchlist() {
     .join("");
   const changed = setHTMLIfChanged(node, markup);
   if (!changed) return;
+  if (sidebar) sidebar.scrollTop = sidebarScrollTop;
+  if (focusedSymbol) {
+    node.querySelector(`.watch-item[data-symbol="${CSS.escape(focusedSymbol)}"]`)?.focus({ preventScroll: true });
+  }
 
   let draggedSymbol = "";
   node.querySelectorAll(".watch-item").forEach((button) => {
@@ -5839,6 +5847,43 @@ function startDashboardRefresh() {
   }, REFRESH_INTERVALS.dashboard);
 }
 
+function captureDashboardViewport() {
+  const main = document.querySelector(".main");
+  if (!main) return null;
+  const mainTop = main.getBoundingClientRect().top;
+  const candidates = [
+    document.getElementById("global-market-overview"),
+    document.querySelector(".news-ribbon"),
+    document.getElementById("overview-spotlight"),
+    document.querySelector(".hero-chart-card"),
+    document.getElementById("prediction-panel"),
+    document.getElementById("stock-dossier-panel"),
+  ].filter(Boolean);
+  const visible = candidates
+    .map((node) => ({ node, rect: node.getBoundingClientRect() }))
+    .filter((item) => item.rect.bottom > mainTop + 1)
+    .sort((a, b) => Math.abs(a.rect.top - mainTop) - Math.abs(b.rect.top - mainTop))[0];
+  return {
+    main,
+    scrollTop: main.scrollTop,
+    anchor: visible?.node || null,
+    anchorTop: visible?.rect?.top ?? mainTop,
+  };
+}
+
+function restoreDashboardViewport(snapshot) {
+  if (!snapshot?.main?.isConnected) return;
+  nextFrame(() => {
+    if (!snapshot.main.isConnected) return;
+    if (!snapshot.anchor?.isConnected) {
+      snapshot.main.scrollTop = snapshot.scrollTop;
+      return;
+    }
+    const delta = snapshot.anchor.getBoundingClientRect().top - snapshot.anchorTop;
+    snapshot.main.scrollTop = snapshot.scrollTop + delta;
+  });
+}
+
 async function loadConfig() {
   setStatus("Loading config");
   state.config = await api("/api/config");
@@ -6027,8 +6072,10 @@ async function refreshDashboard({ primeFast = true, primeRadar = true } = {}) {
   state.dataFlow.lastError = "";
   saveDashboardCache(payload);
   persistWatchlist();
+  const viewportSnapshot = captureDashboardViewport();
   nextFrame(() => {
     renderCorePanels();
+    restoreDashboardViewport(viewportSnapshot);
     markDashboardInteractive("Live now");
     renderDataFlowBar();
   });
@@ -6066,6 +6113,30 @@ async function refreshDashboard({ primeFast = true, primeRadar = true } = {}) {
     logNonAbort(error);
   });
   scheduleHistoryWarmup();
+}
+
+function initBrandIntro() {
+  const intro = document.getElementById("brand-intro");
+  if (!intro) return;
+  const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+  const seen = localStorage.getItem(STORAGE_KEYS.brandIntroSeen) === "1";
+  if (seen || reduceMotion) {
+    intro.remove();
+    return;
+  }
+
+  localStorage.setItem(STORAGE_KEYS.brandIntroSeen, "1");
+  intro.hidden = false;
+  requestAnimationFrame(() => intro.classList.add("is-visible"));
+  let dismissed = false;
+  const dismiss = () => {
+    if (dismissed) return;
+    dismissed = true;
+    intro.classList.add("is-leaving");
+    window.setTimeout(() => intro.remove(), 420);
+  };
+  intro.addEventListener("click", dismiss, { once: true });
+  window.setTimeout(dismiss, 1450);
 }
 
 async function runSearch() {
@@ -7079,6 +7150,7 @@ function bindEvents() {
 }
 
 async function init() {
+  initBrandIntro();
   document.body.classList.add("app-booting");
   initSkeletons();
   setStatus("Loading data");

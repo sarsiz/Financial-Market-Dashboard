@@ -252,6 +252,22 @@ class HtmlContractTests(unittest.TestCase):
     self.assertIn("scroll-snap-type: x proximity", styles)
     self.assertIn('aria-controls="dashboard-sidebar"', self.index_html)
 
+  def test_brand_intro_and_stable_refresh_contracts(self):
+    styles = (ROOT / "styles.css").read_text()
+
+    self.assertIn('href="./assets/financial-board-mark.png"', self.index_html)
+    self.assertIn('id="brand-intro"', self.index_html)
+    self.assertIn('class="brand-mark" src="./assets/financial-board-mark.png"', self.index_html)
+    self.assertIn("function initBrandIntro(", self.app_js)
+    self.assertIn("function captureDashboardViewport(", self.app_js)
+    self.assertIn("function restoreDashboardViewport(", self.app_js)
+    self.assertIn("focus({ preventScroll: true })", self.app_js)
+    self.assertNotIn("Refreshing active view", self.app_js)
+    self.assertIn(".brand-intro.is-visible", styles)
+    self.assertIn("min-height: 49px", styles)
+    self.assertIn("grid-template-columns: repeat(3, minmax(0, 1fr))", styles)
+    self.assertNotIn(".brand-mark::after", styles)
+
   def test_external_research_and_event_content_uses_safe_render_helpers(self):
     self.assertIn("const url = safeExternalUrl(item.url)", self.app_js)
     self.assertIn("escapeHtml(answer)", self.app_js)

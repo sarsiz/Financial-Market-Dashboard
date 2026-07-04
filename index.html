@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Financial Board</title>
-    <link rel="icon" href="data:," />
+    <link rel="icon" type="image/png" href="./assets/financial-board-mark.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <!-- DNS prefetch for data providers — resolves DNS early on cold load -->
@@ -19,6 +19,13 @@
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
+    <div id="brand-intro" class="brand-intro" hidden aria-hidden="true">
+      <div class="brand-intro-lockup">
+        <img src="./assets/financial-board-mark.png" alt="" width="132" height="132" />
+        <div class="brand-intro-wordmark">Financial<b>·</b>Board</div>
+        <div class="brand-intro-kicker">Evidence first. Scenarios, clearly framed.</div>
+      </div>
+    </div>
     <div id="starfield" class="starfield" aria-hidden="true">
       <div class="starfield-layer starfield-layer-far"></div>
       <div class="starfield-layer starfield-layer-mid"></div>
@@ -31,7 +38,7 @@
     <div class="shell">
       <div class="topbar" aria-label="Financial Board command bar">
         <div class="brand">
-          <div class="brand-mark" aria-hidden="true"></div>
+          <img class="brand-mark" src="./assets/financial-board-mark.png" alt="" width="30" height="24" aria-hidden="true" />
           <div class="brand-name">Financial<b>·</b>Board</div>
         </div>
         <nav class="topnav" aria-label="Dashboard sections" role="tablist">
