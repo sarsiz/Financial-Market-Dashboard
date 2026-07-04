@@ -54,14 +54,21 @@ class HtmlContractTests(unittest.TestCase):
       "market-heat-map-size",
       "market-heat-map-limit",
       "market-heat-map-expand",
+      "mobile-sidebar-toggle",
+      "operations-jobs",
+      "operations-runs",
+      "fred-key",
     ]
     for target in required_ids:
       self.assertIn(f'id="{target}"', self.index_html)
     self.assertIn('data-category="markets"', self.index_html)
 
   def test_index_contains_expected_top_level_tabs(self):
-    tabs = re.findall(r'data-tab="([^"]+)"', self.index_html)
-    self.assertEqual(tabs, ["overview", "bond-market", "inflation", "equity-context", "events-calendar", "methodology", "watchlist-implications", "comparison"])
+    tabs = re.findall(r'class="topnav-link[^"]*" data-target="([^"]+)"', self.index_html)
+    self.assertEqual(tabs, ["overview", "bond-market", "inflation", "equity-context", "events-calendar", "methodology", "watchlist-implications", "comparison", "operations"])
+    self.assertEqual(self.index_html.count('role="tablist"'), 1)
+    self.assertEqual(self.index_html.count('role="tab"'), len(tabs))
+    self.assertEqual(self.index_html.count('role="tabpanel"'), len(tabs))
 
   def test_market_discovery_sits_before_heatmap_and_dossier(self):
     discovery_index = self.index_html.index('id="market-discovery"')
@@ -92,6 +99,9 @@ class HtmlContractTests(unittest.TestCase):
       "function renderMethodology()",
       "function renderWatchlistImplications()",
       "function renderComparison()",
+      "function renderOperations()",
+      "function loadOperations(",
+      "function runOperation(",
       "function renderCorePanels()",
       "function renderDeferredPanels()",
       "function loadEventFeed(",
@@ -138,6 +148,9 @@ class HtmlContractTests(unittest.TestCase):
       "function relayoutImpactGraph(",
       "pendingImpactGraph",
       "formatAxisDate",
+      "scenarioSignal",
+      "Upside",
+      "Downside",
     ]
     for snippet in expected_snippets:
       self.assertIn(snippet, self.app_js)
@@ -190,6 +203,10 @@ class HtmlContractTests(unittest.TestCase):
     self.assertIn("function exchangeTimeZoneForItem(", self.app_js)
     self.assertIn("function setDetailMode(", self.app_js)
     self.assertIn("financial-board-detail-mode", self.app_js)
+    self.assertIn("function initMarketHeatMap(", self.app_js)
+    self.assertIn("state.marketHeatMapObserver = new IntersectionObserver", self.app_js)
+    self.assertIn("panel.dataset.marketMapLoaded", self.app_js)
+    self.assertIn("scheduleHeatMapHistoryWarmup(payload)", self.app_js)
     self.assertIn("exchange print", self.app_js)
     self.assertIn("Historical fallback", self.app_js)
     self.assertIn("function mergeQuoteIntoActiveHistory(", self.app_js)
@@ -225,6 +242,21 @@ class HtmlContractTests(unittest.TestCase):
     self.assertIn("repeat(auto-fit, minmax(142px, 1fr))", styles)
     self.assertIn("font-size: 0.86rem", styles)
     self.assertIn("Financial Services", self.app_js)
+
+  def test_mobile_shell_uses_single_column_drawer_contract(self):
+    styles = (ROOT / "styles.css").read_text()
+
+    self.assertIn(".body.app-shell > .sidebar.mobile-open", styles)
+    self.assertIn(".body.app-shell {\n    display: block;", styles)
+    self.assertIn("grid-template-rows: 48px 44px", styles)
+    self.assertIn("scroll-snap-type: x proximity", styles)
+    self.assertIn('aria-controls="dashboard-sidebar"', self.index_html)
+
+  def test_external_research_and_event_content_uses_safe_render_helpers(self):
+    self.assertIn("const url = safeExternalUrl(item.url)", self.app_js)
+    self.assertIn("escapeHtml(answer)", self.app_js)
+    self.assertIn("escapeHtml(item.title || \"Update\")", self.app_js)
+    self.assertNotIn('target="_blank" rel="noreferrer">', self.app_js)
 
   def test_watchlist_graph_defers_until_visible(self):
     styles = (ROOT / "styles.css").read_text()

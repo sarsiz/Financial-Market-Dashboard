@@ -3865,26 +3865,16 @@ button[type="submit"],
   font-size: 0.77rem;
 }
 
+/*
+ * Tab panel base. Active state is defined in the compat shim further down
+ * (`display: block`). We removed an earlier `display: grid; animation: reveal`
+ * here because (a) it was overridden by the shim and (b) the translateY reveal
+ * combined with `document.startViewTransition` made each tab activation look
+ * like the panel was "growing into place" — most visible on the Inflation tab.
+ */
 .tab-panel {
   display: none;
-}
-
-.tab-panel.active {
-  display: grid;
-  gap: 14px;
-  animation: reveal 280ms ease;
   min-width: 0;
-}
-
-@keyframes reveal {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
 }
 
 .lab-form label,
@@ -7610,13 +7600,13 @@ body.app-ready .pulse-card {
 .hero-price, .hero-change, .prediction-panel, .hero-chart-card svg {
   will-change: transform;
 }
-.tab-panel {
-  content-visibility: auto;
-  contain-intrinsic-size: 0 500px;
-}
-.tab-panel.active {
-  content-visibility: visible;
-}
+/*
+ * Tab panels: inactive panels use `display:none` (set in the compat shim
+ * below) so they cost zero layout. We intentionally avoid `content-visibility:
+ * auto` + `contain-intrinsic-size` here — the placeholder size mismatched
+ * actual content (notably on the Inflation tab), causing a visible height
+ * jump on activation.
+ */
 
 /* ── Skeleton Loading ─────────────────────────────────────────────────────── */
 @keyframes skeleton-shimmer {
@@ -7709,22 +7699,13 @@ body:not(.detail-mode) .dossier-nav-scroll {
   gap: 6px;
 }
 
-/* Market presets: inline chips instead of stacked cards */
-.preset-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-}
-.preset-pill {
-  padding: 3px 8px;
-  font-size: 0.65rem;
-  border-radius: 5px;
-  flex-direction: row;
-  align-items: center;
-  gap: 4px;
-}
-.preset-pill strong { font-size: 0.68rem; }
-.preset-pill span { font-size: 0.58rem; }
+/*
+ * Market presets: full-width stacked rows, matching the design template.
+ * The earlier inline-chip variant lived here but was already overridden by the
+ * compat-shim block below (`.preset-grid { display: grid }`) — keeping the
+ * stack-style rules in one place stops the cascade fight and lets the rest of
+ * the sidebar breathe.
+ */
 .preset-pill em { display: none; }
 
 /* Hero price: more restrained */
@@ -8160,12 +8141,19 @@ body:not(.detail-mode) .dossier-nav-scroll {
   }
 }
 
-/* Dossier layout polish: keep simple mode balanced and prevent dense labels from colliding. */
+/*
+ * Dossier layout polish.
+ * 12-col grid with uniform spans (3 / 6 / 12 only — all divisors of 12).
+ * `grid-auto-flow: dense` lets a later narrow card slide up into an earlier
+ * row's empty slot — that's what stops a stored drag-order from leaving a
+ * gap next to e.g. Fundamentals when Range Watch ends up further down the
+ * order. With chaotic spans (the old 3/4/6/8/12 mix) `dense` made shapes
+ * jump around visually; with uniform spans it just closes horizontal gaps.
+ */
 .stock-dossier {
-  --dossier-masonry-row: 8px;
   grid-auto-flow: dense;
-  grid-auto-rows: var(--dossier-masonry-row);
-  align-items: start;
+  grid-auto-rows: minmax(178px, auto);
+  align-items: stretch;
 }
 
 .dossier-card,
@@ -8176,7 +8164,6 @@ body:not(.detail-mode) .dossier-nav-scroll {
 .dossier-card {
   contain: layout style;
   container-type: inline-size;
-  grid-row-end: span var(--dossier-row-span, 24);
   height: auto;
   min-height: 0;
   overflow: visible;
@@ -8314,30 +8301,20 @@ body:not(.detail-mode) .dossier-nav-scroll {
   line-height: 1.18;
 }
 
+/*
+ * Simple (non-detail) mode keeps the same 12-col rhythm as detail mode.
+ * Earlier per-id grid-column overrides + `grid-auto-flow: dense` here were
+ * fighting the .dossier-span-* classes set in JS and producing the messy
+ * zig-zag the user saw. We now defer to the span classes so both modes tile
+ * cleanly. Benchmarks (a long horizontal bar strip) stays pinned to full
+ * width as an explicit safety net so any stored card order keeps it on its
+ * own row.
+ */
 body:not(.detail-mode) #stock-dossier {
   grid-template-columns: repeat(12, minmax(0, 1fr));
-  grid-auto-flow: dense;
 }
-
-body:not(.detail-mode) #dossier-day,
-body:not(.detail-mode) #dossier-ma,
-body:not(.detail-mode) #dossier-fundamentals {
-  grid-column: span 4;
-}
-
-body:not(.detail-mode) #dossier-activity {
-  grid-column: 9 / span 4;
-}
-
 body:not(.detail-mode) #dossier-benchmarks {
   grid-column: 1 / -1;
-}
-
-@media (min-width: 1181px) {
-  body.detail-mode #dossier-fundamentals,
-  body.detail-mode #dossier-activity {
-    grid-column: 9 / span 4;
-  }
 }
 
 .ma-dossier-list {
@@ -8387,28 +8364,13 @@ body:not(.detail-mode) #dossier-benchmarks {
   opacity: 0.72;
 }
 
-@media (max-width: 1180px) {
-  body:not(.detail-mode) #dossier-day,
-  body:not(.detail-mode) #dossier-ma,
-  body:not(.detail-mode) #dossier-fundamentals {
-    grid-column: span 6;
-  }
-
-  body:not(.detail-mode) #dossier-activity,
-  body:not(.detail-mode) #dossier-benchmarks {
-    grid-column: 1 / -1;
-  }
-}
-
+/*
+ * Responsive collapse: the `.dossier-span-*` rules at the top of the file
+ * already widen narrow cards on small viewports — we only need to fix the
+ * MA list grid spacing here. Removed older per-id overrides that fought the
+ * span classes.
+ */
 @media (max-width: 900px) {
-  body:not(.detail-mode) #dossier-day,
-  body:not(.detail-mode) #dossier-ma,
-  body:not(.detail-mode) #dossier-fundamentals,
-  body:not(.detail-mode) #dossier-activity,
-  body:not(.detail-mode) #dossier-benchmarks {
-    grid-column: 1 / -1;
-  }
-
   .ma-dossier-list div {
     grid-template-columns: minmax(40px, 0.55fr) minmax(0, 1fr) minmax(52px, 0.7fr);
   }
@@ -9743,7 +9705,11 @@ body.app-ready .pulse-card {
     background: #3c3b6e; left: 0; top: 0;
   }
 
-/* Live app compatibility on top of Claude's generated layout. */
+/* Live app compatibility on top of Claude's generated layout.
+ * Re-points every legacy token (from the first `:root` block at the top of
+ * this file) to a template token so old rules pick up the new palette and
+ * fonts. Add a new alias here whenever a legacy variable shows up in a diff.
+ */
 :root {
   --font-ui: var(--f-ui);
   --font-display: var(--f-ui);
@@ -9754,9 +9720,15 @@ body.app-ready .pulse-card {
   --negative: var(--down);
   --border: var(--line);
   --border-strong: var(--line-strong);
+  --bg: var(--bg-0);
   --bg-elevated: var(--bg-1);
   --bg-strong: var(--bg-2);
   --bg-soft: var(--bg-2);
+  --rose: var(--down);
+  --shadow: none;
+  --surface-veil: var(--bg-1);
+  --surface-card: var(--bg-1);
+  --surface-card-strong: var(--bg-2);
 }
 
 .starfield { display: none; }
@@ -9787,7 +9759,7 @@ body.app-ready .pulse-card {
 }
 
 .shell {
-  grid-template-rows: 48px 28px 1fr 22px;
+  grid-template-rows: 48px 1fr 22px;
 }
 
 .topbar {
@@ -9808,6 +9780,26 @@ body.app-ready .pulse-card {
 .stock-dossier-panel {
   min-height: 120px;
   height: auto;
+}
+
+.news-ribbon {
+  height: 32px;
+  min-height: 32px;
+  max-height: 32px;
+}
+
+.news-ribbon .news-list {
+  min-width: 0;
+}
+
+.news-ribbon .news-list .item {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#market-radar[hidden] {
+  display: none !important;
 }
 .tabs button.tab.active { color: var(--fg); border-bottom-color: var(--amber); }
 .tabs.tabbar {
@@ -9886,11 +9878,19 @@ body.app-ready .pulse-card {
   border-color: rgba(46, 204, 113, 0.3);
 }
 
+/*
+ * Sidebar presets — template-matched stacked rows.
+ * Template: 7px 9px padding, 12px font, 4px gap between rows. The earlier
+ * 36px min-height left too much vertical whitespace per row; the natural
+ * line-box (~26px tall) now lets ~3 more presets fit before scrolling.
+ */
 .sidebar .preset {
-  min-height: 36px;
-  padding: 9px 10px;
-  font-size: 13px;
-  line-height: 1.2;
+  min-height: 0;
+  height: auto;
+  padding: 7px 9px;
+  font-size: 12px;
+  line-height: 1.25;
+  margin-bottom: 0;
 }
 
 .sidebar .preset .pn {
@@ -9901,12 +9901,17 @@ body.app-ready .pulse-card {
 }
 
 .sidebar .preset .pc {
-  font-size: 10.5px;
+  font-size: 10px;
   white-space: nowrap;
 }
 
 .preset-grid { display: grid; grid-template-columns: 1fr; gap: 4px; margin-bottom: 0; }
-.preset-pill.preset { width: 100%; min-height: 36px; height: auto; }
+.preset-pill.preset,
+.sidebar .preset.preset-pill {
+  width: 100%;
+  min-height: 0;
+  height: auto;
+}
 .sidebar .watchlist-save-grid,
 .sidebar .source-panel .micro-note {
   display: none;
@@ -10141,7 +10146,28 @@ body.app-ready .pulse-card {
 .pulse-chip, .event-chip-link { display: block; width: 100%; padding: 7px 9px; border-radius: var(--r-md); background: var(--bg-2); border: 1px solid var(--line); color: var(--fg-mute); text-decoration: none; }
 
 .overview-bottom-content { align-items: start; }
-.overview-bottom-main { display: grid; align-content: start; background: var(--bg-0); }
+.overview-bottom-main {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  align-content: start;
+  background: var(--bg-0);
+}
+.overview-bottom-main > * {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+.overview-bottom-main > #market-discovery {
+  grid-column: span 5;
+  grid-row: 3;
+}
+.overview-bottom-main > #stock-dossier-panel {
+  grid-column: 6 / -1;
+  grid-row: 3;
+}
+.overview-bottom-main > #market-heat-map-panel {
+  grid-column: 1 / -1;
+  grid-row: 4;
+}
 .overview-bottom-side { align-self: start; }
 .market-discovery, .market-heat-map-panel, .stock-dossier-panel { padding: 14px 16px; border-top: 1px solid var(--line); background: var(--bg-0); }
 .market-heat-map-controls, .sector-matrix-controls, .event-control-row { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
@@ -10150,15 +10176,351 @@ body.app-ready .pulse-card {
 .stock-dossier { grid-template-columns: repeat(12, minmax(0, 1fr)); }
 .dossier-card, .market-heat-group, .market-heat-tile, .sector-tile, .event-card, .metric-card, .reason-card { border-radius: var(--r-md); border: 1px solid var(--line); background: var(--bg-1); box-shadow: none; }
 
+.market-heat-map-panel {
+  padding: 14px 16px;
+}
+
+.market-heat-map-heading {
+  align-items: center;
+}
+
+.market-heat-map-heading h3 {
+  font-size: 13px;
+}
+
+.market-heat-map-heading span {
+  color: var(--fg-dim);
+  font-size: 11px;
+}
+
+.market-heat-map-controls {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+#market-heat-map-region,
+#market-heat-map-scope,
+#market-heat-map-size,
+#market-heat-map-limit,
+#market-heat-map-expand {
+  display: none;
+}
+
+.market-heat-map-controls .sector-ctrl-select,
+.market-heat-map-tab {
+  height: 24px;
+  min-height: 24px;
+  border-radius: var(--r-md);
+  font-size: 11px;
+}
+
+.market-heat-map-grid {
+  display: block;
+  max-height: none;
+  overflow: visible;
+  padding: 0;
+  background: transparent;
+  border-radius: 0;
+}
+
+.market-heat-map-grid .heatmap {
+  display: grid;
+  grid-template-columns: repeat(10, minmax(0, 1fr));
+  gap: 2px;
+  margin-top: 12px;
+}
+
+.market-heat-map-grid .heat {
+  appearance: none;
+  border: 0;
+  box-sizing: border-box;
+  position: relative;
+  width: 100%;
+  max-width: 100%;
+  aspect-ratio: 1.4 / 1;
+  border-radius: 2px;
+  padding: 4px 6px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-width: 0;
+  font-family: var(--f-mono);
+  font-size: 9.5px;
+  overflow: hidden;
+  cursor: pointer;
+  text-align: left;
+}
+
+.market-heat-map-grid .heat .hs,
+.market-heat-map-grid .heat .hc {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.market-heat-map-grid .heat .hs {
+  color: rgba(255,255,255,0.95);
+  font-weight: 600;
+}
+
+.market-heat-map-grid .heat .hc {
+  color: rgba(255,255,255,0.78);
+  font-size: 9px;
+}
+
+.market-heat-map-grid .heat:hover {
+  outline: 1px solid var(--fg);
+  outline-offset: -1px;
+}
+
+.market-heat-map-grid .market-heat-tile.is-proxy {
+  border: 1px dashed rgba(255,255,255,0.18);
+}
+
+.market-heat-map-grid .hp-3 { background: #15351f; }
+.market-heat-map-grid .hp-2 { background: #1d4a2b; }
+.market-heat-map-grid .hp-1 { background: #235a35; }
+.market-heat-map-grid .hp-0 { background: #244c30; }
+.market-heat-map-grid .hn-0 { background: #4a2226; }
+.market-heat-map-grid .hn-1 { background: #5b262a; }
+.market-heat-map-grid .hn-2 { background: #722a2e; }
+.market-heat-map-grid .hn-3 { background: #8a2b30; }
+.market-heat-map-grid .hz {
+  background: #1d212a;
+  color: var(--fg-mute) !important;
+}
+
+.market-heat-map-footer {
+  margin-top: 8px;
+  color: var(--fg-mute);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
 .source-mini-list { display: grid; gap: 6px; }
 .source-mini-list span { display: block; padding: 7px 9px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--bg-2); color: var(--fg-mute); font-size: 11px; line-height: 1.35; }
 
 .macro-grid, .methodology-grid, .watchlist-implications-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; background: var(--line); }
 .macro-panel { padding: 14px 16px; background: var(--bg-0); border: 0; border-radius: 0; }
+#inflation .macro-grid {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: start;
+  min-height: 0;
+}
+#inflation {
+  min-height: 0;
+  transform: none !important;
+  transition: none !important;
+}
+#inflation .macro-panel {
+  min-height: 0;
+  transform: none !important;
+  transition: border-color 180ms ease, background 220ms ease, box-shadow 220ms ease;
+}
+#inflation .macro-summary-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+#inflation .macro-analysis-list {
+  grid-template-columns: minmax(0, 1fr);
+}
 .methodology-panel-wide, .sector-matrix-panel, .impact-workspace-panel { grid-column: 1 / -1; }
 
 .statusbar-spacer { margin-left: auto; }
 .status-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--up); margin-right: 6px; }
+
+/* ── Notification bell + dropdown ─────────────────────────────────────────
+ * Replaces the floating bottom-right `.data-flow-bar` and the top-right
+ * stacked `.alert-stack`. Both old surfaces are hidden via `hidden` attr in
+ * index.html; their render functions still exist but the bell takes over
+ * the visible UI. Progress meter is a thin ring around the bell that fills
+ * 0–100% based on in-flight job count. Click toggles the dropdown panel.
+ */
+.notification-host { position: relative; }
+.notification-bell { position: relative; overflow: visible; }
+.notification-bell .bell-icon { position: relative; z-index: 2; }
+.notification-bell .bell-progress {
+  position: absolute; inset: -2px;
+  width: calc(100% + 4px); height: calc(100% + 4px);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 200ms ease;
+  transform: rotate(-90deg);
+}
+.notification-bell.is-busy .bell-progress { opacity: 1; }
+.notification-bell .bell-progress-track { stroke: var(--line); }
+.notification-bell .bell-progress-fill {
+  stroke: var(--amber);
+  stroke-dasharray: 100;
+  stroke-dashoffset: 100;
+  transition: stroke-dashoffset 320ms ease;
+}
+.notification-bell.is-warn .bell-progress-fill { stroke: var(--warn); }
+.notification-bell.is-error .bell-progress-fill { stroke: var(--down); }
+.notification-count {
+  position: absolute;
+  top: -3px; right: -3px;
+  min-width: 13px; height: 13px;
+  padding: 0 3px;
+  background: var(--amber);
+  color: var(--bg-0);
+  border-radius: 999px;
+  font-family: var(--f-mono); font-size: 9px; font-weight: 700; line-height: 13px;
+  text-align: center;
+  z-index: 3;
+}
+.notification-bell.is-error .notification-count { background: var(--down); color: #fff; }
+
+.notification-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  width: 320px;
+  max-height: 420px;
+  overflow-y: auto;
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45);
+  z-index: 50;
+  font-size: 12px;
+}
+.notification-panel[hidden] { display: none; }
+.notification-panel-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+  position: sticky; top: 0;
+  background: var(--bg-1);
+}
+.notification-panel-head strong { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--fg); font-weight: 600; }
+.notification-panel-head span { display: block; font-size: 10.5px; color: var(--fg-dim); margin-top: 1px; font-family: var(--f-mono); }
+.notification-clear {
+  background: transparent; border: 0; outline: 0;
+  color: var(--fg-mute); font: inherit; font-size: 11px;
+  cursor: pointer; padding: 2px 6px; border-radius: 3px;
+}
+.notification-clear:hover { color: var(--fg); background: var(--bg-2); }
+.notification-panel-alerts:empty { display: none; }
+.notification-panel-alerts:empty + .notification-panel-divider { display: none; }
+.notification-panel-divider { height: 1px; background: var(--line); margin: 0; }
+.notification-panel-alerts .npa-item {
+  display: grid; grid-template-columns: 4px 1fr; gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line-soft);
+  align-items: start;
+}
+.notification-panel-alerts .npa-item:last-child { border-bottom: 0; }
+.notification-panel-alerts .npa-dot {
+  width: 4px; align-self: stretch; min-height: 24px;
+  background: var(--amber); border-radius: 2px;
+}
+.notification-panel-alerts .npa-item.is-up .npa-dot { background: var(--up); }
+.notification-panel-alerts .npa-item.is-down .npa-dot { background: var(--down); }
+.notification-panel-alerts .npa-item.is-warn .npa-dot { background: var(--warn); }
+.notification-panel-alerts .npa-body strong {
+  display: block; font-size: 12px; color: var(--fg); font-weight: 600;
+  margin-bottom: 2px;
+}
+.notification-panel-alerts .npa-body span {
+  display: block; font-size: 10.5px; color: var(--fg-mute); line-height: 1.35;
+}
+.notification-panel-alerts .npa-body time {
+  display: block; font-size: 10px; color: var(--fg-dim); margin-top: 3px;
+  font-family: var(--f-mono);
+}
+
+.notification-panel-flow { padding: 8px 12px 10px; }
+.notification-panel-flow:empty { display: none; }
+.notification-panel-flow .npf-row {
+  display: grid; grid-template-columns: 1fr auto; gap: 6px;
+  padding: 5px 0;
+  font-size: 11px;
+  align-items: center;
+}
+.notification-panel-flow .npf-row + .npf-row { border-top: 1px solid var(--line-soft); }
+.notification-panel-flow .npf-label { color: var(--fg-mute); }
+.notification-panel-flow .npf-state {
+  font-family: var(--f-mono); font-size: 10px; font-weight: 600;
+  padding: 1px 6px; border-radius: 3px;
+  border: 1px solid var(--line);
+  color: var(--fg-mute);
+  background: var(--bg-2);
+  white-space: nowrap;
+}
+.notification-panel-flow .npf-state.is-ok { color: var(--up); border-color: rgba(46,204,113,0.3); background: var(--up-soft); }
+.notification-panel-flow .npf-state.is-warn { color: var(--warn); border-color: rgba(247,201,72,0.35); background: rgba(247,201,72,0.08); }
+.notification-panel-flow .npf-state.is-error { color: var(--down); border-color: rgba(239,77,77,0.35); background: var(--down-soft); }
+.notification-panel-flow .npf-state.is-busy { color: var(--amber); border-color: rgba(245,165,36,0.35); background: rgba(245,165,36,0.08); }
+
+/* ── Transient status banner (blocked-source notifications) ───────────── */
+.status-banner {
+  position: fixed;
+  top: 38px;            /* sits just below the 36px topbar */
+  left: 50%;
+  transform: translate(-50%, -100%);
+  min-width: 280px;
+  max-width: min(640px, calc(100% - 32px));
+  padding: 8px 14px;
+  background: var(--bg-1);
+  border: 1px solid var(--warn);
+  border-radius: var(--r-md);
+  color: var(--fg);
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  z-index: 60;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  opacity: 0;
+  transition: transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity 220ms ease;
+}
+.status-banner[hidden] { display: none; }
+.status-banner.is-visible {
+  transform: translate(-50%, 8px);
+  opacity: 1;
+}
+.status-banner.is-error { border-color: var(--down); }
+.status-banner.is-info { border-color: var(--line-strong); }
+.status-banner .sb-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--warn);
+  flex-shrink: 0;
+}
+.status-banner.is-error .sb-dot { background: var(--down); }
+.status-banner.is-info .sb-dot { background: var(--fg-mute); }
+.status-banner strong { font-weight: 600; color: var(--fg); }
+.status-banner span { color: var(--fg-mute); }
+
+/* Hide the legacy floating data-flow-bar + alert-stack now that the bell
+ * dropdown owns these surfaces. Their JS still runs (cheap), the DOM just
+ * doesn't render. */
+.data-flow-bar { display: none !important; }
+.alert-stack { display: none !important; }
+
+/* Dossier nav: action buttons (detail toggle, reset layout) get a neutral
+ * outline treatment so they don't compete with the cyan section-jump pills. */
+.dossier-nav button[data-detail-toggle],
+.dossier-nav button[data-dossier-reset] {
+  background: transparent;
+  border-color: var(--line);
+  color: var(--fg-mute);
+}
+.dossier-nav button[data-detail-toggle]:hover,
+.dossier-nav button[data-dossier-reset]:hover {
+  border-color: var(--line-strong);
+  color: var(--fg);
+  background: var(--bg-2);
+}
+
+/* Notification panel scrollbar: keep it slim and on-theme. */
+.notification-panel::-webkit-scrollbar { width: 6px; }
+.notification-panel::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 3px; }
+.notification-panel::-webkit-scrollbar-track { background: transparent; }
 
 @media (max-width: 1180px) {
   .content, .imp-grid { grid-template-columns: minmax(0, 1fr); }
@@ -10168,9 +10530,271 @@ body.app-ready .pulse-card {
 
 @media (max-width: 780px) {
   body { overflow: auto; }
-  .shell { height: auto; min-height: 100vh; grid-template-rows: auto auto auto 22px; }
+  .shell { height: auto; min-height: 100vh; grid-template-rows: auto auto 22px; }
   .topbar, .body { grid-template-columns: minmax(0, 1fr); }
   .top-tools { display: none; }
   .sidebar { max-height: none; border-right: 0; border-bottom: 1px solid var(--line); }
   .main { overflow: visible; }
+}
+
+/* Accessible single-nav shell and mobile watchlist drawer. */
+.mobile-sidebar-toggle {
+  display: none;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-2);
+  color: var(--fg);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.operations-grid {
+  grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr);
+}
+
+.operations-jobs,
+.operations-runs {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.operation-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-1);
+}
+
+.operation-card strong,
+.operation-run strong {
+  display: block;
+  color: var(--fg);
+}
+
+.operation-card p,
+.operation-run p {
+  margin: 4px 0 0;
+  color: var(--fg-mute);
+  font-size: 12px;
+}
+
+.operation-card button {
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--bg-2);
+  color: var(--fg);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.operation-card button:hover:not(:disabled) {
+  border-color: var(--amber);
+}
+
+.operation-card button:disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
+}
+
+.operation-run {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-1);
+}
+
+.operation-run-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.operation-run-head span,
+.operation-run small {
+  color: var(--fg-mute);
+  font-size: 11px;
+}
+
+.operation-progress {
+  height: 4px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--bg-3);
+}
+
+.operation-progress span {
+  display: block;
+  height: 100%;
+  background: var(--amber);
+}
+
+.operation-run.is-done .operation-progress span {
+  background: var(--up);
+}
+
+.operation-run.is-error {
+  border-color: rgba(239, 77, 77, 0.35);
+}
+
+.topnav-link:focus-visible,
+.mobile-sidebar-toggle:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: 2px;
+}
+
+@media (max-width: 780px) {
+  html,
+  body {
+    width: 100%;
+    min-height: 100%;
+    height: auto;
+    overflow-x: hidden;
+  }
+
+  .shell {
+    width: 100%;
+    min-height: 100vh;
+    height: auto;
+    grid-template-rows: auto 1fr auto;
+  }
+
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: 48px 44px;
+    gap: 0;
+    padding: 0;
+    background: var(--bg-1);
+  }
+
+  .topbar .brand {
+    grid-column: 1;
+    grid-row: 1;
+    min-width: 0;
+    border-right: 0;
+  }
+
+  .mobile-sidebar-toggle {
+    display: inline-flex;
+    grid-column: 2;
+    grid-row: 1;
+    align-self: center;
+    align-items: center;
+    margin-right: 10px;
+  }
+
+  .topnav {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    width: 100%;
+    min-width: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    border-top: 1px solid var(--line-soft);
+    scrollbar-width: none;
+  }
+
+  .topnav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .topnav a {
+    min-height: 44px;
+    line-height: 42px;
+    padding: 0 14px;
+    flex: 0 0 auto;
+  }
+
+  .body.app-shell {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    height: auto;
+  }
+
+  .body.app-shell > .sidebar {
+    display: none;
+    width: 100%;
+    max-height: none;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .body.app-shell > .sidebar.mobile-open {
+    display: flex;
+  }
+
+  .main {
+    width: 100%;
+    min-width: 0;
+    overflow: visible;
+  }
+
+  #global-market-overview.bench {
+    display: flex;
+    width: 100%;
+    overflow-x: auto;
+    scroll-snap-type: x proximity;
+  }
+
+  #global-market-overview .bench-cell {
+    flex: 0 0 min(78vw, 250px);
+    scroll-snap-align: start;
+  }
+
+  .content,
+  .imp-grid,
+  .macro-grid,
+  .operations-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  #overview-board,
+  #overview-spotlight {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  #overview-board > .overview-context-strip {
+    width: 100%;
+    overflow: visible;
+  }
+
+  #overview-spotlight .stock-head-right {
+    width: 100%;
+  }
+
+  .operation-card {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .stock-head,
+  .forecast-cluster,
+  .trade-plan-grid {
+    min-width: 0;
+  }
+
+  .statusbar {
+    position: static;
+    overflow-x: auto;
+  }
 }

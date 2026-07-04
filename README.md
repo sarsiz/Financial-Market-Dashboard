@@ -136,6 +136,10 @@ Then open [http://127.0.0.1:8000](http://127.0.0.1:8000).
 If `8000` is already in use, the server prints the next available local URL.
 You can also choose a port with `python3 server.py --port 8001` or `FINANCIAL_BOARD_PORT=8001 python3 server.py`.
 
+Routine local maintenance is available from the dashboard's **Operations** tab. It exposes only fixed, allowlisted workflows for refreshing data foundations and events, preparing the market graph, and rebuilding the local knowledge base. Development-only evaluation and smoke-test scripts remain command-line tools.
+
+The prioritized follow-on roadmap is documented in [DASHBOARD_IMPROVEMENT_PLAN.md](DASHBOARD_IMPROVEMENT_PLAN.md).
+
 ## Test
 
 ```bash
@@ -375,6 +379,8 @@ This project keeps provider calls on the server side so:
 - `POST /api/watchlists`
 - `POST /api/dashboard`
 - `POST /api/lab`
+- `GET /api/operations`
+- `POST /api/operations/run`
 
 ## Refreshing market event memory
 

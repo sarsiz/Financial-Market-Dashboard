@@ -45,6 +45,8 @@ class TempDatabaseTestCase(unittest.TestCase):
     self.config_patcher.start()
     server.HISTORY_WARMUP_JOBS.clear()
     server.HISTORY_INFLIGHT.clear()
+    server.BACKEND_SCRIPT_JOBS.clear()
+    server.BACKEND_SCRIPT_LAST_RUN.clear()
     server._sector_cache.clear()
     server._quote_cache.clear()
     server._QUOTE_PROVIDER_HEALTH.clear()
@@ -69,8 +71,50 @@ class HistoryCacheTests(TempDatabaseTestCase):
     )
 
     self.assertEqual(saved["localLlmModel"], "Bonsai-8B-1bit")
+    self.assertNotIn("alphaVantageApiKey", saved)
+    self.assertNotIn("fredApiKey", saved)
+    self.assertEqual(self.config_path.stat().st_mode & 0o777, 0o600)
     loaded = server.load_config()
     self.assertEqual(loaded["localLlmModel"], "Bonsai-8B-1bit")
+
+  def test_save_config_preserves_omitted_secrets_and_public_config_redacts_them(self):
+    server.save_config(
+      {
+        "provider": "alpha_vantage",
+        "alphaVantageApiKey": "alpha-secret",
+        "fredApiKey": "fred-secret",
+        "localLlmBaseUrl": "http://127.0.0.1:11434",
+      }
+    )
+    public = server.save_config({"provider": "yahoo", "localLlmBaseUrl": "http://localhost:11434"})
+
+    loaded = server.load_config()
+    self.assertEqual(loaded["alphaVantageApiKey"], "alpha-secret")
+    self.assertEqual(loaded["fredApiKey"], "fred-secret")
+    self.assertTrue(public["alphaVantageConfigured"])
+    self.assertTrue(public["fredConfigured"])
+    self.assertNotIn("alphaVantageApiKey", public)
+    self.assertNotIn("fredApiKey", public)
+
+  def test_local_llm_url_policy_allows_only_loopback_generate_endpoint(self):
+    self.assertTrue(server.is_allowed_local_llm_base_url("http://127.0.0.1:11434"))
+    self.assertTrue(server.is_allowed_local_llm_url("http://localhost:11434/api/generate"))
+    self.assertFalse(server.is_allowed_local_llm_base_url("https://example.com"))
+    self.assertFalse(server.is_allowed_local_llm_url("http://127.0.0.1:11434/other"))
+
+  def test_operator_jobs_are_allowlisted_and_queue_without_raw_commands(self):
+    payload = server.operator_jobs_payload()
+    self.assertEqual(
+      {item["id"] for item in payload["jobs"]},
+      {"refresh-foundations", "refresh-events", "prepare-market-graph", "rebuild-knowledge"},
+    )
+    with self.assertRaises(ValueError):
+      server.start_operator_job("../../arbitrary")
+    with mock.patch.object(server.threading.Thread, "start"):
+      queued = server.start_operator_job("refresh-events")
+    self.assertEqual(queued["status"], "queued")
+    job = server.BACKEND_SCRIPT_JOBS[queued["jobKey"]]
+    self.assertEqual(job["steps"][0]["script"], "refresh_market_events.py")
 
   def test_save_and_load_history_cache_round_trip(self):
     server.save_history_cache(
@@ -779,7 +823,8 @@ class ForecastAndLabTests(unittest.TestCase):
       recommendation["buy"] + recommendation["hold"] + recommendation["sell"],
       100,
     )
-    self.assertIn(recommendation["signal"], {"Buy bias", "Hold bias"})
+    self.assertEqual(recommendation["upside"] + recommendation["base"] + recommendation["downside"], 100)
+    self.assertIn(recommendation["scenarioSignal"], {"Upside-led", "Base-led"})
 
   def test_build_recommendation_neutral_prefers_hold(self):
     recommendation = server.build_recommendation(
@@ -844,7 +889,7 @@ class ForecastAndLabTests(unittest.TestCase):
     self.assertIn("stance", cockpit)
     self.assertGreaterEqual(len(cockpit["facts"]), 4)
     self.assertTrue(cockpit["monitor"])
-    self.assertIn("not direct", " ".join(cockpit["interpretation"]).lower())
+    self.assertIn("not a trading instruction", " ".join(cockpit["interpretation"]).lower())
 
   def test_build_stock_dossier_returns_core_sections_and_sourced_graph(self):
     snapshot = {
@@ -1037,6 +1082,56 @@ class ForecastAndLabTests(unittest.TestCase):
 
     self.assertGreater(backtest["sampleCount"], 0)
     self.assertGreaterEqual(backtest["hitRate"], 0.0)
+
+  def test_build_backtest_excludes_present_day_context(self):
+    history = [100 + index for index in range(24)]
+    seen = []
+
+    def fake_forecast(symbol, quote, summary, window, stress="base", horizon=5, news_count=0):
+      seen.append((dict(quote), dict(summary), stress, news_count))
+      return {"projected": [window[-1] + 1 for _ in range(horizon)]}
+
+    with mock.patch.object(server, "build_forecast", side_effect=fake_forecast):
+      server.build_backtest(
+        "AAPL",
+        history,
+        {"regularMarketPrice": 999, "marketCap": 10**12},
+        {"financialData": {"recommendationKey": "buy"}},
+        horizon=5,
+        stress="riskoff",
+        news_count=12,
+      )
+
+    self.assertTrue(seen)
+    self.assertTrue(all(summary == {} and stress == "base" and news_count == 0 for _, summary, stress, news_count in seen))
+    self.assertTrue(all("marketCap" not in quote for quote, _, _, _ in seen))
+
+  def test_residual_training_skips_unchanged_history(self):
+    backtest = {
+      "sampleCount": 8,
+      "meanReturnBias": 1.25,
+      "residualStd": 2.5,
+    }
+    fingerprint = server.model_training_fingerprint([100, 101, 102, 103], 5)
+    stored = {}
+
+    def load_state(*_args):
+      return dict(stored) if stored else None
+
+    def save_state(_symbol, _interval, _key, payload, _source):
+      stored.clear()
+      stored.update(payload)
+
+    with mock.patch.object(server, "load_derived_insight", side_effect=load_state), mock.patch.object(
+      server, "save_derived_insight", side_effect=save_state
+    ):
+      first = server.update_model_residual_state("AAPL", 5, backtest, fingerprint)
+      second = server.update_model_residual_state("AAPL", 5, backtest, fingerprint)
+
+    self.assertTrue(first["didUpdate"])
+    self.assertFalse(second["didUpdate"])
+    self.assertEqual(second["trainingRuns"], first["trainingRuns"])
+    self.assertEqual(second["status"], "current")
 
   def test_build_academy_payload_contains_summary_cards_and_sources(self):
     snapshot = {

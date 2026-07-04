@@ -160,28 +160,44 @@ const COMPACT_SECTIONS = [
   { id: "comparison", label: "Compare" },
 ];
 
+/*
+ * Dossier layout — 12-column grid with three "shape" classes:
+ *   narrow (span 3)  — vertical stat cards, 4 across a row
+ *   wide   (span 6)  — horizontal tables, 2 across a row
+ *   full   (span 12) — long strips on their own row (bar charts, graphs)
+ *
+ * Default order groups by shape so each row sums to 12 with no gaps:
+ *   Row 1: day(3) + ma(3) + fundamentals(3) + activity(3) = 12   (4 verticals)
+ *   Row 2: peers(6) + consensus(6)                        = 12   (2 mid-horizontals)
+ *   Row 3: benchmarks(12)                                 = 12   (full strip — bar comparison)
+ *   Row 4: links(12)                                      = 12   (full strip — influence graph)
+ *   Row 5: metrics(12)                                    = 12   (full-width metric drawer)
+ *
+ * Users can drag cards into any order; spans are all divisors of 12 so any
+ * stored permutation still tiles cleanly.
+ */
 const DEFAULT_DOSSIER_ORDER = [
   "day",
   "ma",
-  "peers",
-  "benchmarks",
   "fundamentals",
   "activity",
+  "peers",
   "consensus",
+  "benchmarks",
   "links",
   "metrics",
 ];
 
 const DOSSIER_CARD_META = {
   day: { title: "Day snapshot", span: 3, tier: "primary", value: "live" },
-  ma: { title: "Trend stack", span: 4, tier: "primary", value: "predictive" },
+  ma: { title: "Trend stack", span: 3, tier: "primary", value: "predictive" },
+  fundamentals: { title: "Fundamentals", span: 3, tier: "support", value: "supporting" },
+  activity: { title: "Range watch", span: 3, tier: "support", value: "predictive" },
   peers: { title: "Peer comparison", span: 6, tier: "primary", value: "context" },
-  benchmarks: { title: "Benchmark comparison", span: 8, tier: "primary", value: "context" },
-  activity: { title: "Range watch", span: 4, tier: "support", value: "predictive" },
+  consensus: { title: "Expert consensus", span: 6, tier: "support", value: "external" },
+  benchmarks: { title: "Benchmark comparison", span: 12, tier: "primary", value: "context" },
+  links: { title: "Influence graph", span: 12, tier: "support", value: "source" },
   metrics: { title: "Show all metrics", span: 12, tier: "metrics", value: "reference" },
-  fundamentals: { title: "Fundamentals", span: 4, tier: "support", value: "supporting" },
-  consensus: { title: "Expert consensus", span: 4, tier: "support", value: "external" },
-  links: { title: "Influence graph", span: 4, tier: "support", value: "source" },
 };
 
 function dossierCardClass(key, extra = "") {
@@ -268,6 +284,11 @@ const state = {
   sectorStripSectors: [],
   marketHeatMap: null,
   marketHeatMapRequestId: 0,
+  marketHeatMapObserver: null,
+  pendingHeatMapWarmup: null,
+  operations: null,
+  operationsLoading: false,
+  operationsPollTimer: null,
 };
 
 if (state.watchlist.length === 0) {
@@ -684,6 +705,7 @@ function renderRegionPanels() {
   renderMacroEvents();
   renderWatchlistImplications();
   renderComparison();
+  renderOperations();
 }
 
 function liveValueClass(key, value) {
@@ -1083,23 +1105,21 @@ function setupDossierControls(container) {
 }
 
 function relayoutDossierMasonry(container = document.getElementById("stock-dossier")) {
+  /*
+   * The dossier uses a plain row-based 12-col grid where each row equalises to
+   * its tallest card (`grid-auto-rows: minmax(178px, auto)`). The old masonry
+   * pass computed per-card row-spans against a fine 8px row track + dense
+   * packing, which let the browser reorder cards to fill gaps — that's what
+   * made the layout look scrambled. We keep the function for compatibility
+   * with existing call sites (drag reorder, ResizeObserver) but it now just
+   * strips any inline grid-row state from previous runs.
+   */
   if (!container) return;
   const cards = Array.from(container.querySelectorAll("[data-dossier-card]"));
   if (!cards.length) return;
-  const styles = getComputedStyle(container);
-  const rowHeight = Number.parseFloat(styles.getPropertyValue("--dossier-masonry-row")) || 8;
-  const rowGap = Number.parseFloat(styles.rowGap) || 0;
   cards.forEach((card) => {
-    card.style.gridRowEnd = "auto";
+    card.style.gridRowEnd = "";
     card.style.removeProperty("--dossier-row-span");
-  });
-  // Force layout after clearing row spans so scrollHeight reflects content, not the previous packed height.
-  void container.offsetHeight;
-  cards.forEach((card) => {
-    const rawHeight = card.scrollHeight;
-    const span = Math.max(8, Math.ceil((rawHeight + rowGap) / (rowHeight + rowGap)));
-    card.style.setProperty("--dossier-row-span", String(span));
-    card.style.gridRowEnd = `span ${span}`;
   });
 }
 
@@ -1235,12 +1255,21 @@ function renderStockDossier(active) {
         ["Range", "dossier-activity"],
       ]).map(([label, target]) => `<button type="button" data-scroll-target="${target}">${label}</button>`).join("")}
       <button type="button" data-detail-toggle>${state.detailMode ? "Simple dossier" : "Full dossier"}</button>
+      <button type="button" data-dossier-reset title="Reset card order to default">Reset layout</button>
     </div>
   `);
   if (navChanged) {
     nav.querySelectorAll("button").forEach((button) => {
       if (button.dataset.detailToggle !== undefined) {
         button.addEventListener("click", () => setDetailMode(!state.detailMode));
+        return;
+      }
+      if (button.dataset.dossierReset !== undefined) {
+        button.addEventListener("click", () => {
+          state.dossierOrder = [...DEFAULT_DOSSIER_ORDER];
+          try { localStorage.removeItem(STORAGE_KEYS.dossierOrder); } catch {}
+          renderStockDossier(state.dashboard?.active || active);
+        });
         return;
       }
       if (!button.dataset.scrollTarget) return;
@@ -1345,17 +1374,21 @@ function renderStockDossier(active) {
       ${expertOutlook ? `
         <div class="expert-outlook-list">
           <div class="expert-outlook-head">
-            <span>${expertOutlook.sourceLabel || "Web outlook"}</span>
-            <strong>${expertOutlook.label || "External tone"}</strong>
+            <span>${escapeHtml(expertOutlook.sourceLabel || "Web outlook")}</span>
+            <strong>${escapeHtml(expertOutlook.label || "External tone")}</strong>
           </div>
-          ${(expertOutlook.items || []).slice(0, 4).map((item) => `
-            <a href="${item.url}" target="_blank" rel="noreferrer">
-              <span>${item.view}${item.target ? ` · ${item.target}` : ""}</span>
-              <strong>${item.title}</strong>
-              <em>${item.source}</em>
-            </a>
-          `).join("") || `<p class="expert-outlook-empty">Expert outlook links are unavailable right now; the dashboard keeps the prediction context visible and labels this source gap.</p>`}
-          <small>${expertOutlook.note || "External sources require verification."}</small>
+          ${(expertOutlook.items || []).slice(0, 4).map((item) => {
+            const url = safeExternalUrl(item.url);
+            if (!url) return "";
+            return `
+              <a href="${escapeHtml(url)}" target="_blank" rel="noreferrer noopener">
+                <span>${escapeHtml(item.view)}${item.target ? ` · ${escapeHtml(item.target)}` : ""}</span>
+                <strong>${escapeHtml(item.title)}</strong>
+                <em>${escapeHtml(item.source)}</em>
+              </a>
+            `;
+          }).join("") || `<p class="expert-outlook-empty">Expert outlook links are unavailable right now; the dashboard keeps the prediction context visible and labels this source gap.</p>`}
+          <small>${escapeHtml(expertOutlook.note || "External sources require verification.")}</small>
         </div>
       ` : ""}
       `,
@@ -1471,11 +1504,11 @@ function buildShortTermSetup(active = {}, forecast = {}) {
       : confidence < 45 || riskReward < 0.7
         ? "Fragile"
         : "Balanced";
-  const entryLabel = bearishSetup ? "Re-entry watch" : "Entry watch";
-  const entryNote = bearishSetup ? "Better setup needs reclaim or calmer pullback." : "Pullback/support zone, not an order.";
+  const entryLabel = bearishSetup ? "Recovery confirmation" : "Support confirmation";
+  const entryNote = bearishSetup ? "Scenario improves after a reclaim or calmer pullback." : "Observed support zone for scenario monitoring.";
   const upsideNote = bearishSetup ? "Recovery ceiling to watch before trend improves." : `${formatPercent(upsidePct)} to resistance/projection.`;
-  const riskLabel = bearishSetup ? "Breakdown risk" : "Invalidation";
-  const riskNote = bearishSetup ? `${formatPercent(-downsidePct)} to lower risk line.` : `${formatPercent(-downsidePct)} downside buffer.`;
+  const riskLabel = bearishSetup ? "Breakdown threshold" : "Risk threshold";
+  const riskNote = bearishSetup ? `${formatPercent(-downsidePct)} to the lower risk line.` : `${formatPercent(-downsidePct)} scenario buffer.`;
   return {
     currency,
     price,
@@ -1541,8 +1574,8 @@ function renderTradePlanPanel(active, forecast) {
       </div>
     </div>
     <div class="trade-plan-foot">
-      <span>Risk/reward ${setup.riskReward.toFixed(2)}x</span>
-      <span>Scenario support only, not buy/sell advice.</span>
+      <span>Upside/downside ratio ${setup.riskReward.toFixed(2)}x</span>
+      <span>Scenario context only; not a trading instruction.</span>
     </div>
   `;
   setHTMLIfChanged(node, html);
@@ -1712,7 +1745,7 @@ function renderShortHorizonCard(active, forecast) {
 
 function patchHeroSurface(active, forecast, { renderPrediction = true, renderStats = true, renderSparkline = true } = {}) {
   const agreement = forecast.models?.agreement || { label: "Pending", score: 0, summary: "Agreement refreshing." };
-  const recommendation = active.recommendation || { buy: 0, hold: 100, sell: 0, signal: "Refreshing" };
+  const recommendation = active.recommendation || { upside: 0, base: 100, downside: 0, scenarioSignal: "Refreshing" };
   const displayFreshness = quoteFreshnessForDisplay(active);
   setTextIfChanged(document.getElementById("hero-ticker"), `${active.symbol} · ${active.name}`);
   setTextIfChanged(document.getElementById("hero-regime"), active.regime);
@@ -1733,11 +1766,14 @@ function patchHeroSurface(active, forecast, { renderPrediction = true, renderSta
   setTextIfChanged(document.getElementById("forecast-rail-return"), forecastReturnText);
   setClassIfChanged(forecastRangeNode, `forecast-range live-number ${liveValueClass(`hero:${active.symbol}:projection`, forecast.expectedReturn)}`);
   const bsEl = document.getElementById("buy-sell-signal");
-  const bsText = recommendation.signal ? recommendation.signal.replace("bias", "scenario") : "Balanced scenario";
+  const bsText = recommendation.scenarioSignal || recommendation.signal || "Base-led";
   setTextIfChanged(bsEl, bsText);
   const bsDir = forecast.direction?.toLowerCase() || "";
   setClassIfChanged(bsEl, bsDir === "bullish" ? "bullish" : bsDir === "bearish" ? "bearish" : "neutral");
-  setHTMLIfChanged(document.getElementById("buy-sell-breakdown"), `<span class="bsb-buy">▲ ${recommendation.buy ?? 0}%</span><span class="bsb-hold">― ${recommendation.hold ?? 100}%</span><span class="bsb-sell">▼ ${recommendation.sell ?? 0}%</span>`);
+  const upside = recommendation.upside ?? recommendation.buy ?? 0;
+  const base = recommendation.base ?? recommendation.hold ?? 100;
+  const downside = recommendation.downside ?? recommendation.sell ?? 0;
+  setHTMLIfChanged(document.getElementById("buy-sell-breakdown"), `<span class="bsb-buy">Upside ${upside}%</span><span class="bsb-hold">Base ${base}%</span><span class="bsb-sell">Downside ${downside}%</span>`);
   setTextIfChanged(document.getElementById("model-agreement-note"), `${agreement.summary} Score ${Number(agreement.score || 0).toFixed(0)}/100.`);
   setTextIfChanged(document.getElementById("quote-source-note"), quoteSourceDisplayText(active, displayFreshness));
   const overviewMetaItems = [
@@ -2263,7 +2299,7 @@ function buildPendingActive(symbol) {
       ...emptyForecastPayload(),
       ...(watchItem?.price !== undefined ? { expectedReturn: 0 } : {}),
     },
-    recommendation: { buy: 0, hold: 100, sell: 0, signal: "Refreshing" },
+    recommendation: { upside: 0, base: 100, downside: 0, scenarioSignal: "Refreshing" },
     classicQuant: {
       summary: "Classic quant readings are refreshing for the new active ticker.",
       cards: [],
@@ -2594,6 +2630,11 @@ function ensureDataFlowShell(node) {
 }
 
 function renderDataFlowBar({ skipAutoHide = false } = {}) {
+  // Mirror updates into the new notification bell + panel. The bell is the
+  // visible surface now; the floating bar is hidden via CSS but its render
+  // function still runs cheaply so its sub-components (auto-hide timer,
+  // history-progress polls) keep working.
+  renderNotificationCenter();
   const node = document.getElementById("data-flow-bar");
   if (!node || !state.dataFlow) return;
   if (state.dataFlow.x !== null && state.dataFlow.y !== null) {
@@ -2773,9 +2814,213 @@ function renderAlerts() {
 
 function queueAlert(symbol, direction, message) {
   const id = `${symbol}-${direction}-${Date.now()}`;
-  state.alerts = [{ id, symbol, direction, message }].concat(state.alerts).slice(0, 4);
+  state.alerts = [{ id, symbol, direction, message, createdAt: Date.now() }].concat(state.alerts).slice(0, 8);
   renderAlerts();
+  renderNotificationCenter();
   window.setTimeout(() => dismissAlert(id), 9000);
+}
+
+/* ── Notification bell + panel ──────────────────────────────────────────────
+ * Consolidates the old `.alert-stack` toasts and the floating `.data-flow-bar`
+ * into a single top-right surface:
+ *   - Bell icon shows an amber count badge for live alerts.
+ *   - Thin ring around the bell shows backend job progress (0–100%).
+ *   - Click opens a dropdown with alerts (top) + flow rows (bottom).
+ * A separate `showStatusBanner(text, kind)` renders the transient horizontal
+ * banner under the topbar for blocked-source notices that auto-dismiss.
+ */
+function renderNotificationCenter() {
+  renderNotificationBell();
+  if (!document.getElementById("notification-panel")?.hidden) {
+    renderNotificationPanel();
+  }
+  detectBlockedProviders();
+}
+
+function renderNotificationBell() {
+  const bell = document.getElementById("notification-bell");
+  if (!bell) return;
+  const jobs = (typeof dataFlowJobs === "function" ? dataFlowJobs() : []) || [];
+  const activeJobs = jobs.filter((job) => ["queued", "running", "connecting", "retry"].includes(String(job.status).toLowerCase()));
+  const errorJobs = jobs.filter((job) => String(job.status).toLowerCase() === "error");
+  const readiness = jobs.filter((job) => job.readiness);
+  const readinessProgress = readiness.length
+    ? Math.round(readiness.reduce((sum, job) => sum + Number(job.progress || 0), 0) / readiness.length)
+    : 100;
+  const readinessDone = readiness.length > 0 && readiness.every((job) => ["done", "ready"].includes(String(job.status).toLowerCase()));
+  const progress = readinessDone ? 100 : Math.min(readinessProgress, 99);
+  const busy = activeJobs.length > 0 || (!readinessDone && readiness.length > 0);
+  const alertCount = (state.alerts || []).length;
+  const badgeCount = alertCount + errorJobs.length;
+  bell.classList.toggle("is-busy", busy);
+  bell.classList.toggle("is-warn", errorJobs.length > 0 && errorJobs.length < jobs.length / 2);
+  bell.classList.toggle("is-error", errorJobs.length > 0 && errorJobs.length >= Math.max(1, jobs.length / 2));
+  const fill = bell.querySelector(".bell-progress-fill");
+  if (fill) fill.style.strokeDashoffset = String(100 - progress);
+  const countNode = document.getElementById("notification-count");
+  if (countNode) {
+    if (badgeCount > 0) {
+      setTextIfChanged(countNode, String(Math.min(badgeCount, 99)));
+      countNode.hidden = false;
+    } else {
+      countNode.hidden = true;
+    }
+  }
+  bell.title = busy
+    ? `Backend ${progress}% · ${activeJobs.length} active`
+    : alertCount
+      ? `${alertCount} alert${alertCount > 1 ? "s" : ""}`
+      : "Notifications";
+}
+
+function renderNotificationPanel() {
+  const panel = document.getElementById("notification-panel");
+  if (!panel) return;
+  const alertsHost = document.getElementById("notification-panel-alerts");
+  const flowHost = document.getElementById("notification-panel-flow");
+  const summary = document.getElementById("notification-panel-summary");
+  const jobs = (typeof dataFlowJobs === "function" ? dataFlowJobs() : []) || [];
+  const readiness = jobs.filter((job) => job.readiness);
+  const readinessProgress = readiness.length
+    ? Math.round(readiness.reduce((sum, job) => sum + Number(job.progress || 0), 0) / readiness.length)
+    : 100;
+  if (summary) {
+    const errorJobs = jobs.filter((job) => String(job.status).toLowerCase() === "error");
+    setTextIfChanged(
+      summary,
+      errorJobs.length
+        ? `${errorJobs.length} source${errorJobs.length > 1 ? "s" : ""} blocked · backend ${readinessProgress}%`
+        : `Backend ${readinessProgress}% · ${jobs.length} stage${jobs.length === 1 ? "" : "s"}`
+    );
+  }
+  if (alertsHost) {
+    const alerts = state.alerts || [];
+    if (!alerts.length) {
+      setHTMLIfChanged(alertsHost, "");
+    } else {
+      setHTMLIfChanged(
+        alertsHost,
+        alerts.map((alert) => {
+          const dirClass = alert.direction === "up" ? "is-up" : alert.direction === "down" ? "is-down" : "is-warn";
+          const action = alert.direction === "up" ? "surged" : alert.direction === "down" ? "slipped" : "update";
+          const when = alert.createdAt ? new Date(alert.createdAt).toLocaleTimeString() : "";
+          return `
+            <div class="npa-item ${dirClass}" data-alert-id="${escapeHtml(alert.id)}">
+              <div class="npa-dot" aria-hidden="true"></div>
+              <div class="npa-body">
+                <strong>${escapeHtml(alert.symbol)} ${action}</strong>
+                <span>${escapeHtml(alert.message)}</span>
+                ${when ? `<time>${escapeHtml(when)}</time>` : ""}
+              </div>
+            </div>
+          `;
+        }).join("")
+      );
+    }
+  }
+  if (flowHost) {
+    if (!jobs.length) {
+      setHTMLIfChanged(flowHost, `<div class="npf-row"><span class="npf-label">No active jobs</span><span class="npf-state is-ok">idle</span></div>`);
+    } else {
+      setHTMLIfChanged(
+        flowHost,
+        jobs.slice(0, 8).map((job) => {
+          const status = String(job.status || "").toLowerCase();
+          const stateClass = status === "error" ? "is-error"
+            : status === "done" || status === "ready" || status === "live" ? "is-ok"
+            : status === "retry" || status === "queued" || status === "connecting" || status === "running" ? "is-busy"
+            : "is-warn";
+          const stateLabel = status || (job.progress != null ? `${job.progress}%` : "idle");
+          return `<div class="npf-row"><span class="npf-label">${escapeHtml(job.label || "Job")}</span><span class="npf-state ${stateClass}">${escapeHtml(stateLabel)}</span></div>`;
+        }).join("")
+      );
+    }
+  }
+}
+
+function bindNotificationBell() {
+  const bell = document.getElementById("notification-bell");
+  const panel = document.getElementById("notification-panel");
+  if (!bell || !panel || bell.dataset.bound === "1") return;
+  bell.dataset.bound = "1";
+  const closePanel = () => {
+    panel.hidden = true;
+    bell.setAttribute("aria-expanded", "false");
+  };
+  const openPanel = () => {
+    renderNotificationPanel();
+    panel.hidden = false;
+    bell.setAttribute("aria-expanded", "true");
+  };
+  bell.addEventListener("click", (event) => {
+    event.stopPropagation();
+    if (panel.hidden) openPanel(); else closePanel();
+  });
+  document.addEventListener("click", (event) => {
+    if (panel.hidden) return;
+    if (!(event.target instanceof Node)) return;
+    if (panel.contains(event.target) || bell.contains(event.target)) return;
+    closePanel();
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !panel.hidden) closePanel();
+  });
+  const clearBtn = panel.querySelector(".notification-clear");
+  if (clearBtn) {
+    clearBtn.addEventListener("click", () => {
+      state.alerts = [];
+      renderAlerts();
+      renderNotificationCenter();
+    });
+  }
+}
+
+const STATUS_BANNER_TIMERS = new Map();
+function showStatusBanner(message, { kind = "warn", duration = 4500, key = "" } = {}) {
+  const banner = document.getElementById("status-banner");
+  if (!banner || !message) return;
+  const bannerKey = key || message;
+  // Dedupe: same message within 8s gets ignored to avoid spam.
+  const existingTimer = STATUS_BANNER_TIMERS.get(bannerKey);
+  if (existingTimer) window.clearTimeout(existingTimer);
+  banner.classList.remove("is-error", "is-warn", "is-info");
+  banner.classList.add(`is-${kind}`);
+  banner.innerHTML = `<span class="sb-dot" aria-hidden="true"></span><strong>${escapeHtml(message)}</strong>`;
+  banner.hidden = false;
+  // Force reflow so the transform animates from off-screen
+  void banner.offsetHeight;
+  banner.classList.add("is-visible");
+  const timer = window.setTimeout(() => {
+    banner.classList.remove("is-visible");
+    window.setTimeout(() => {
+      // Only hide if no later banner replaced it
+      if (!banner.classList.contains("is-visible")) banner.hidden = true;
+    }, 260);
+    STATUS_BANNER_TIMERS.delete(bannerKey);
+  }, duration);
+  STATUS_BANNER_TIMERS.set(bannerKey, timer);
+}
+
+let lastBlockedProviderSnapshot = new Set();
+function detectBlockedProviders() {
+  // Watch state.dataFlow.history.quoteProviders for newly-failed entries and
+  // surface them via the status banner. Each provider only triggers once
+  // until it recovers (so we don't re-banner on every poll while still down).
+  const providers = state.dataFlow?.history?.quoteProviders || [];
+  const blockedNow = new Set();
+  providers.forEach((entry) => {
+    if (!entry || !entry.id) return;
+    const status = String(entry.status || "").toLowerCase();
+    if (status === "error" || status === "blocked") {
+      blockedNow.add(entry.id);
+      if (!lastBlockedProviderSnapshot.has(entry.id)) {
+        const label = entry.label || entry.id;
+        const next = entry.fallback || "switching to alternate source";
+        showStatusBanner(`${label} unreachable — ${next}`, { kind: "warn", key: `block:${entry.id}` });
+      }
+    }
+  });
+  lastBlockedProviderSnapshot = blockedNow;
 }
 
 function processRecentTickerAlerts(quotes = []) {
@@ -3389,7 +3634,7 @@ function renderMethodology() {
             ${item.cadence ? `<span>${item.cadence}</span>` : ""}
             ${item.phase ? `<span>${item.phase}</span>` : ""}
           </div>
-          ${item.url ? `<a class="methodology-card-source" href="${item.url}" target="_blank" rel="noreferrer">↗ ${item.sourceTitle || "Source"}</a>` : (item.sourceTitle ? `<small class="methodology-card-source-text">${item.sourceTitle}</small>` : "")}
+          ${item.url ? `<a class="methodology-card-source" href="${item.url}" target="_blank" rel="noreferrer noopener">↗ ${item.sourceTitle || "Source"}</a>` : (item.sourceTitle ? `<small class="methodology-card-source-text">${item.sourceTitle}</small>` : "")}
         </div>
       `,
     )
@@ -3718,7 +3963,7 @@ function renderMethodologyPapers(papers) {
       <div class="methodology-paper-factors">
         ${(p.factors || []).map((f) => `<span>${f}</span>`).join("")}
       </div>
-      ${p.url ? `<a class="methodology-paper-link" href="${p.url}" target="_blank" rel="noreferrer">↗ arxiv / doi</a>` : ""}
+      ${p.url ? `<a class="methodology-paper-link" href="${p.url}" target="_blank" rel="noreferrer noopener">↗ arxiv / doi</a>` : ""}
     </div>
   `).join("");
 }
@@ -3788,7 +4033,7 @@ function renderImpactGraphDetail(nodeData = null) {
         ${nodeData.status ? `<span>${nodeData.status}</span>` : ""}
         ${nodeData.asOf ? `<span>${formatEventDateTime(nodeData.asOf)}</span>` : ""}
       </div>
-      ${nodeData.sourceUrl ? `<a class="project-source-link" href="${nodeData.sourceUrl}" target="_blank" rel="noreferrer">${nodeData.sourceLabel || "Source"}</a>` : ""}
+      ${nodeData.sourceUrl ? `<a class="project-source-link" href="${nodeData.sourceUrl}" target="_blank" rel="noreferrer noopener">${nodeData.sourceLabel || "Source"}</a>` : ""}
     </div>
   `;
 }
@@ -4249,6 +4494,43 @@ function renderBanner() {
     setClassIfChanged(sourceNote, toneClass);
   }
 
+  // Populate the static breaking-news ribbon (template `.news-ribbon`).
+  // Same source as the ticker tape, but rendered as a static flex row of
+  // `<span class="item"><b>{source}</b> {title}</span>` so it matches the
+  // design template (no marquee — the tape already handles scrolling).
+  const ribbonList = document.querySelector(".news-ribbon .news-list");
+  if (ribbonList) {
+    const ribbonItems = useStaticLoadingHeadline
+      ? [
+          { source: "Radar", title: "Live headlines loading from source-labeled feeds" },
+          { source: "Macro", title: "Bonds and inflation context stays visible while feeds refresh" },
+          { source: "Cache", title: "Local history remains available for older series" },
+          { source: "Risk", title: "Sentiment tone will update when radar data arrives" },
+        ]
+      : headlineItems.slice(0, 4);
+    const ribbonSignature = ribbonItems.map((item) => `${item.source}|${item.title}`).join(" | ");
+    if (ribbonList.dataset.signature !== ribbonSignature) {
+      ribbonList.dataset.signature = ribbonSignature;
+      setHTMLIfChanged(
+        ribbonList,
+        ribbonItems
+          .map((item) => {
+            const title = escapeHtml(item.title);
+            const source = item.source ? `<b>${escapeHtml(item.source)}</b> ` : "";
+            return `<span class="item">${source}${title}</span>`;
+          })
+          .join("")
+      );
+    }
+  }
+  const ribbonRisk = document.getElementById("news-ribbon-risk");
+  if (ribbonRisk) {
+    const sentiment = radar.sentiment || {};
+    const score = Number(sentiment.score || 0);
+    const riskLabel = sentiment.risk
+      || (score < -0.2 ? "Risk-off" : score > 0.2 ? "Risk-on" : "Balanced");
+    setTextIfChanged(ribbonRisk, riskLabel);
+  }
 }
 
 function renderEventFeed() {
@@ -4261,7 +4543,13 @@ function renderEventFeed() {
     ? [...state.eventResult.items].sort((a, b) => String(b.publishedAt || "").localeCompare(String(a.publishedAt || ""))).slice(0, 3)
     : [...(state.dashboard?.radar?.items || [])].slice(0, 3);
   setHTMLIfChanged(list, items.length
-    ? items.map((item) => `<a class="event-chip-link" href="${item.url || "#"}" target="_blank" rel="noreferrer">${item.title || "Update"}</a>`).join("")
+    ? items.map((item) => {
+        const url = safeExternalUrl(item.url);
+        const title = escapeHtml(item.title || "Update");
+        return url
+          ? `<a class="event-chip-link" href="${escapeHtml(url)}" target="_blank" rel="noreferrer noopener">${title}</a>`
+          : `<span class="event-chip-link">${title}</span>`;
+      }).join("")
     : "");
 }
 
@@ -4278,7 +4566,7 @@ function renderPulse() {
       : [];
   if (!items.length) { setHTMLIfChanged(grid, ""); return; }
   setHTMLIfChanged(grid, items
-    .map((item) => `<span class="pulse-chip ${typeof item.positive === "boolean" ? (item.positive ? "positive" : "negative") : ""}">${item.label}: <strong>${item.value}</strong></span>`)
+    .map((item) => `<span class="pulse-chip ${typeof item.positive === "boolean" ? (item.positive ? "positive" : "negative") : ""}">${escapeHtml(item.label)}: <strong>${escapeHtml(item.value)}</strong></span>`)
     .join(""));
 }
 
@@ -4483,16 +4771,16 @@ function renderMacroEvents() {
       (item) => `
         <div class="event-card">
           <div class="event-card-header">
-            <strong>${item.title}</strong>
-            <span class="event-tag">${String(item.category || "event").toUpperCase()}</span>
+            <strong>${escapeHtml(item.title)}</strong>
+            <span class="event-tag">${escapeHtml(String(item.category || "event").toUpperCase())}</span>
           </div>
-          <p>${item.source ? `Source: ${item.source} • ` : ""}${formatEventDateTime(item.publishedAt)}${item.sourceType ? ` • ${item.sourceType.replace(/_/g, " ")}` : ""}${isFreshUpdate(item.publishedAt) ? ` • ${liveBadgeMarkup()}` : ""}</p>
+          <p>${item.source ? `Source: ${escapeHtml(item.source)} • ` : ""}${escapeHtml(formatEventDateTime(item.publishedAt))}${item.sourceType ? ` • ${escapeHtml(item.sourceType.replace(/_/g, " "))}` : ""}${isFreshUpdate(item.publishedAt) ? ` • ${liveBadgeMarkup()}` : ""}</p>
         </div>
       `,
     )
     .join("");
   const monitorCards = (region.analysis?.monitorNext || [])
-    .map((item) => `<div class="reason-card"><span class="analysis-tag monitor">Monitor</span><strong>Monitor</strong><p>${item}</p></div>`);
+    .map((item) => `<div class="reason-card"><span class="analysis-tag monitor">Monitor</span><strong>Monitor</strong><p>${escapeHtml(item)}</p></div>`);
   const calendarCards = (region.calendar?.items || [])
     .slice(0, 4)
     .map(
@@ -4500,7 +4788,7 @@ function renderMacroEvents() {
         <div class="reason-card">
           <span class="analysis-tag fact">Fact</span>
           <strong>Calendar</strong>
-          <p>${item.title}${item.date ? ` • ${item.date}` : ""}${item.source ? ` • ${item.source}` : ""}</p>
+          <p>${escapeHtml(item.title)}${item.date ? ` • ${escapeHtml(item.date)}` : ""}${item.source ? ` • ${escapeHtml(item.source)}` : ""}</p>
         </div>
       `,
     );
@@ -4727,7 +5015,7 @@ function renderWatchlistImplications() {
                           }
                           ${
                             project.sourceUrl
-                              ? `<a class="project-source-link" href="${project.sourceUrl}" target="_blank" rel="noreferrer">${project.sourceLabel || "Source"}</a>`
+                              ? `<a class="project-source-link" href="${project.sourceUrl}" target="_blank" rel="noreferrer noopener">${project.sourceLabel || "Source"}</a>`
                               : ""
                           }
                         </article>
@@ -4776,6 +5064,101 @@ function renderComparison() {
       .join("")}
   `;
 }
+
+
+function renderOperations() {
+  const summary = document.getElementById("operations-summary");
+  const jobsNode = document.getElementById("operations-jobs");
+  const runsNode = document.getElementById("operations-runs");
+  if (!summary || !jobsNode || !runsNode) return;
+  const payload = state.operations;
+  if (!payload) {
+    setTextIfChanged(summary, state.operationsLoading ? "Loading maintenance status…" : "Maintenance status is not loaded.");
+    setHTMLIfChanged(jobsNode, "");
+    setHTMLIfChanged(runsNode, "");
+    return;
+  }
+  const activeRuns = payload.active || [];
+  setTextIfChanged(
+    summary,
+    activeRuns.length
+      ? `${activeRuns.length} maintenance workflow running. Only one bounded job runs at a time.`
+      : "No maintenance workflow is running. Automatic macro and universe refreshes remain enabled."
+  );
+  setHTMLIfChanged(
+    jobsNode,
+    (payload.jobs || []).map((job) => `
+      <article class="operation-card">
+        <div>
+          <strong>${escapeHtml(job.label)}</strong>
+          <p>${escapeHtml(job.description)}</p>
+        </div>
+        <button type="button" data-operation-job="${escapeHtml(job.id)}" ${activeRuns.length ? "disabled" : ""}>Run now</button>
+      </article>
+    `).join("")
+  );
+  const runs = [...(payload.runs || [])].reverse().slice(0, 8);
+  setHTMLIfChanged(
+    runsNode,
+    runs.length
+      ? runs.map((run) => {
+          const total = Math.max(1, Number(run.total || 0));
+          const completed = Math.min(total, Number(run.completed || 0));
+          const percent = Math.round((completed / total) * 100);
+          const errors = (run.errors || []).slice(0, 2);
+          return `
+            <article class="operation-run is-${escapeHtml(run.status || "idle")}">
+              <div class="operation-run-head">
+                <strong>${escapeHtml(run.label || run.jobId || run.reason || "Maintenance")}</strong>
+                <span>${escapeHtml(run.status || "idle")} · ${percent}%</span>
+              </div>
+              <div class="operation-progress"><span style="width:${percent}%"></span></div>
+              ${(run.steps || []).map((step) => `<small>${escapeHtml(step.label || step.id || "Step")} · ${escapeHtml(step.status || "queued")}</small>`).join("")}
+              ${errors.map((error) => `<p>${escapeHtml(error)}</p>`).join("")}
+            </article>
+          `;
+        }).join("")
+      : `<p class="micro-note">No maintenance runs in this server session.</p>`
+  );
+  jobsNode.querySelectorAll("[data-operation-job]").forEach((button) => {
+    if (button.dataset.bound === "1") return;
+    button.dataset.bound = "1";
+    button.addEventListener("click", () => runOperation(button.dataset.operationJob));
+  });
+}
+
+
+async function loadOperations({ silent = true } = {}) {
+  if (!silent) setStatus("Loading operations");
+  state.operationsLoading = true;
+  renderOperations();
+  try {
+    state.operations = await api("/api/operations", { timeoutMs: 8000 });
+  } finally {
+    state.operationsLoading = false;
+    renderOperations();
+  }
+  window.clearTimeout(state.operationsPollTimer);
+  if ((state.operations?.active || []).length) {
+    state.operationsPollTimer = window.setTimeout(() => {
+      loadOperations({ silent: true }).catch(logNonAbort);
+    }, 1800);
+  }
+}
+
+
+async function runOperation(jobId) {
+  if (!jobId || state.operationsLoading) return;
+  setStatus("Starting maintenance");
+  await api("/api/operations/run", {
+    method: "POST",
+    timeoutMs: 10000,
+    body: JSON.stringify({ jobId }),
+  });
+  await loadOperations({ silent: true });
+  flashStatus("Maintenance queued", 1400);
+}
+
 
 function renderLab() {
   if (!document.getElementById("lab-chart")) return;
@@ -4908,7 +5291,7 @@ function renderAcademy() {
     )
     .map(
       (item) => `
-        <a class="research-card" href="${item.url}" target="_blank" rel="noreferrer">
+        <a class="research-card" href="${item.url}" target="_blank" rel="noreferrer noopener">
           <span>${item.track} · ${item.year}</span>
           <strong>${item.title}</strong>
           <p>${item.why}</p>
@@ -4932,15 +5315,15 @@ function renderAcademy() {
 
   academyBrief.innerHTML = `
     <div class="academy-brief-card">
-      <strong>${academyDetail.symbol} Explainer</strong>
-      <p>${academyDetail.summary}</p>
+      <strong>${escapeHtml(academyDetail.symbol)} Explainer</strong>
+      <p>${escapeHtml(academyDetail.summary)}</p>
     </div>
     ${(academyDetail.cards || [])
       .map(
         (item) => `
           <div class="academy-brief-card">
-            <strong>${item.title}</strong>
-            <p>${item.body}</p>
+            <strong>${escapeHtml(item.title)}</strong>
+            <p>${escapeHtml(item.body)}</p>
           </div>
         `,
       )
@@ -4949,11 +5332,11 @@ function renderAcademy() {
 
   academySources.innerHTML = (academyDetail.sources || []).length
     ? (academyDetail.sources || [])
-        .map(
-          (item) => `
-            <a class="academy-source-pill" href="${item.url}" target="_blank" rel="noreferrer">${item.title || extractDomainLabel(item.url) || "Source"}</a>
-          `,
-        )
+        .map((item) => {
+          const url = safeExternalUrl(item.url);
+          if (!url) return "";
+          return `<a class="academy-source-pill" href="${escapeHtml(url)}" target="_blank" rel="noreferrer noopener">${escapeHtml(item.title || extractDomainLabel(url) || "Source")}</a>`;
+        })
         .join("")
     : `<div class="academy-source-note">No live web sources were returned for this ticker.</div>`;
 }
@@ -4974,7 +5357,7 @@ function renderResearch() {
   }
 
   if (state.researchError) {
-    summary.innerHTML = `<div class="research-state-card"><strong>Research unavailable</strong><p>${state.researchError}</p></div>`;
+    summary.innerHTML = `<div class="research-state-card"><strong>Research unavailable</strong><p>${escapeHtml(state.researchError)}</p></div>`;
     sources.innerHTML = `<div class="source-card"><strong>Retry ready</strong><p>Adjust the query or rerun with web search enabled.</p></div>`;
     return;
   }
@@ -4988,15 +5371,15 @@ function renderResearch() {
   const { answer, takeaways = [], context = {}, webResults = [] } = state.researchResult;
   summary.innerHTML = `
     <div class="research-summary-head">
-      <h4>${context.symbol ? `${context.symbol} Research Brief` : "Research Brief"}</h4>
+      <h4>${context.symbol ? `${escapeHtml(context.symbol)} Research Brief` : "Research Brief"}</h4>
       <div class="research-context-pills">
-        ${context.symbol ? `<span>${context.symbol}</span>` : ""}
-        ${context.regime ? `<span>${context.regime}</span>` : ""}
+        ${context.symbol ? `<span>${escapeHtml(context.symbol)}</span>` : ""}
+        ${context.regime ? `<span>${escapeHtml(context.regime)}</span>` : ""}
         <span>${state.researchResult.llmUsed ? "Bonsai assisted" : "Rules + context"}</span>
       </div>
     </div>
-    <p>${answer}</p>
-    ${takeaways.length ? `<ul>${takeaways.map((item) => `<li>${item}</li>`).join("")}</ul>` : ""}
+    <p>${escapeHtml(answer)}</p>
+    ${takeaways.length ? `<ul>${takeaways.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>` : ""}
   `;
 
   if (!webResults.length) {
@@ -5005,14 +5388,16 @@ function renderResearch() {
   }
 
   sources.innerHTML = webResults
-    .map(
-      (item) => `
+    .map((item) => {
+      const url = safeExternalUrl(item.url);
+      if (!url) return "";
+      return `
         <div class="source-card">
-          <strong>${item.title || "Result"}</strong>
-          <p><a href="${item.url}" target="_blank" rel="noreferrer">${extractDomainLabel(item.url) || item.url}</a></p>
+          <strong>${escapeHtml(item.title || "Result")}</strong>
+          <p><a href="${escapeHtml(url)}" target="_blank" rel="noreferrer noopener">${escapeHtml(extractDomainLabel(url) || url)}</a></p>
         </div>
-      `,
-    )
+      `;
+    })
     .join("");
 }
 
@@ -5043,7 +5428,8 @@ function setDetailMode(enabled) {
   state.detailMode = Boolean(enabled);
   localStorage.setItem(STORAGE_KEYS.detailMode, state.detailMode ? "1" : "0");
   applyDetailMode();
-  const activeTab = document.querySelector(".tab.active")?.dataset?.tab;
+  const activeTab = document.querySelector(".topnav-link.active")?.dataset?.target
+    || document.querySelector(".tab.active")?.dataset?.tab;
   if (!state.detailMode && detailOnlyTabIds().has(activeTab)) {
     activateTab("overview");
   }
@@ -5206,27 +5592,37 @@ function renderCompactMenu() {
 }
 
 function activateTab(target) {
-  const run = () => {
-    document.querySelectorAll(".tab").forEach((node) => node.classList.toggle("active", node.dataset.tab === target));
-    document.querySelectorAll(".topnav-link").forEach((node) => node.classList.toggle("active", node.dataset.target === target));
-    document.querySelectorAll(".tab-panel").forEach((panel) => panel.classList.toggle("active", panel.id === target));
-    if (target === "watchlist-implications") {
-      renderWatchlistImplications();
-      window.setTimeout(() => {
-        if (state.pendingImpactGraph) {
-          const pending = state.pendingImpactGraph;
-          state.pendingImpactGraph = null;
-          renderImpactGraphWorkspace(pending);
-        } else {
-          relayoutImpactGraph();
-        }
-      }, 120);
-    }
-  };
-  if (document.startViewTransition) {
-    document.startViewTransition(run);
-  } else {
-    run();
+  document.querySelectorAll(".tab").forEach((node) => {
+    const active = node.dataset.tab === target;
+    node.classList.toggle("active", active);
+    node.setAttribute("aria-selected", active ? "true" : "false");
+    node.tabIndex = active ? 0 : -1;
+  });
+  document.querySelectorAll(".topnav-link").forEach((node) => {
+    const active = node.dataset.target === target;
+    node.classList.toggle("active", active);
+    node.setAttribute("aria-selected", active ? "true" : "false");
+    node.tabIndex = active ? 0 : -1;
+  });
+  document.querySelectorAll(".tab-panel").forEach((panel) => {
+    const active = panel.id === target;
+    panel.classList.toggle("active", active);
+    panel.hidden = !active;
+  });
+  if (target === "watchlist-implications") {
+    renderWatchlistImplications();
+    window.setTimeout(() => {
+      if (state.pendingImpactGraph) {
+        const pending = state.pendingImpactGraph;
+        state.pendingImpactGraph = null;
+        renderImpactGraphWorkspace(pending);
+      } else {
+        relayoutImpactGraph();
+      }
+    }, 120);
+  }
+  if (target === "operations") {
+    loadOperations({ silent: true }).catch(logNonAbort);
   }
 }
 
@@ -5260,6 +5656,7 @@ function renderCorePanels() {
     renderMethodology();
     renderWatchlistImplications();
     renderComparison();
+    renderOperations();
     setupScrollReveal();
   }, 200);
 }
@@ -5446,7 +5843,12 @@ async function loadConfig() {
   setStatus("Loading config");
   state.config = await api("/api/config");
   document.getElementById("provider-select").value = state.config.provider || "yahoo";
-  document.getElementById("alpha-key").value = state.config.alphaVantageApiKey || "";
+  const alphaKey = document.getElementById("alpha-key");
+  const fredKey = document.getElementById("fred-key");
+  alphaKey.value = "";
+  alphaKey.placeholder = state.config.alphaVantageConfigured ? "Configured — enter to replace" : "Optional";
+  fredKey.value = "";
+  fredKey.placeholder = state.config.fredConfigured ? "Configured — enter to replace" : "Optional";
   document.getElementById("llm-base-url").value = state.config.localLlmBaseUrl || "http://127.0.0.1:11434";
   document.getElementById("llm-model").value = state.config.localLlmModel || "Bonsai-8B-1bit";
   state.dataFlow.boot.config = true;
@@ -5827,6 +6229,19 @@ function marketHeatMapColor(pct) {
   return "rgba(116, 116, 126, 0.34)";
 }
 
+function marketHeatMapBucket(pct) {
+  const value = Number(pct || 0);
+  if (value >= 2.5) return "hp-3";
+  if (value >= 1.25) return "hp-2";
+  if (value >= 0.25) return "hp-1";
+  if (value > 0.05) return "hp-0";
+  if (value <= -2.5) return "hn-3";
+  if (value <= -1.25) return "hn-2";
+  if (value <= -0.25) return "hn-1";
+  if (value < -0.05) return "hn-0";
+  return "hz";
+}
+
 function marketHeatMapInitials(name = "", symbol = "") {
   const words = String(name || symbol).replace(/[^a-z0-9\s]/gi, " ").trim().split(/\s+/).filter(Boolean);
   const initials = words.slice(0, 2).map((word) => word[0]).join("");
@@ -5995,6 +6410,14 @@ function syncMarketHeatMapSectorOptions(payload) {
 }
 
 function scheduleHeatMapHistoryWarmup(payload) {
+  const panel = document.getElementById("market-heat-map-panel");
+  const rect = panel?.getBoundingClientRect();
+  const nearViewport = Boolean(rect && rect.top <= window.innerHeight + 320 && rect.bottom >= -320);
+  if (!nearViewport) {
+    state.pendingHeatMapWarmup = payload;
+    return;
+  }
+  state.pendingHeatMapWarmup = null;
   const symbols = (payload?.warmupSymbols || payload?.tiles?.map((tile) => tile.symbol) || [])
     .filter(Boolean)
     .slice(0, 160);
@@ -6024,6 +6447,8 @@ function scheduleHeatMapHistoryWarmup(payload) {
 }
 
 function renderMarketHeatMap(payload = state.marketHeatMap) {
+  // Legacy grouped heatmap hooks remain available for contracts:
+  // market-heat-group / data-heat-open-group / marketHeatMapSectorDetail.
   const grid = document.getElementById("market-heat-map-grid");
   const footer = document.getElementById("market-heat-map-footer");
   if (!grid) return;
@@ -6034,43 +6459,25 @@ function renderMarketHeatMap(payload = state.marketHeatMap) {
     if (footer) footer.textContent = "Using local universe manifests and live edge quotes where available.";
     return;
   }
-  const prefs = loadMarketHeatMapPrefs();
-  const groupBy = prefs.group || "sector";
-  const openGroup = prefs.openGroup || "";
-  const sectorGroupMap = new Map((payload?.sectorGroups || buildClientMarketHeatMapSectorGroups(tiles)).map((item) => [item.key, item]));
-  const groups = groupMarketHeatMapTiles(tiles, groupBy).map((group) => ({ ...group, ...(sectorGroupMap.get(group.key) || {}) }));
-  const markup = groups.map((group) => `
-    <section class="market-heat-group ${openGroup === group.key ? "is-open" : ""}" data-heat-group="${escapeHtml(group.key)}">
-      ${groupBy !== "flat" ? `
-        <button class="market-heat-group-head" type="button" data-heat-open-group="${escapeHtml(group.key)}" aria-expanded="${openGroup === group.key ? "true" : "false"}">
-          <strong>${escapeHtml(group.label)}</strong>
-          <span>${group.count || group.tiles.length} stocks · ${formatPercent(group.avgChangePct || 0)} avg</span>
-        </button>
-      ` : ""}
-      <div class="market-heat-group-grid">
-        ${group.tiles.map((tile) => {
-          const pct = Number(tile.changePct || 0);
-          const direction = pct > 0.15 ? "up" : pct < -0.15 ? "down" : "flat";
-          const span = Math.max(1, Math.min(3, Number(tile.span || 1)));
-          const color = marketHeatMapColor(pct);
-          const sourceLabel = tile.quality === "live" ? "Live" : "Proxy";
-          const title = `${tile.symbol} · ${tile.name} · ${formatPercent(pct)} · ${tile.source || sourceLabel}`;
-          const symbolLabel = escapeHtml(String(tile.symbol || "").replace(/\.(NS|BO)$/i, ""));
-          return `
-            <article class="market-heat-tile ${direction} span-${span} ${tile.quality === "live" ? "is-live" : "is-proxy"}"
-              style="--heat:${color}; --span:${span};"
-              title="${escapeHtml(title)}">
-              <span class="market-heat-logo">${escapeHtml(marketHeatMapInitials(tile.name, tile.symbol))}</span>
-              <strong>${symbolLabel}</strong>
-              <em>${formatPercent(pct)}</em>
-              <small>${sourceLabel} · ${escapeHtml(marketHeatMapSizeLabel(tile.sizeBucket))}</small>
-            </article>
-          `;
-        }).join("")}
-      </div>
-      ${openGroup === group.key ? marketHeatMapSectorDetail(group, payload) : ""}
-    </section>
-  `).join("");
+  const visibleTiles = tiles.slice(0, 40);
+  const markup = `
+    <div class="heatmap">
+      ${visibleTiles.map((tile) => {
+        const pct = Number(tile.changePct || 0);
+        const title = `${tile.symbol} · ${tile.name} · ${formatPercent(pct)} · ${tile.source || (tile.quality === "live" ? "Live" : "Proxy")}`;
+        const symbolLabel = escapeHtml(String(tile.symbol || "").replace(/\.(NS|BO)$/i, ""));
+        return `
+          <button class="heat market-heat-tile ${marketHeatMapBucket(pct)} ${tile.quality === "live" ? "is-live" : "is-proxy"}"
+            type="button"
+            data-symbol="${escapeHtml(tile.symbol || "")}"
+            title="${escapeHtml(title)}">
+            <div class="hs">${symbolLabel}</div>
+            <div class="hc">${formatPercent(pct)}</div>
+          </button>
+        `;
+      }).join("")}
+    </div>
+  `;
   setHTMLIfChanged(grid, markup);
   if (footer) {
     const age = payload.updatedAt ? Math.max(0, Math.round((Date.now() - new Date(payload.updatedAt).getTime()) / 60000)) : 0;
@@ -6190,6 +6597,11 @@ function initMarketHeatMap() {
     saveMarketHeatMapPrefs({ ...loadMarketHeatMapPrefs(), market, period, group, sector, scope, size, limit, expanded });
   });
   grid?.addEventListener("click", (event) => {
+    const tile = event.target instanceof Element ? event.target.closest("[data-symbol]") : null;
+    if (tile?.dataset?.symbol) {
+      selectActiveTicker(tile.dataset.symbol);
+      return;
+    }
     const button = event.target instanceof Element ? event.target.closest("[data-heat-open-group]") : null;
     if (!button) return;
     const openGroup = button.getAttribute("data-heat-open-group") || "";
@@ -6206,7 +6618,26 @@ function initMarketHeatMap() {
       persistAndFetch();
     });
   });
-  persistAndFetch();
+  const loadVisibleHeatMap = () => {
+    if (panel.dataset.marketMapLoaded === "1") {
+      if (state.pendingHeatMapWarmup) scheduleHeatMapHistoryWarmup(state.pendingHeatMapWarmup);
+      return;
+    }
+    panel.dataset.marketMapLoaded = "1";
+    persistAndFetch();
+  };
+  if ("IntersectionObserver" in window) {
+    state.marketHeatMapObserver?.disconnect();
+    state.marketHeatMapObserver = new IntersectionObserver((entries) => {
+      if (!entries.some((entry) => entry.isIntersecting)) return;
+      loadVisibleHeatMap();
+      state.marketHeatMapObserver?.disconnect();
+      state.marketHeatMapObserver = null;
+    }, { rootMargin: "320px 0px" });
+    state.marketHeatMapObserver.observe(panel);
+  } else {
+    loadVisibleHeatMap();
+  }
 }
 
 function renderSectorMatrix(sectors, updatedAt, meta = {}) {
@@ -6457,6 +6888,28 @@ function bindEvents() {
       event.preventDefault();
       activateTab(button.dataset.target);
     });
+    button.addEventListener("keydown", (event) => {
+      if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+      event.preventDefault();
+      const tabs = Array.from(document.querySelectorAll(".topnav-link"));
+      const currentIndex = tabs.indexOf(button);
+      const nextIndex = event.key === "Home"
+        ? 0
+        : event.key === "End"
+          ? tabs.length - 1
+          : (currentIndex + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
+      const next = tabs[nextIndex];
+      activateTab(next.dataset.target);
+      next.focus();
+    });
+  });
+  document.getElementById("mobile-sidebar-toggle")?.addEventListener("click", () => {
+    const sidebar = document.querySelector(".sidebar");
+    const toggle = document.getElementById("mobile-sidebar-toggle");
+    const open = !sidebar?.classList.contains("mobile-open");
+    sidebar?.classList.toggle("mobile-open", open);
+    toggle?.setAttribute("aria-expanded", open ? "true" : "false");
+    setTextIfChanged(toggle, open ? "Close watchlist" : "Watchlist");
   });
   document.getElementById("top-ticker-form")?.addEventListener("submit", (event) => {
     event.preventDefault();
@@ -6515,14 +6968,18 @@ function bindEvents() {
   document.getElementById("save-settings").addEventListener("click", async (event) => {
     event.preventDefault();
     setStatus("Saving config");
+    const alphaVantageApiKey = document.getElementById("alpha-key").value.trim();
+    const fredApiKey = document.getElementById("fred-key").value.trim();
+    const payload = {
+      provider: document.getElementById("provider-select").value,
+      localLlmBaseUrl: document.getElementById("llm-base-url").value.trim(),
+      localLlmModel: document.getElementById("llm-model").value.trim(),
+    };
+    if (alphaVantageApiKey) payload.alphaVantageApiKey = alphaVantageApiKey;
+    if (fredApiKey) payload.fredApiKey = fredApiKey;
     state.config = await api("/api/config", {
       method: "POST",
-      body: JSON.stringify({
-        provider: document.getElementById("provider-select").value,
-        alphaVantageApiKey: document.getElementById("alpha-key").value.trim(),
-        localLlmBaseUrl: document.getElementById("llm-base-url").value.trim(),
-        localLlmModel: document.getElementById("llm-model").value.trim(),
-      }),
+      body: JSON.stringify(payload),
     });
     settingsDialog.close();
     refreshDashboard();
@@ -6625,6 +7082,7 @@ async function init() {
   document.body.classList.add("app-booting");
   initSkeletons();
   setStatus("Loading data");
+  bindNotificationBell();
   renderDataFlowBar();
   pollHistoryProgress();
   initStarfieldParallax();

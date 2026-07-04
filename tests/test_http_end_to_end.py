@@ -1,6 +1,7 @@
 import json
 import threading
 import unittest
+import urllib.error
 import urllib.request
 from http.server import ThreadingHTTPServer
 from unittest import mock
@@ -44,6 +45,46 @@ class HttpRouteTests(unittest.TestCase):
     self.assertEqual(response.status, 200)
     self.assertIn("javascript", response.headers.get("Content-Type", ""))
     self.assertTrue(body)
+
+  def test_config_route_redacts_secrets_and_omits_wildcard_cors(self):
+    with mock.patch.object(
+      server,
+      "load_config",
+      return_value={
+        **server.DEFAULT_CONFIG,
+        "alphaVantageApiKey": "secret-alpha",
+        "fredApiKey": "secret-fred",
+      },
+    ):
+      with urllib.request.urlopen(self.url("/api/config"), timeout=5) as response:
+        payload = json.loads(response.read().decode("utf-8"))
+
+    self.assertTrue(payload["alphaVantageConfigured"])
+    self.assertTrue(payload["fredConfigured"])
+    self.assertNotIn("alphaVantageApiKey", payload)
+    self.assertNotIn("fredApiKey", payload)
+    self.assertIsNone(response.headers.get("Access-Control-Allow-Origin"))
+
+  def test_cross_origin_post_is_rejected(self):
+    request = urllib.request.Request(
+      self.url("/api/watchlists"),
+      data=json.dumps({"name": "Blocked", "symbols": ["AAPL"]}).encode("utf-8"),
+      headers={"Content-Type": "application/json", "Origin": "https://example.com"},
+      method="POST",
+    )
+    with self.assertRaises(urllib.error.HTTPError) as context:
+      urllib.request.urlopen(request, timeout=5)
+
+    self.assertEqual(context.exception.code, 403)
+
+  def test_operations_routes_list_and_queue_allowlisted_jobs(self):
+    with mock.patch.object(server, "operator_jobs_payload", return_value={"jobs": [{"id": "refresh-events"}], "runs": [], "active": []}):
+      payload = self.json_get("/api/operations")
+    with mock.patch.object(server, "start_operator_job", return_value={"status": "queued", "jobKey": "job-1"}):
+      queued = self.json_post("/api/operations/run", {"jobId": "refresh-events"})
+
+    self.assertEqual(payload["jobs"][0]["id"], "refresh-events")
+    self.assertEqual(queued["status"], "queued")
 
   def test_dashboard_and_academy_routes_return_expected_payloads(self):
     dashboard_payload = {

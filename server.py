@@ -747,6 +747,49 @@ BACKEND_REFRESH_SCRIPTS = [
     "freshnessPaths": [UNIVERSE_DIR / "manifest.json"],
   },
 ]
+OPERATOR_JOB_SPECS = {
+  "refresh-foundations": {
+    "label": "Refresh data foundations",
+    "description": "Refresh macro factors and universe manifests now.",
+    "steps": [
+      {"id": "macro-factor-store", "label": "Macro factor store", "script": "sync_macro_factor_store.py", "timeoutSeconds": 180},
+      {"id": "universe-manifests", "label": "Universe manifests", "script": "sync_universes.py", "timeoutSeconds": 180},
+    ],
+  },
+  "refresh-events": {
+    "label": "Refresh market events",
+    "description": "Refresh source-labelled market events into the local database.",
+    "steps": [
+      {"id": "market-events", "label": "Market events", "script": "refresh_market_events.py", "args": ["--category", "markets"], "timeoutSeconds": 180},
+    ],
+  },
+  "prepare-market-graph": {
+    "label": "Prepare market graph",
+    "description": "Run the bounded universe, history, relations, company-network, and market-map pipeline.",
+    "steps": [
+      {
+        "id": "market-graph",
+        "label": "Market graph pipeline",
+        "script": "prepare_market_graph.py",
+        "args": ["--nasdaq-limit", "250", "--workers", "6"],
+        "timeoutSeconds": 900,
+      },
+    ],
+  },
+  "rebuild-knowledge": {
+    "label": "Rebuild local knowledge",
+    "description": "Refresh research, agent-memory, and generated market-map notes.",
+    "steps": [
+      {
+        "id": "knowledge-base",
+        "label": "Knowledge base",
+        "script": "update_knowledge_base.py",
+        "args": ["--full-market-map"],
+        "timeoutSeconds": 300,
+      },
+    ],
+  },
+}
 TRUSTED_DATA_SOURCE_REGISTRY = [
   {
     "id": "sec-edgar",
@@ -943,16 +986,54 @@ def load_config() -> dict:
   return DEFAULT_CONFIG.copy()
 
 
+def public_config(config: dict | None = None) -> dict:
+  payload = config or load_config()
+  return {
+    "provider": payload.get("provider", "yahoo"),
+    "alphaVantageConfigured": bool(payload.get("alphaVantageApiKey")),
+    "fredConfigured": bool(payload.get("fredApiKey") or os.environ.get("FRED_API_KEY", "").strip()),
+    "localLlmBaseUrl": payload.get("localLlmBaseUrl", DEFAULT_CONFIG["localLlmBaseUrl"]),
+    "localLlmModel": resolve_local_llm_model(payload),
+  }
+
+
+def write_private_json(path: Path, payload: dict) -> None:
+  path.parent.mkdir(parents=True, exist_ok=True)
+  temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+  temporary.write_text(json.dumps(payload, indent=2))
+  try:
+    os.chmod(temporary, 0o600)
+    temporary.replace(path)
+    os.chmod(path, 0o600)
+  finally:
+    if temporary.exists():
+      temporary.unlink()
+
+
 def save_config(config: dict) -> dict:
+  current = load_config()
+  provider = str(config.get("provider", current.get("provider", "yahoo"))).strip().lower()
+  if provider not in {"yahoo", "alpha_vantage"}:
+    raise ValueError("Unsupported provider")
+  local_llm_base_url = str(
+    config.get("localLlmBaseUrl", current.get("localLlmBaseUrl", DEFAULT_CONFIG["localLlmBaseUrl"]))
+  ).strip() or DEFAULT_CONFIG["localLlmBaseUrl"]
+  if not is_allowed_local_llm_base_url(local_llm_base_url):
+    raise ValueError("Local LLM URL must use http(s) on localhost or a loopback IP")
+
   payload = {
-    "provider": config.get("provider", "yahoo"),
-    "alphaVantageApiKey": config.get("alphaVantageApiKey", "").strip(),
-    "fredApiKey": config.get("fredApiKey", "").strip(),
-    "localLlmBaseUrl": config.get("localLlmBaseUrl", DEFAULT_CONFIG["localLlmBaseUrl"]).strip() or DEFAULT_CONFIG["localLlmBaseUrl"],
+    "provider": provider,
+    "alphaVantageApiKey": current.get("alphaVantageApiKey", ""),
+    "fredApiKey": current.get("fredApiKey", ""),
+    "localLlmBaseUrl": local_llm_base_url.rstrip("/"),
     "localLlmModel": resolve_local_llm_model(config),
   }
-  CONFIG_PATH.write_text(json.dumps(payload, indent=2))
-  return payload
+  if "alphaVantageApiKey" in config:
+    payload["alphaVantageApiKey"] = str(config.get("alphaVantageApiKey") or "").strip()
+  if "fredApiKey" in config:
+    payload["fredApiKey"] = str(config.get("fredApiKey") or "").strip()
+  write_private_json(CONFIG_PATH, payload)
+  return public_config(payload)
 
 
 def _configure_connection(conn: sqlite3.Connection) -> None:
@@ -1863,6 +1944,38 @@ def is_allowed_outbound_url(url: str) -> bool:
   return hostname in OUTBOUND_ALLOWED_HOSTS
 
 
+def is_allowed_local_llm_base_url(url: str) -> bool:
+  try:
+    parsed = urllib.parse.urlparse(url)
+    hostname = (parsed.hostname or "").lower()
+    port = parsed.port
+  except ValueError:
+    return False
+  if parsed.scheme not in {"http", "https"} or parsed.username or parsed.password:
+    return False
+  if hostname not in {"localhost", "127.0.0.1", "::1"}:
+    return False
+  if port is not None and not 1 <= port <= 65535:
+    return False
+  return parsed.path in {"", "/"} and not parsed.query and not parsed.fragment
+
+
+def is_allowed_local_llm_url(url: str) -> bool:
+  try:
+    parsed = urllib.parse.urlparse(url)
+    hostname = (parsed.hostname or "").lower()
+    port = parsed.port
+  except ValueError:
+    return False
+  if parsed.scheme not in {"http", "https"} or parsed.username or parsed.password:
+    return False
+  if hostname not in {"localhost", "127.0.0.1", "::1"}:
+    return False
+  if port is not None and not 1 <= port <= 65535:
+    return False
+  return parsed.path == "/api/generate" and not parsed.fragment
+
+
 def outbound_cache_key(method: str, url: str, payload: dict | None = None) -> str:
   if payload is None:
     return f"{method}:{url}"
@@ -2540,45 +2653,63 @@ def fetch_live_quotes_from_providers(symbols: list[str]) -> dict[str, dict]:
     if all(symbol in resolved for symbol in unresolved):
       return {**provisional, **resolved}
 
-  parallel = [provider for provider in chain if provider.get("parallel") and quote_provider_available(provider["id"])]
-  if not parallel or _SERVER_STOPPING.is_set():
-    return {**provisional, **resolved}
-  remaining_symbols = [symbol for symbol in unresolved if symbol not in resolved]
-  executor = ThreadPoolExecutor(max_workers=min(8, len(parallel)))
-  try:
-    futures = {executor.submit(provider["fetch"], remaining_symbols): provider for provider in parallel}
-  except RuntimeError:
-    executor.shutdown(wait=False, cancel_futures=True)
-    return {**provisional, **resolved}
-  pending_futures = set(futures)
-  deadline = time.time() + QUOTE_PROVIDER_PARALLEL_TIMEOUT_SECONDS
+  # Vendor-rotated subset first (1 provider per vendor), then expand to the
+  # full chain only for symbols still unresolved. This caps per-request load
+  # on any single vendor while keeping the long tail of fallbacks available.
+  parallel_pool = [provider for provider in chain if provider.get("parallel")]
+  rotated_subset = select_rotated_quote_chain(parallel_pool)
+  used_provider_ids: set[str] = set()
 
-  def process_done_futures(done_futures) -> None:
-    for future in done_futures:
-      provider = futures[future]
-      try:
-        provider_quotes = future.result() or {}
-      except Exception:
+  def run_parallel_wave(wave_providers: list[dict]) -> None:
+    """Dispatch one parallel wave; mutates outer `resolved` / `provisional`."""
+    healthy = [provider for provider in wave_providers if quote_provider_available(provider["id"]) and provider["id"] not in used_provider_ids]
+    if not healthy or _SERVER_STOPPING.is_set():
+      return
+    remaining_symbols = [symbol for symbol in unresolved if symbol not in resolved]
+    if not remaining_symbols:
+      return
+    for provider in healthy:
+      used_provider_ids.add(provider["id"])
+    executor = ThreadPoolExecutor(max_workers=min(8, len(healthy)))
+    try:
+      futures = {executor.submit(provider["fetch"], remaining_symbols): provider for provider in healthy}
+    except RuntimeError:
+      executor.shutdown(wait=False, cancel_futures=True)
+      return
+    pending_futures = set(futures)
+    deadline = time.time() + QUOTE_PROVIDER_PARALLEL_TIMEOUT_SECONDS
+
+    def process_done_futures(done_futures) -> None:
+      for future in done_futures:
+        provider = futures[future]
+        try:
+          provider_quotes = future.result() or {}
+        except Exception:
+          mark_quote_provider_failure(provider["id"])
+          continue
+        merge_provider_quotes(provider, provider_quotes)
+
+    try:
+      while pending_futures and time.time() < deadline:
+        done, pending_futures = wait(pending_futures, timeout=max(0.1, deadline - time.time()), return_when=FIRST_COMPLETED)
+        if not done:
+          break
+        process_done_futures(done)
+        if all(symbol in resolved or symbol in provisional for symbol in unresolved):
+          extra_done, pending_futures = wait(pending_futures, timeout=0.35)
+          process_done_futures(extra_done)
+          break
+      for future in pending_futures:
+        provider = futures[future]
+        future.cancel()
         mark_quote_provider_failure(provider["id"])
-        continue
-      merge_provider_quotes(provider, provider_quotes)
+    finally:
+      executor.shutdown(wait=False, cancel_futures=True)
 
-  try:
-    while pending_futures and time.time() < deadline:
-      done, pending_futures = wait(pending_futures, timeout=max(0.1, deadline - time.time()), return_when=FIRST_COMPLETED)
-      if not done:
-        break
-      process_done_futures(done)
-      if all(symbol in resolved or symbol in provisional for symbol in unresolved):
-        extra_done, pending_futures = wait(pending_futures, timeout=0.35)
-        process_done_futures(extra_done)
-        break
-    for future in pending_futures:
-      provider = futures[future]
-      future.cancel()
-      mark_quote_provider_failure(provider["id"])
-  finally:
-    executor.shutdown(wait=False, cancel_futures=True)
+  run_parallel_wave(rotated_subset)
+  if not all(symbol in resolved for symbol in unresolved) and not _SERVER_STOPPING.is_set():
+    run_parallel_wave(parallel_pool)
+
   return {**provisional, **resolved}
 
 
@@ -3183,6 +3314,84 @@ def build_live_quote_provider_chain(symbols: list[str] | None = None) -> list[di
   return providers
 
 
+# ── Vendor-aware rotation ────────────────────────────────────────────────────
+# Maps each provider id to its upstream vendor. We rotate WITHIN each vendor's
+# pool so a single vendor isn't hit on every request, while still keeping at
+# least one representative from every vendor in the live fetch.
+QUOTE_PROVIDER_VENDOR = {
+  "yahoo_quote_primary": "yahoo",
+  "yahoo_quote_secondary": "yahoo",
+  "yahoo_chart_primary": "yahoo",
+  "yahoo_chart_secondary": "yahoo",
+  "yahoo_search": "yahoo",
+  "yahoo_summary": "yahoo",
+  "yahoo_web": "yahoo",
+  "google_finance_page": "google",
+  "stooq_daily": "stooq",
+  "alpha_vantage_global": "alpha_vantage",
+  "alpha_vantage_daily": "alpha_vantage",
+  "local_history_cache": "cache",
+}
+
+_QUOTE_VENDOR_ROTATION_LOCK = threading.Lock()
+_QUOTE_VENDOR_ROTATION: dict[str, int] = {}
+
+
+def select_rotated_quote_chain(chain: list[dict]) -> list[dict]:
+  """
+  Pick one provider per known vendor (rotated within that vendor's pool) and
+  pass through any provider whose id isn't in the vendor map untouched. This
+  lets each `/api/quotes` request hit ~4–5 sources instead of 12, spreading
+  load and reducing rate-limit risk against any single upstream.
+
+  The dispatch layer (`fetch_live_quotes_from_providers`) falls back to the
+  full chain for any symbol the rotated subset can't satisfy, so resilience
+  is preserved.
+
+  When the input chain contains no recognised vendor ids (the case in unit
+  tests that mock the chain), this returns the chain unchanged so the test
+  expectations don't shift.
+  """
+  if not chain:
+    return chain
+  has_known_vendor = any(QUOTE_PROVIDER_VENDOR.get(provider.get("id")) for provider in chain)
+  if not has_known_vendor:
+    return chain
+  by_vendor: dict[str, list[dict]] = {}
+  unknown: list[dict] = []
+  for provider in chain:
+    vendor = QUOTE_PROVIDER_VENDOR.get(provider.get("id"))
+    if vendor:
+      by_vendor.setdefault(vendor, []).append(provider)
+    else:
+      unknown.append(provider)
+  selected: list[dict] = []
+  with _QUOTE_VENDOR_ROTATION_LOCK:
+    for vendor, pool in by_vendor.items():
+      healthy = [provider for provider in pool if quote_provider_available(provider["id"])]
+      if not healthy:
+        # Whole vendor is cooling down — still queue the next one so dispatch
+        # can mark it failed again or recover when cooldown elapses.
+        healthy = pool
+      idx = _QUOTE_VENDOR_ROTATION.get(vendor, 0) % len(healthy)
+      selected.append(healthy[idx])
+      _QUOTE_VENDOR_ROTATION[vendor] = (idx + 1) % len(healthy)
+  # Preserve the original chain's vendor ordering (yahoo > google > stooq > av)
+  # so provider_ranks downstream still favour faster sources.
+  vendor_order = {provider["id"]: index for index, provider in enumerate(chain)}
+  selected.sort(key=lambda provider: vendor_order.get(provider["id"], 999))
+  selected.extend(unknown)
+  return selected
+
+
+def get_quote_rotation_snapshot() -> dict[str, int]:
+  """Read-only view of the current vendor rotation indices. Used by the
+  data-flow / notification UI to show which provider will be tried first
+  per vendor on the next request."""
+  with _QUOTE_VENDOR_ROTATION_LOCK:
+    return dict(_QUOTE_VENDOR_ROTATION)
+
+
 def post_json(url: str, payload: dict, timeout: int = 40) -> dict | None:
   if not is_allowed_outbound_url(url):
     return None
@@ -3213,6 +3422,43 @@ def post_json(url: str, payload: dict, timeout: int = 40) -> dict | None:
   with OUTBOUND_LOCK:
     OUTBOUND_RESPONSE_CACHE[cache_key] = (time.time(), parsed)
   return parsed
+
+
+class NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+  def redirect_request(self, req, fp, code, msg, headers, newurl):
+    return None
+
+
+def post_local_json(url: str, payload: dict, timeout: int = 12, max_bytes: int = 2_000_000) -> dict | None:
+  if not is_allowed_local_llm_url(url):
+    return None
+  data = json.dumps(payload).encode("utf-8")
+  request = urllib.request.Request(
+    url,
+    headers={
+      "User-Agent": USER_AGENT,
+      "Content-Type": "application/json",
+      "Accept": "application/json",
+    },
+    data=data,
+    method="POST",
+  )
+  opener = urllib.request.build_opener(NoRedirectHandler())
+  try:
+    with opener.open(request, timeout=timeout) as response:
+      content_length = int(response.headers.get("Content-Length", "0") or "0")
+      if content_length > max_bytes:
+        return None
+      body = response.read(max_bytes + 1)
+      if len(body) > max_bytes:
+        return None
+  except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, socket.timeout, ValueError):
+    return None
+  try:
+    parsed = json.loads(body.decode("utf-8"))
+  except (UnicodeDecodeError, json.JSONDecodeError):
+    return None
+  return parsed if isinstance(parsed, dict) else None
 
 
 def normalize_symbol(symbol: str, market: str | None = None) -> str:
@@ -4091,6 +4337,8 @@ def merge_event_items(*groups: list[dict]) -> list[dict]:
 
 def generate_local_llm_answer(prompt: str, config: dict, timeout: int = 12) -> str | None:
   base = (config.get("localLlmBaseUrl") or DEFAULT_CONFIG["localLlmBaseUrl"]).rstrip("/")
+  if not is_allowed_local_llm_base_url(base):
+    return None
   model = resolve_local_llm_model(config)
   payload = {
     "model": model,
@@ -4098,7 +4346,7 @@ def generate_local_llm_answer(prompt: str, config: dict, timeout: int = 12) -> s
     "prompt": prompt,
     "options": {"temperature": 0.2},
   }
-  response = post_json(f"{base}/api/generate", payload, timeout=timeout)
+  response = post_local_json(f"{base}/api/generate", payload, timeout=timeout)
   if not response:
     return None
   return (response.get("response") or "").strip() or None
@@ -5060,6 +5308,12 @@ def run_history_warmup(job_key: str, symbols: list[str], ranges: list[str]) -> N
   total = max(1, len(symbols) * len(ranges))
   for symbol in symbols:
     for chart_range in ranges:
+      if _SERVER_STOPPING.is_set():
+        with HISTORY_WARMUP_LOCK:
+          if job_key in HISTORY_WARMUP_JOBS:
+            HISTORY_WARMUP_JOBS[job_key]["status"] = "cancelled"
+            HISTORY_WARMUP_JOBS[job_key]["finishedAt"] = datetime.now(timezone.utc).isoformat()
+        return
       try:
         if not history_cache_is_fresh(symbol, chart_range):
           build_history(symbol, chart_range, allow_live_refresh=True)
@@ -5159,17 +5413,33 @@ def run_backend_refresh_job(job_key: str) -> None:
       with BACKEND_SCRIPT_LOCK:
         BACKEND_SCRIPT_JOBS[job_key]["completed"] = index + 1
       continue
-    script_name = step.get("script")
+    script_name = str(step.get("script") or "")
     script_path = BASE_DIR / "scripts" / script_name
+    allowed_scripts = {
+      spec["script"] for spec in BACKEND_REFRESH_SCRIPTS
+    } | {
+      operator_step["script"]
+      for job_spec in OPERATOR_JOB_SPECS.values()
+      for operator_step in job_spec["steps"]
+    }
+    if script_name not in allowed_scripts or not script_path.is_file():
+      error = f"Blocked unregistered maintenance script: {script_name}"
+      with BACKEND_SCRIPT_LOCK:
+        BACKEND_SCRIPT_JOBS[job_key]["steps"][index].update({"status": "error", "error": error})
+        BACKEND_SCRIPT_JOBS[job_key].setdefault("errors", []).append(error)
+        BACKEND_SCRIPT_JOBS[job_key]["completed"] = index + 1
+      continue
+    script_args = [str(value) for value in (step.get("args") or [])]
+    timeout_seconds = max(10, min(int(step.get("timeoutSeconds") or BACKEND_SCRIPT_TIMEOUT_SECONDS), 900))
     with BACKEND_SCRIPT_LOCK:
       BACKEND_SCRIPT_JOBS[job_key]["steps"][index].update({"status": "running", "startedAt": datetime.now(timezone.utc).isoformat()})
     try:
       result = subprocess.run(
-        [sys.executable, str(script_path)],
+        [sys.executable, str(script_path), *script_args],
         cwd=BASE_DIR,
         capture_output=True,
         text=True,
-        timeout=BACKEND_SCRIPT_TIMEOUT_SECONDS,
+        timeout=timeout_seconds,
       )
       output = (result.stdout or result.stderr or "").strip()
       if result.returncode:
@@ -5188,7 +5458,7 @@ def run_backend_refresh_job(job_key: str) -> None:
         )
         BACKEND_SCRIPT_LAST_RUN[step.get("id") or script_name] = datetime.now(timezone.utc).isoformat()
     except subprocess.TimeoutExpired:
-      error = f"{script_name} exceeded {BACKEND_SCRIPT_TIMEOUT_SECONDS}s timeout"
+      error = f"{script_name} exceeded {timeout_seconds}s timeout"
       with BACKEND_SCRIPT_LOCK:
         BACKEND_SCRIPT_JOBS[job_key]["steps"][index].update({"status": "error", "error": error})
         BACKEND_SCRIPT_JOBS[job_key].setdefault("errors", []).append(error)
@@ -5250,6 +5520,60 @@ def backend_script_status() -> dict:
   with BACKEND_SCRIPT_LOCK:
     jobs = list(BACKEND_SCRIPT_JOBS.values())[-12:]
   return {"jobs": jobs, "active": [job for job in jobs if job.get("status") in {"queued", "running"}]}
+
+
+def operator_jobs_payload() -> dict:
+  status = backend_script_status()
+  return {
+    "jobs": [
+      {
+        "id": job_id,
+        "label": spec["label"],
+        "description": spec["description"],
+      }
+      for job_id, spec in OPERATOR_JOB_SPECS.items()
+    ],
+    "runs": status["jobs"],
+    "active": status["active"],
+    "updatedAt": datetime.now(timezone.utc).isoformat(),
+  }
+
+
+def start_operator_job(job_id: str) -> dict:
+  spec = OPERATOR_JOB_SPECS.get(job_id)
+  if not spec:
+    raise ValueError("Unknown maintenance job")
+  with BACKEND_SCRIPT_LOCK:
+    active = next(
+      (job for job in reversed(list(BACKEND_SCRIPT_JOBS.values())) if job.get("status") in {"queued", "running"}),
+      None,
+    )
+    if active:
+      return {"status": active.get("status"), "jobKey": active.get("jobKey"), "detail": "another maintenance job is already running"}
+    now = time.time()
+    job_key = f"operator-{job_id}-{int(now * 1000)}"
+    steps = [
+      {
+        **step,
+        "status": "queued",
+        "reason": "operator-requested",
+      }
+      for step in spec["steps"]
+    ]
+    BACKEND_SCRIPT_JOBS[job_key] = {
+      "status": "queued",
+      "jobKey": job_key,
+      "jobId": job_id,
+      "label": spec["label"],
+      "reason": "operator-requested",
+      "total": len(steps),
+      "completed": 0,
+      "steps": steps,
+      "queuedAt": datetime.now(timezone.utc).isoformat(),
+    }
+  thread = threading.Thread(target=run_backend_refresh_job, args=(job_key,), daemon=True)
+  thread.start()
+  return {"status": "queued", "jobKey": job_key, "total": len(steps), "completed": 0}
 
 
 def load_universe_manifest() -> dict:
@@ -6240,10 +6564,15 @@ def build_backtest(symbol: str, history: list[float], quote: dict, summary: dict
     # Window-time quote: build_forecast_inputs anchors latestPrice on quote.regularMarketPrice,
     # so without this override every historical forecast would start from TODAY's price and
     # leak future information into the walk-forward (causing wildly inflated MAE).
-    window_quote = dict(quote or {})
-    window_quote["regularMarketPrice"] = window[-1]
-    window_quote["regularMarketPreviousClose"] = window[-2] if len(window) > 1 else window[-1]
-    forecast = build_forecast(symbol, window_quote, summary, window, stress=stress, horizon=horizon, news_count=news_count)
+    # Only price-path information that existed at this cutoff is allowed into
+    # the validation window. Current quote metadata, fundamentals, headlines,
+    # and user-selected stress lenses would otherwise leak present-day context.
+    window_quote = {
+      "symbol": symbol,
+      "regularMarketPrice": window[-1],
+      "regularMarketPreviousClose": window[-2] if len(window) > 1 else window[-1],
+    }
+    forecast = build_forecast(symbol, window_quote, {}, window, stress="base", horizon=horizon, news_count=0)
     predicted = forecast["projected"][-1]
     actual = history[index + horizon - 1]
     current = window[-1]
@@ -6274,9 +6603,15 @@ def build_backtest(symbol: str, history: list[float], quote: dict, summary: dict
 
 
 MODEL_STATE_INSIGHT_PREFIX = "model_residual_state"
+MODEL_STATE_VERSION = "residual-v2-point-in-time"
 
 
-def update_model_residual_state(symbol: str, horizon: int, backtest: dict) -> dict:
+def model_training_fingerprint(history: list[float], horizon: int) -> str:
+  normalized = ",".join(f"{float(value):.8f}" for value in history)
+  return hashlib.sha256(f"{MODEL_STATE_VERSION}|h{horizon}|{normalized}".encode("utf-8")).hexdigest()
+
+
+def update_model_residual_state(symbol: str, horizon: int, backtest: dict, data_fingerprint: str = "") -> dict:
   """Incremental residual learning. EMA-blends the latest walk-forward bias /
   residual std into a persisted per-(symbol, horizon) state.
 
@@ -6296,6 +6631,16 @@ def update_model_residual_state(symbol: str, horizon: int, backtest: dict) -> di
 
   insight_key = f"{MODEL_STATE_INSIGHT_PREFIX}_h{horizon}"
   prior = load_derived_insight(symbol, "1d", insight_key) or {}
+  if (
+    data_fingerprint
+    and prior.get("dataFingerprint") == data_fingerprint
+    and prior.get("modelVersion") == MODEL_STATE_VERSION
+  ):
+    return {
+      **prior,
+      "status": "current",
+      "didUpdate": False,
+    }
   alpha = 0.4
   prior_bias = float(prior.get("learnedBias") or 0.0)
   prior_std = float(prior.get("residualStd") or 0.0)
@@ -6320,6 +6665,9 @@ def update_model_residual_state(symbol: str, horizon: int, backtest: dict) -> di
     "lastBatchBias": round(new_bias, 4),
     "lastBatchStd": round(new_std, 4),
     "status": "trained",
+    "modelVersion": MODEL_STATE_VERSION,
+    "dataFingerprint": data_fingerprint,
+    "didUpdate": True,
   }
   save_derived_insight(symbol, "1d", insight_key, state, "Walk-forward residual learning")
   return state
@@ -6353,14 +6701,14 @@ def apply_residual_correction(forecast: dict, model_state: dict) -> dict:
 
 def build_recommendation(forecast: dict) -> dict:
   """
-  Build buy/sell/hold probabilities from an unbiased 33/33/33 base.
+  Build upside/base/downside scenario weights from an unbiased 33/33/33 base.
 
   Research basis:
   - Starts at equal 1/3 distribution — no a-priori directional bias.
-  - Directional edge (expected return + fair-value gap) shifts weight toward buy/sell
+  - Directional edge (expected return + fair-value gap) shifts weight toward upside/downside
     proportional to signal strength × analyst conviction.
-  - Low conviction (confidence < 35%) and weak signal → hold expands (uncertainty = wait).
-  - Event pressure raises sell risk premium and hold, cuts buy headroom.
+  - Low conviction (confidence < 35%) and weak signal → base expands.
+  - Event pressure raises downside and base weight, reducing upside headroom.
   - Scale: edge_strength maxes at |directional_edge| = 8%; above that, conviction caps the shift.
   """
   confidence = float(forecast.get("confidence") or 0)
@@ -6387,19 +6735,19 @@ def build_recommendation(forecast: dict) -> dict:
   sell_raw = 33.3
   hold_raw = 33.4
 
-  # ── Directional shift: signal_strength moves weight from neutral to buy/sell
+  # ── Directional shift: signal_strength moves weight between upside/downside
   # At signal_strength=1.0: buy gains +42, sell loses -7, hold loses -35 (for bullish)
   buy_raw  += direction * signal_strength * 42.0
   sell_raw -= direction * signal_strength * 35.0
   hold_raw -= signal_strength * 7.0
 
-  # ── Uncertainty expansion: low conviction + weak signal → hold grows
+  # ── Uncertainty expansion: low conviction + weak signal → base grows
   uncertainty = (1.0 - conviction) * (1.0 - edge_strength)
   hold_raw += uncertainty * 22.0
   buy_raw  -= uncertainty * 11.0
   sell_raw -= uncertainty * 11.0
 
-  # ── Event risk: raises sell risk premium + hold, cuts buy headroom
+  # ── Event risk: raises downside + base weight and cuts upside headroom
   hold_raw += event_pressure * 8.0
   sell_raw += event_pressure * 6.0
   buy_raw  -= event_pressure * 8.0
@@ -6413,12 +6761,17 @@ def build_recommendation(forecast: dict) -> dict:
   sell = round((sell_raw / total) * 100)
   hold = max(0, 100 - buy - sell)
 
-  signal = "Buy bias" if buy >= max(sell, hold) else "Sell bias" if sell >= max(buy, hold) else "Hold bias"
+  scenario_signal = "Upside-led" if buy >= max(sell, hold) else "Downside-led" if sell >= max(buy, hold) else "Base-led"
   return {
+    "upside": buy,
+    "base": hold,
+    "downside": sell,
+    "scenarioSignal": scenario_signal,
+    # Deprecated aliases retained additively for older local clients.
     "buy": buy,
     "hold": hold,
     "sell": sell,
-    "signal": signal,
+    "signal": scenario_signal,
     "edge": round(directional_edge, 2),
     "confidenceUsed": round(confidence, 1),
   }
@@ -6444,9 +6797,9 @@ def build_decision_cockpit(snapshot: dict, region_payload: dict, radar: dict | N
   if isinstance(snapshot_sentiment, dict):
     snapshot_sentiment = snapshot_sentiment.get("score") or 0
   sentiment_score = float(sentiment.get("score") or snapshot_sentiment or 0)
-  buy = float(recommendation.get("buy") or 0)
-  sell = float(recommendation.get("sell") or 0)
-  base = float(recommendation.get("hold") or 0)
+  upside = float(recommendation.get("upside", recommendation.get("buy", 0)) or 0)
+  downside = float(recommendation.get("downside", recommendation.get("sell", 0)) or 0)
+  base = float(recommendation.get("base", recommendation.get("hold", 0)) or 0)
   edge_score = clamp(
     50
     + ((confidence - 50) * 0.35)
@@ -6475,7 +6828,7 @@ def build_decision_cockpit(snapshot: dict, region_payload: dict, radar: dict | N
   ]
   interpretation = [
     f"{stance}: model edge {edge_score:.0f}/100 with {risk_level.lower()} event/model risk.",
-    f"Scenario split is upside {buy:.0f}%, base {base:.0f}%, downside {sell:.0f}% and is not direct buy/sell instruction.",
+    f"Scenario split is upside {upside:.0f}%, base {base:.0f}%, downside {downside:.0f}% and is not a trading instruction.",
     f"Bond anchor: {((bonds.get('curve') or {}).get('shape') or 'mixed').lower()} curve, {policy.get('centralBank', 'central bank')} stance {str(policy.get('stance', 'watching')).lower()}, inflation impulse {str(inflation.get('impulse', 'mixed')).lower()}.",
   ]
   monitor = [
@@ -6936,7 +7289,8 @@ def build_ticker_snapshot(symbol: str, quote: dict | None = None, stress: str = 
   backtest = build_backtest(symbol, model_history, quote, summary, horizon, stress, news_count)
   # Self-retraining: blend new walk-forward residuals into a persisted state and
   # apply the learned bias correction before downstream consumers see the forecast.
-  model_state = update_model_residual_state(symbol, horizon, backtest)
+  training_fingerprint = model_training_fingerprint(model_history, horizon)
+  model_state = update_model_residual_state(symbol, horizon, backtest, training_fingerprint)
   forecast = apply_residual_correction(forecast, model_state)
   # Empirical walk-forward MAE replaces the vol-scaled heuristic once we have a
   # meaningful sample. Below the threshold we keep the heuristic but flag it.
@@ -6957,6 +7311,9 @@ def build_ticker_snapshot(symbol: str, quote: dict | None = None, stress: str = 
     "samples": int(model_state.get("samples") or 0),
     "status": model_state.get("status") or "warming-up",
     "biasApplied": float(forecast.get("learnedBiasApplied") or 0.0),
+    "modelVersion": model_state.get("modelVersion") or MODEL_STATE_VERSION,
+    "dataFingerprint": model_state.get("dataFingerprint") or training_fingerprint,
+    "didUpdate": bool(model_state.get("didUpdate")),
   }
   recommendation = build_recommendation(forecast)
 
@@ -8826,14 +9183,69 @@ def build_overview_payload(symbols: list[str], active: str | None, region_key: s
   return payload
 
 
+SYMBOL_INPUT_RE = re.compile(r"^[A-Z0-9^=.\-]{1,32}$")
+
+
+class RequestBodyError(ValueError):
+  def __init__(self, status: HTTPStatus, message: str):
+    super().__init__(message)
+    self.status = status
+
+
+def validate_symbol_inputs(values, limit: int = 50) -> list[str]:
+  if not isinstance(values, list):
+    raise RequestBodyError(HTTPStatus.BAD_REQUEST, "symbols must be an array")
+  if len(values) > limit:
+    raise RequestBodyError(HTTPStatus.BAD_REQUEST, f"symbols must contain at most {limit} items")
+  cleaned = []
+  for value in values:
+    symbol = str(value or "").strip().upper()
+    if not symbol:
+      continue
+    if not SYMBOL_INPUT_RE.fullmatch(symbol):
+      raise RequestBodyError(HTTPStatus.BAD_REQUEST, f"invalid symbol: {symbol[:32]}")
+    cleaned.append(symbol)
+  return list(dict.fromkeys(cleaned))
+
+
+def loopback_hostname(value: str | None) -> str:
+  if not value:
+    return ""
+  try:
+    return (urllib.parse.urlparse(f"//{value}").hostname or "").lower()
+  except ValueError:
+    return ""
+
+
 class FinancialBoardHandler(BaseHTTPRequestHandler):
+  def request_is_local(self, require_origin_match: bool = False) -> bool:
+    host_header = self.headers.get("Host", "")
+    if loopback_hostname(host_header) not in {"localhost", "127.0.0.1", "::1"}:
+      return False
+    if str(self.headers.get("Sec-Fetch-Site", "")).lower() == "cross-site":
+      return False
+    origin = self.headers.get("Origin")
+    if not origin:
+      return not require_origin_match
+    try:
+      parsed_origin = urllib.parse.urlparse(origin)
+      origin_host = (parsed_origin.hostname or "").lower()
+      origin_port = parsed_origin.port
+      parsed_host = urllib.parse.urlparse(f"//{host_header}")
+      request_port = parsed_host.port
+    except ValueError:
+      return False
+    return (
+      parsed_origin.scheme in {"http", "https"}
+      and origin_host in {"localhost", "127.0.0.1", "::1"}
+      and origin_port == request_port
+    )
+
   def write_security_headers(self) -> None:
     self.send_header("X-Content-Type-Options", "nosniff")
     self.send_header("X-Frame-Options", "DENY")
     self.send_header("Referrer-Policy", "same-origin")
-    self.send_header("Access-Control-Allow-Origin", "*")
-    self.send_header("Access-Control-Allow-Headers", "Content-Type")
-    self.send_header("Access-Control-Allow-Methods", "GET, POST, HEAD, OPTIONS")
+    self.send_header("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=()")
     self.send_header("Cross-Origin-Opener-Policy", "same-origin")
     self.send_header("Cross-Origin-Resource-Policy", "same-origin")
     self.send_header(
@@ -8844,12 +9256,15 @@ class FinancialBoardHandler(BaseHTTPRequestHandler):
       "font-src 'self' https://fonts.gstatic.com; "
       "img-src 'self' data: https:; "
       "connect-src 'self'; "
+      "object-src 'none'; "
       "frame-ancestors 'none'; "
       "base-uri 'self'; "
       "form-action 'self'",
     )
 
   def do_HEAD(self) -> None:
+    if not self.request_is_local():
+      return self.send_error(HTTPStatus.FORBIDDEN, "Local requests only")
     parsed = urllib.parse.urlparse(self.path)
     if parsed.path in {"/", "/index.html", "/app.js", "/styles.css", "/vendor/cytoscape.min.js", "/api/health"}:
       self.send_response(HTTPStatus.OK)
@@ -8859,11 +9274,15 @@ class FinancialBoardHandler(BaseHTTPRequestHandler):
     self.send_error(HTTPStatus.NOT_FOUND, "Not found")
 
   def do_OPTIONS(self) -> None:
+    if not self.request_is_local(require_origin_match=True):
+      return self.send_error(HTTPStatus.FORBIDDEN, "Cross-origin requests are not allowed")
     self.send_response(HTTPStatus.NO_CONTENT)
     self.write_security_headers()
     self.end_headers()
 
   def do_GET(self) -> None:
+    if not self.request_is_local():
+      return self.send_error(HTTPStatus.FORBIDDEN, "Local requests only")
     parsed = urllib.parse.urlparse(self.path)
     if parsed.path in {"/", "/index.html"}:
       return self.serve_file("index.html", "text/html; charset=utf-8")
@@ -8876,7 +9295,7 @@ class FinancialBoardHandler(BaseHTTPRequestHandler):
     if parsed.path == "/api/health":
       return self.send_json({"status": "ok"})
     if parsed.path == "/api/config":
-      return self.send_json(load_config())
+      return self.send_json(public_config())
     if parsed.path == "/api/presets":
       return self.send_json({"presets": MARKET_PRESETS, "research": RESEARCH_REFERENCES, "classicResearch": CLASSIC_QUANT_REFERENCES})
     if parsed.path == "/api/watchlists":
@@ -8914,7 +9333,7 @@ class FinancialBoardHandler(BaseHTTPRequestHandler):
       return self.send_json(build_radar_payload(symbol))
     if parsed.path == "/api/search":
       params = urllib.parse.parse_qs(parsed.query)
-      query = (params.get("q") or [""])[0].strip()
+      query = (params.get("q") or [""])[0].strip()[:160]
       results = fetch_yahoo_search(query) if query else []
       if not results and query:
         results = [
@@ -8954,25 +9373,39 @@ class FinancialBoardHandler(BaseHTTPRequestHandler):
       return self.send_json({"updatedAt": datetime.now(timezone.utc).isoformat(), "markets": build_global_market_overview()})
     if parsed.path == "/api/overview":
       params = urllib.parse.parse_qs(parsed.query)
-      symbols = [item.upper() for item in ((params.get("symbols") or [""])[0].split(",")) if item]
+      try:
+        symbols = validate_symbol_inputs([item for item in ((params.get("symbols") or [""])[0].split(",")) if item])
+      except RequestBodyError as error:
+        return self.send_json({"error": str(error)}, status=error.status)
       active = ((params.get("active") or [""])[0] or "").upper() or None
+      if active and not SYMBOL_INPUT_RE.fullmatch(active):
+        return self.send_json({"error": "invalid active symbol"}, status=HTTPStatus.BAD_REQUEST)
       region = ((params.get("region") or [""])[0] or "").strip().lower() or None
+      if region and region not in REGION_CONFIGS:
+        return self.send_json({"error": "unsupported region"}, status=HTTPStatus.BAD_REQUEST)
       return self.send_json(build_overview_payload(symbols, active, region))
     if parsed.path == "/api/quotes":
       # Lean short-poll endpoint: returns only what is needed to tick prices
       # in place on the client. Server-side micro-cached so concurrent clients
       # share the same JSON for QUOTES_PAYLOAD_CACHE_TTL seconds.
       params = urllib.parse.parse_qs(parsed.query)
-      symbols = [item.upper() for item in ((params.get("symbols") or [""])[0].split(",")) if item]
+      try:
+        symbols = validate_symbol_inputs([item for item in ((params.get("symbols") or [""])[0].split(",")) if item])
+      except RequestBodyError as error:
+        return self.send_json({"error": str(error)}, status=error.status)
       active = ((params.get("active") or [""])[0] or "").upper() or None
+      if active and not SYMBOL_INPUT_RE.fullmatch(active):
+        return self.send_json({"error": "invalid active symbol"}, status=HTTPStatus.BAD_REQUEST)
       return self.send_json(build_quote_snapshot(symbols, active))
     if parsed.path == "/api/history/status":
       return self.send_json(history_warmup_status())
+    if parsed.path == "/api/operations":
+      return self.send_json(operator_jobs_payload())
     if parsed.path == "/api/short-horizon":
       params = urllib.parse.parse_qs(parsed.query)
       symbol = ((params.get("symbol") or [""])[0]).upper()
-      if not symbol:
-        return self.send_error(HTTPStatus.BAD_REQUEST, "symbol is required")
+      if not symbol or not SYMBOL_INPUT_RE.fullmatch(symbol):
+        return self.send_json({"error": "valid symbol is required"}, status=HTTPStatus.BAD_REQUEST)
       try:
         horizon = int((params.get("horizon") or ["5"])[0])
       except ValueError:
@@ -8990,45 +9423,94 @@ class FinancialBoardHandler(BaseHTTPRequestHandler):
       })
     if parsed.path == "/api/stream":
       params = urllib.parse.parse_qs(parsed.query)
-      symbols = [item for item in ((params.get("symbols") or [""])[0].split(",")) if item]
+      try:
+        symbols = validate_symbol_inputs([item for item in ((params.get("symbols") or [""])[0].split(",")) if item])
+      except RequestBodyError as error:
+        return self.send_json({"error": str(error)}, status=error.status)
       active = ((params.get("active") or [""])[0] or "").upper() or None
+      if active and not SYMBOL_INPUT_RE.fullmatch(active):
+        return self.send_json({"error": "invalid active symbol"}, status=HTTPStatus.BAD_REQUEST)
       return self.stream_quotes(symbols, active)
     self.send_error(HTTPStatus.NOT_FOUND, "Not found")
 
   def do_POST(self) -> None:
+    if not self.request_is_local(require_origin_match=bool(self.headers.get("Origin"))):
+      return self.send_json({"error": "Cross-origin requests are not allowed"}, status=HTTPStatus.FORBIDDEN)
     parsed = urllib.parse.urlparse(self.path)
-    body = self.read_json()
+    try:
+      body = self.read_json()
+    except RequestBodyError as error:
+      return self.send_json({"error": str(error)}, status=error.status)
 
     if parsed.path == "/api/config":
-      return self.send_json(save_config(body or {}))
+      try:
+        return self.send_json(save_config(body))
+      except ValueError as error:
+        return self.send_json({"error": str(error)}, status=HTTPStatus.BAD_REQUEST)
 
     if parsed.path == "/api/watchlists":
-      name = (body or {}).get("name", "").strip()
-      symbols = [symbol.upper() for symbol in (body or {}).get("symbols", []) if symbol]
+      name = str(body.get("name", "")).strip()
+      try:
+        symbols = validate_symbol_inputs(body.get("symbols", []))
+      except RequestBodyError as error:
+        return self.send_json({"error": str(error)}, status=error.status)
+      if len(name) > 80:
+        return self.send_json({"error": "name must contain at most 80 characters"}, status=HTTPStatus.BAD_REQUEST)
       if not name or not symbols:
-        return self.send_error(HTTPStatus.BAD_REQUEST, "name and symbols are required")
+        return self.send_json({"error": "name and symbols are required"}, status=HTTPStatus.BAD_REQUEST)
       save_watchlist(name, list(dict.fromkeys(symbols)))
       return self.send_json({"ok": True, "watchlists": list_watchlists()})
 
     if parsed.path == "/api/dashboard":
-      symbols = [symbol.upper() for symbol in (body or {}).get("symbols", []) if symbol]
-      active = ((body or {}).get("active") or "").upper() or None
-      chart_range = ((body or {}).get("chartRange") or "1M").upper()
-      region = ((body or {}).get("region") or "").strip().lower() or None
+      try:
+        symbols = validate_symbol_inputs(body.get("symbols", []))
+      except RequestBodyError as error:
+        return self.send_json({"error": str(error)}, status=error.status)
+      active = str(body.get("active") or "").strip().upper() or None
+      if active and not SYMBOL_INPUT_RE.fullmatch(active):
+        return self.send_json({"error": "invalid active symbol"}, status=HTTPStatus.BAD_REQUEST)
+      chart_range = str(body.get("chartRange") or "1M").upper()
+      if chart_range not in CHART_RANGE_CONFIG:
+        return self.send_json({"error": "unsupported chart range"}, status=HTTPStatus.BAD_REQUEST)
+      region = str(body.get("region") or "").strip().lower() or None
+      if region and region not in REGION_CONFIGS:
+        return self.send_json({"error": "unsupported region"}, status=HTTPStatus.BAD_REQUEST)
       return self.send_json(build_dashboard(symbols, active, chart_range, region))
 
     if parsed.path == "/api/history/warm":
-      symbols = [symbol.upper() for symbol in (body or {}).get("symbols", []) if symbol]
-      ranges = [item.upper() for item in (body or {}).get("ranges", []) if item]
+      try:
+        symbols = validate_symbol_inputs(body.get("symbols", []), limit=200)
+      except RequestBodyError as error:
+        return self.send_json({"error": str(error)}, status=error.status)
+      raw_ranges = body.get("ranges", [])
+      if not isinstance(raw_ranges, list) or len(raw_ranges) > len(CHART_RANGE_CONFIG):
+        return self.send_json({"error": "invalid history ranges"}, status=HTTPStatus.BAD_REQUEST)
+      ranges = [str(item).upper() for item in raw_ranges if str(item).upper() in CHART_RANGE_CONFIG]
       return self.send_json(start_history_warmup(symbols, ranges or HISTORY_PREFETCH_RANGES, reason="client-idle"))
 
+    if parsed.path == "/api/operations/run":
+      job_id = str(body.get("jobId") or "").strip()
+      try:
+        return self.send_json(start_operator_job(job_id), status=HTTPStatus.ACCEPTED)
+      except ValueError as error:
+        return self.send_json({"error": str(error)}, status=HTTPStatus.BAD_REQUEST)
+
     if parsed.path == "/api/lab":
-      symbol = ((body or {}).get("symbol") or "").strip().upper()
-      if not symbol:
-        return self.send_error(HTTPStatus.BAD_REQUEST, "symbol is required")
-      horizon = int((body or {}).get("horizon") or 10)
-      stress = (body or {}).get("stress") or "base"
-      chart_range = ((body or {}).get("chartRange") or "1M").upper()
+      symbol = str(body.get("symbol") or "").strip().upper()
+      if not symbol or not SYMBOL_INPUT_RE.fullmatch(symbol):
+        return self.send_json({"error": "valid symbol is required"}, status=HTTPStatus.BAD_REQUEST)
+      try:
+        horizon = int(body.get("horizon") or 10)
+      except (TypeError, ValueError):
+        return self.send_json({"error": "horizon must be a number"}, status=HTTPStatus.BAD_REQUEST)
+      if horizon < 1 or horizon > 60:
+        return self.send_json({"error": "horizon must be between 1 and 60"}, status=HTTPStatus.BAD_REQUEST)
+      stress = str(body.get("stress") or "base")
+      if stress not in {"base", "riskoff", "growth", "inflation"}:
+        return self.send_json({"error": "unsupported stress scenario"}, status=HTTPStatus.BAD_REQUEST)
+      chart_range = str(body.get("chartRange") or "1M").upper()
+      if chart_range not in CHART_RANGE_CONFIG:
+        return self.send_json({"error": "unsupported chart range"}, status=HTTPStatus.BAD_REQUEST)
       snapshot = build_ticker_snapshot(symbol, stress=stress, horizon=horizon, chart_range=chart_range)
       return self.send_json(
         {
@@ -9048,27 +9530,42 @@ class FinancialBoardHandler(BaseHTTPRequestHandler):
       )
 
     if parsed.path == "/api/research":
-      query = ((body or {}).get("query") or "").strip()
+      query = str(body.get("query") or "").strip()
       if not query:
-        return self.send_error(HTTPStatus.BAD_REQUEST, "query is required")
-      symbol = ((body or {}).get("symbol") or "").strip().upper() or None
-      use_web = bool((body or {}).get("useWeb", True))
-      use_llm = bool((body or {}).get("useLlm", True))
+        return self.send_json({"error": "query is required"}, status=HTTPStatus.BAD_REQUEST)
+      if len(query) > 2000:
+        return self.send_json({"error": "query must contain at most 2000 characters"}, status=HTTPStatus.BAD_REQUEST)
+      symbol = str(body.get("symbol") or "").strip().upper() or None
+      if symbol and not SYMBOL_INPUT_RE.fullmatch(symbol):
+        return self.send_json({"error": "invalid symbol"}, status=HTTPStatus.BAD_REQUEST)
+      use_web = bool(body.get("useWeb", True))
+      use_llm = bool(body.get("useLlm", True))
       return self.send_json(run_research_agent(query, symbol, use_web, use_llm))
 
-    self.send_error(HTTPStatus.NOT_FOUND, "Not found")
+    self.send_json({"error": "Not found"}, status=HTTPStatus.NOT_FOUND)
 
-  def read_json(self) -> dict | None:
-    length = int(self.headers.get("Content-Length", "0") or "0")
-    if length > 262144:
-      return None
-    if length <= 0:
-      return None
-    raw = self.rfile.read(length).decode("utf-8")
+  def read_json(self) -> dict:
+    if "application/json" not in str(self.headers.get("Content-Type", "")).lower():
+      raise RequestBodyError(HTTPStatus.UNSUPPORTED_MEDIA_TYPE, "Content-Type must be application/json")
     try:
-      return json.loads(raw)
-    except json.JSONDecodeError:
-      return None
+      length = int(self.headers.get("Content-Length", "0") or "0")
+    except ValueError as error:
+      raise RequestBodyError(HTTPStatus.BAD_REQUEST, "Invalid Content-Length") from error
+    if length > 262144:
+      raise RequestBodyError(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, "JSON body exceeds 256 KiB")
+    if length <= 0:
+      raise RequestBodyError(HTTPStatus.BAD_REQUEST, "JSON body is required")
+    try:
+      raw = self.rfile.read(length).decode("utf-8")
+    except UnicodeDecodeError as error:
+      raise RequestBodyError(HTTPStatus.BAD_REQUEST, "JSON body must be UTF-8") from error
+    try:
+      payload = json.loads(raw)
+    except json.JSONDecodeError as error:
+      raise RequestBodyError(HTTPStatus.BAD_REQUEST, "Malformed JSON body") from error
+    if not isinstance(payload, dict):
+      raise RequestBodyError(HTTPStatus.BAD_REQUEST, "JSON body must be an object")
+    return payload
 
   def serve_file(self, filename: str, content_type: str) -> None:
     path = BASE_DIR / filename
@@ -9087,13 +9584,13 @@ class FinancialBoardHandler(BaseHTTPRequestHandler):
     except (BrokenPipeError, ConnectionResetError):
       return
 
-  def send_json(self, payload: dict) -> None:
+  def send_json(self, payload: dict, status: HTTPStatus = HTTPStatus.OK) -> None:
     raw = json.dumps(payload).encode("utf-8")
     accept_encoding = self.headers.get("Accept-Encoding", "")
     # Gzip payloads larger than 860 bytes when the client supports it
     if "gzip" in accept_encoding and len(raw) > 860:
       data = gzip.compress(raw, compresslevel=6)
-      self.send_response(HTTPStatus.OK)
+      self.send_response(status)
       self.write_security_headers()
       self.send_header("Content-Type", "application/json; charset=utf-8")
       self.send_header("Content-Encoding", "gzip")
@@ -9103,7 +9600,7 @@ class FinancialBoardHandler(BaseHTTPRequestHandler):
       self.end_headers()
       self.wfile.write(data)
     else:
-      self.send_response(HTTPStatus.OK)
+      self.send_response(status)
       self.write_security_headers()
       self.send_header("Content-Type", "application/json; charset=utf-8")
       self.send_header("Cache-Control", "no-store, max-age=0")
@@ -9121,6 +9618,8 @@ class FinancialBoardHandler(BaseHTTPRequestHandler):
 
     try:
       for _ in range(240):
+        if _SERVER_STOPPING.is_set():
+          return
         payload = build_live_quotes(symbols, active, allow_history_fallback=False)
         message = f"event: quote\ndata: {json.dumps(payload)}\n\n".encode("utf-8")
         self.wfile.write(message)
@@ -9134,6 +9633,9 @@ class FinancialBoardHandler(BaseHTTPRequestHandler):
 
 
 class QuietThreadingHTTPServer(ThreadingHTTPServer):
+  daemon_threads = True
+  block_on_close = False
+
   def handle_error(self, request, client_address) -> None:
     error_type, _, _ = sys.exc_info()
     if error_type in {BrokenPipeError, ConnectionResetError}:

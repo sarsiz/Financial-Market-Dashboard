@@ -25,30 +25,52 @@
       <div class="starfield-layer starfield-layer-near"></div>
       <div class="starfield-glow"></div>
     </div>
-    <div id="alert-stack" class="alert-stack" aria-live="polite" aria-atomic="false"></div>
-    <section id="data-flow-bar" class="data-flow-bar" aria-live="polite" aria-label="Backend data flow progress"></section>
+    <div id="alert-stack" class="alert-stack" aria-live="polite" aria-atomic="false" hidden></div>
+    <section id="data-flow-bar" class="data-flow-bar" aria-live="polite" aria-label="Backend data flow progress" hidden></section>
+    <div id="status-banner" class="status-banner" role="status" aria-live="polite" hidden></div>
     <div class="shell">
       <div class="topbar" aria-label="Financial Board command bar">
         <div class="brand">
           <div class="brand-mark" aria-hidden="true"></div>
           <div class="brand-name">Financial<b>·</b>Board</div>
         </div>
-        <nav class="topnav" aria-label="Dashboard sections">
-          <a href="#" class="topnav-link active" data-target="overview">Overview</a>
-          <a href="#" class="topnav-link" data-target="bond-market">Bonds</a>
-          <a href="#" class="topnav-link" data-target="inflation">Inflation</a>
-          <a href="#" class="topnav-link" data-target="equity-context">Equity</a>
-          <a href="#" class="topnav-link" data-target="events-calendar">Events</a>
-          <a href="#" class="topnav-link" data-target="methodology">Method</a>
-          <a href="#" class="topnav-link" data-target="watchlist-implications">Implications</a>
-          <a href="#" class="topnav-link" data-target="comparison">Compare</a>
+        <nav class="topnav" aria-label="Dashboard sections" role="tablist">
+          <a id="tab-overview" href="#overview" class="topnav-link active" data-target="overview" role="tab" aria-controls="overview" aria-selected="true">Overview</a>
+          <a id="tab-bond-market" href="#bond-market" class="topnav-link" data-target="bond-market" role="tab" aria-controls="bond-market" aria-selected="false" tabindex="-1">Bonds</a>
+          <a id="tab-inflation" href="#inflation" class="topnav-link" data-target="inflation" role="tab" aria-controls="inflation" aria-selected="false" tabindex="-1">Inflation</a>
+          <a id="tab-equity-context" href="#equity-context" class="topnav-link" data-target="equity-context" role="tab" aria-controls="equity-context" aria-selected="false" tabindex="-1">Equity</a>
+          <a id="tab-events-calendar" href="#events-calendar" class="topnav-link" data-target="events-calendar" role="tab" aria-controls="events-calendar" aria-selected="false" tabindex="-1">Events</a>
+          <a id="tab-methodology" href="#methodology" class="topnav-link" data-target="methodology" role="tab" aria-controls="methodology" aria-selected="false" tabindex="-1">Method</a>
+          <a id="tab-watchlist-implications" href="#watchlist-implications" class="topnav-link" data-target="watchlist-implications" role="tab" aria-controls="watchlist-implications" aria-selected="false" tabindex="-1">Implications</a>
+          <a id="tab-comparison" href="#comparison" class="topnav-link" data-target="comparison" role="tab" aria-controls="comparison" aria-selected="false" tabindex="-1">Compare</a>
+          <a id="tab-operations" href="#operations" class="topnav-link" data-target="operations" role="tab" aria-controls="operations" aria-selected="false" tabindex="-1">Operations</a>
         </nav>
+        <button id="mobile-sidebar-toggle" class="mobile-sidebar-toggle" type="button" aria-controls="dashboard-sidebar" aria-expanded="false">Watchlist</button>
         <div class="top-tools">
           <form id="top-ticker-form" class="search-box" autocomplete="off">
             <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 14 14"/></svg>
             <input id="top-ticker-input" placeholder="Search ticker, news, sector..." aria-label="Search ticker, news, sector" />
             <span class="kbd">⌘K</span>
           </form>
+          <div class="notification-host">
+            <button id="notification-bell" class="icon-btn notification-bell" type="button" aria-haspopup="true" aria-expanded="false" aria-label="Notifications and data flow" title="Notifications">
+              <svg class="bell-icon" width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M3.5 11.5h9l-1-1.5v-3a3.5 3.5 0 0 0-7 0v3l-1 1.5Z"/><path d="M6.5 13a1.5 1.5 0 0 0 3 0"/></svg>
+              <svg class="bell-progress" viewBox="0 0 32 32" aria-hidden="true"><circle class="bell-progress-track" cx="16" cy="16" r="13" fill="none" stroke-width="2"/><circle class="bell-progress-fill" cx="16" cy="16" r="13" fill="none" stroke-width="2" pathLength="100"/></svg>
+              <span id="notification-count" class="notification-count" hidden>0</span>
+            </button>
+            <div id="notification-panel" class="notification-panel" hidden role="dialog" aria-label="Notifications and data flow">
+              <header class="notification-panel-head">
+                <div>
+                  <strong>Activity</strong>
+                  <span id="notification-panel-summary">Live</span>
+                </div>
+                <button type="button" class="notification-clear" aria-label="Clear notifications">Clear</button>
+              </header>
+              <div id="notification-panel-alerts" class="notification-panel-alerts"></div>
+              <div class="notification-panel-divider"></div>
+              <div id="notification-panel-flow" class="notification-panel-flow"></div>
+            </div>
+          </div>
           <button id="toggle-detail-mode" class="detail-mode-toggle icon-btn" type="button" aria-pressed="false" title="Detailed mode" aria-label="Detailed mode">D</button>
           <button id="open-settings" class="icon-btn" type="button" aria-label="Open provider settings" title="Settings">
             <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><circle cx="8" cy="8" r="2"/><path d="M8 1.5v2M8 12.5v2M14.5 8h-2M3.5 8h-2M12.6 3.4l-1.4 1.4M4.8 11.2l-1.4 1.4M12.6 12.6l-1.4-1.4M4.8 4.8 3.4 3.4"/></svg>
@@ -56,7 +78,7 @@
         </div>
       </div>
 
-      <section id="market-radar" class="tape">
+      <section id="market-radar" class="tape" hidden>
         <div id="headline-track" class="tape-track ticker-track"></div>
         <div id="radar-hotspots" class="radar-hotspots" hidden></div>
         <div id="radar-sentiment-box" class="radar-sentiment-chip">
@@ -65,7 +87,7 @@
       </section>
 
       <div class="body app-shell">
-      <aside class="sidebar">
+      <aside id="dashboard-sidebar" class="sidebar">
         <div class="sb-section watchlist-panel">
           <div class="sb-head">
             <span class="title">Watchlist</span>
@@ -135,23 +157,12 @@
         <div class="news-ribbon">
           <span class="badge">LIVE</span>
           <div class="news-list">
-            <span class="item"><b>Radar</b> <span id="news-ribbon-copy">Live headlines loading from source-labeled feeds.</span></span>
+            <span class="item"><b>Radar</b> Live headlines loading…</span>
           </div>
           <span class="risk" id="news-ribbon-risk">Risk tone</span>
         </div>
 
-        <nav class="tabs tabbar">
-          <button class="tab active" data-tab="overview">Overview</button>
-          <button class="tab" data-tab="bond-market">Bonds</button>
-          <button class="tab" data-tab="inflation">Inflation</button>
-          <button class="tab" data-tab="equity-context">Equity</button>
-          <button class="tab" data-tab="events-calendar">Events</button>
-          <button class="tab" data-tab="methodology">Method</button>
-          <button class="tab" data-tab="watchlist-implications">Implications</button>
-          <button class="tab" data-tab="comparison">Compare</button>
-        </nav>
-
-        <section id="overview" class="tab-panel active tabpane" data-tab-pane="overview">
+        <section id="overview" class="tab-panel active tabpane" data-tab-pane="overview" role="tabpanel" aria-labelledby="tab-overview">
           <div id="overview-board" class="content">
             <div>
               <article id="overview-spotlight" class="stock-head">
@@ -234,23 +245,23 @@
                       <span id="buy-sell-signal" style="font-family: var(--f-mono); font-size: 22px; font-weight: 700; letter-spacing: -0.02em;">Balanced</span>
                       <span class="dim" style="font-size: 12px;">scenario</span>
                     </div>
-                    <div id="buy-sell-breakdown" class="vsub">Buy 0% · Hold 100% · Sell 0%</div>
+                    <div id="buy-sell-breakdown" class="vsub">Upside 0% · Base 100% · Downside 0%</div>
                   </div>
                   <div class="fc-cell">
                     <div class="k">10D range</div>
                     <div class="v" id="forecast-rail-return">Live</div>
                   </div>
                   <div class="fc-cell">
-                    <div class="k">Risk/reward</div>
-                    <div class="v">Scenario</div>
+                    <div class="k">Scenario balance</div>
+                    <div class="v">Risk-aware</div>
                   </div>
                   <div class="fc-cell">
-                    <div class="k">Entry watch</div>
+                    <div class="k">Confirmation</div>
                     <div class="v" style="font-size: 12px;">Support zone</div>
                   </div>
                   <div class="fc-cell">
-                    <div class="k">Invalidation</div>
-                    <div class="v" style="font-size: 12px; color: var(--down);">Risk buffer</div>
+                    <div class="k">Risk threshold</div>
+                    <div class="v" style="font-size: 12px; color: var(--down);">Scenario buffer</div>
                   </div>
                 </div>
                 <div id="model-agreement-note" class="micro-note">Model agreement loading.</div>
@@ -381,10 +392,10 @@
               <article id="market-heat-map-panel" class="glass-panel market-heat-map-panel">
                 <div class="section-heading market-heat-map-heading">
                   <div>
-                    <h3>Market Heat Map</h3>
-                    <span>Universe rank sizing, return color, source-labeled tiles</span>
+                    <h3>Market heatmap</h3>
+                    <span>India · grouped by sector · 1D · top 100 · sized by market cap</span>
                   </div>
-                  <div class="market-heat-map-controls">
+                  <div class="market-heat-map-controls heatmap-controls">
                     <select id="market-heat-map-region" class="sector-ctrl-select" aria-label="Heat map market">
                       <option value="india" selected>India</option>
                       <option value="us">US</option>
@@ -544,7 +555,7 @@
 
         </section>
 
-        <section id="bond-market" class="tab-panel">
+        <section id="bond-market" class="tab-panel" role="tabpanel" aria-labelledby="tab-bond-market" hidden>
           <div class="macro-grid">
             <article class="glass-panel macro-panel">
               <div class="section-heading">
@@ -565,7 +576,7 @@
           </div>
         </section>
 
-        <section id="inflation" class="tab-panel">
+        <section id="inflation" class="tab-panel" role="tabpanel" aria-labelledby="tab-inflation" hidden>
           <div class="macro-grid">
             <article class="glass-panel macro-panel">
               <div class="section-heading">
@@ -584,7 +595,7 @@
           </div>
         </section>
 
-        <section id="equity-context" class="tab-panel">
+        <section id="equity-context" class="tab-panel" role="tabpanel" aria-labelledby="tab-equity-context" hidden>
           <div class="macro-grid">
             <article class="glass-panel macro-panel">
               <div class="section-heading">
@@ -635,7 +646,7 @@
           </div>
         </section>
 
-        <section id="events-calendar" class="tab-panel">
+        <section id="events-calendar" class="tab-panel" role="tabpanel" aria-labelledby="tab-events-calendar" hidden>
           <div class="macro-grid">
             <article class="glass-panel macro-panel">
               <div class="section-heading">
@@ -664,7 +675,7 @@
           </div>
         </section>
 
-        <section id="methodology" class="tab-panel">
+        <section id="methodology" class="tab-panel" role="tabpanel" aria-labelledby="tab-methodology" hidden>
           <div class="macro-grid methodology-grid">
 
             <!-- Row 1: Pipeline flow + cockpit (full width) -->
@@ -730,7 +741,7 @@
           </div>
         </section>
 
-        <section id="watchlist-implications" class="tab-panel">
+        <section id="watchlist-implications" class="tab-panel" role="tabpanel" aria-labelledby="tab-watchlist-implications" hidden>
           <div class="macro-grid watchlist-implications-grid">
             <article class="glass-panel macro-panel impact-workspace-panel">
               <div class="section-heading">
@@ -770,7 +781,7 @@
           </div>
         </section>
 
-        <section id="comparison" class="tab-panel">
+        <section id="comparison" class="tab-panel" role="tabpanel" aria-labelledby="tab-comparison" hidden>
           <div class="macro-grid">
             <article class="glass-panel macro-panel">
               <div class="section-heading">
@@ -779,6 +790,26 @@
               </div>
               <div id="comparison-summary" class="micro-note">Comparison is loading.</div>
               <div id="comparison-table" class="comparison-table"></div>
+            </article>
+          </div>
+        </section>
+
+        <section id="operations" class="tab-panel" role="tabpanel" aria-labelledby="tab-operations" hidden>
+          <div class="macro-grid operations-grid">
+            <article class="glass-panel macro-panel">
+              <div class="section-heading">
+                <h3>Data &amp; Operations</h3>
+                <span>Allowlisted local maintenance workflows</span>
+              </div>
+              <div id="operations-summary" class="micro-note">Maintenance status is loading.</div>
+              <div id="operations-jobs" class="operations-jobs"></div>
+            </article>
+            <article class="glass-panel macro-panel">
+              <div class="section-heading">
+                <h3>Recent Runs</h3>
+                <span>Progress, completion, and bounded error details</span>
+              </div>
+              <div id="operations-runs" class="operations-runs"></div>
             </article>
           </div>
         </section>
@@ -808,7 +839,11 @@
         </label>
         <label>
           <span>Alpha Vantage API key</span>
-          <input id="alpha-key" type="password" placeholder="Optional" autocomplete="off" />
+          <input id="alpha-key" type="password" placeholder="Optional" autocomplete="new-password" />
+        </label>
+        <label>
+          <span>FRED API key</span>
+          <input id="fred-key" type="password" placeholder="Optional" autocomplete="new-password" />
         </label>
         <label>
           <span>Local LLM base URL</span>
